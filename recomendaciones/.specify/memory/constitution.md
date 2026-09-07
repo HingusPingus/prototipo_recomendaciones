@@ -172,4 +172,4 @@ Las violaciones detectadas en producción se tratan como incidentes y requieren 
 priorizada. La guía operativa del día a día vive en el README del repo y en la documentación de
 contratos de api-general.
 
-**Version**: 1.0.0 | **Ratified**: TODO(RATIFICATION_DATE) | **Last Amended**: 2026-09-07
+**Version**: 1.0.0 | **Ratified**: TODO(2026-09-07) | **Last Amended**: 2026-09-07
