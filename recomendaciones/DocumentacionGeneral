@@ -1,0 +1,122 @@
+Actuá como arquitecto de software y generá la constitution de este repositorio, que es una
+de cuatro partes de un sistema distribuido más grande llamado RecoMe (hub de recomendaciones
+de películas y videojuegos). Es fundamental que la constitution refleje que este repo NO es
+un sistema aislado: tiene límites estrictos de responsabilidad respecto a los otros tres repos,
+y esos límites no se pueden romper aunque parezca más simple hacerlo.
+ 
+## Visión general del sistema (contexto obligatorio)
+ 
+RecoMe combina recomendación basada en contenido (tags) y colaborativa (perfiles de usuario).
+La arquitectura es híbrida: un núcleo síncrono (REST) para las operaciones de cara al usuario,
+y workers asíncronos desacoplados vía RabbitMQ para las tareas pesadas o no urgentes
+(recálculo de recomendaciones, generación de reportes, envío de notificaciones).
+ 
+El sistema se divide en 4 repositorios, cada uno mantenido por un equipo distinto:
+ 
+1. **api-general**: API General (Java/Spring Boot), DB General (PostgreSQL: usuarios, catálogo,
+   actividad), DB Logs (Cassandra: eventos y trazas de alto volumen). Es el punto de entrada
+   único del sistema: concentra autenticación y autorización, y orquesta hacia el resto de los
+   componentes. También aloja la documentación de los contratos compartidos (specs OpenAPI de
+   los endpoints internos, y JSON Schema de los eventos de RabbitMQ), como fuente única de
+   verdad para los otros tres repos.
+ 
+2. **recomendaciones**: 
+API Recomendaciones (Python/FastAPI), DB Recomendaciones (PostgreSQL + pgvector: perfiles
+   de tags y vectores de similitud), Data Transformer (Python/pandas, sincroniza datos desde
+   api-general hacia DB Recomendaciones), y el worker que consume el evento
+   `recomendacion.actualizar` de RabbitMQ para recalcular recomendaciones de forma asíncrona.
+ 
+   El motor de recomendación implementado es híbrido y se compone de tres señales combinadas
+   linealmente mediante los pesos alpha / beta / gamma:
+     - Content-based: similitud coseno entre el vector TF-IDF del perfil del usuario y el
+       vector de tags de cada ítem candidato.
+     - Colaborativo: comparación del perfil del usuario contra los perfiles de otros usuarios,
+       agregando los ítems likeados por los k vecinos más similares.
+     - Cross-module boost: señal cruzada entre módulos (películas y juegos) construida sobre
+       el perfil de tags generales del usuario, que resuelve el cold start cruzado.
+ 
+   Sobre el resultado del scoring se aplica post-procesamiento obligatorio: filtro de edad
+   según `age_rating`, filtro de exclusión (ítems ya vistos, jugados o dislikeados) y
+   diversificación por MMR (Maximal Marginal Relevance) para evitar que el top-N quede
+   dominado por un único cluster de tags.
+ 
+   El cálculo pesado nunca ocurre en tiempo de request: el worker precomputa el top-N por
+   usuario y por módulo, y lo persiste en una capa de caché Redis. La API de Recomendaciones
+   solo lee resultados ya calculados, garantizando latencia constante independientemente del
+   tamaño del catálogo.
+
+ 
+3. **notificaciones**: infraestructura de RabbitMQ (broker compartido por todo el sistema),
+   Módulo de Notificaciones Push/Mail (Python worker + pika), Módulo de Reportes Exportables
+   (Python worker + pika), DB Archivos (MinIO), Webserver de Archivos (Nginx, expone los
+   archivos generados con acceso restringido).
+ 
+4. **frontend**: Frontend Usuario (React PWA), Frontend Vendedor/Admin (React PWA), y Analytics
+   (servicio que lee datos vía api-general, procesa y guarda resultados en su propia base de
+   datos dentro de este mismo repo).
+ 
+## Reglas cross-repo INNEGOCIABLES (deben quedar explícitas en la constitution)
+ 
+1. **Ningún repo accede directo a la base de datos de otro repo.** Toda lectura o escritura de
+   datos que pertenecen a otro repo se hace exclusivamente vía HTTP REST contra el repo dueño
+   de esos datos, o vía evento de RabbitMQ cuando corresponda (ver punto 3). Esto aplica incluso
+   si en algún momento parece "más fácil" conectarse directo a una base ajena: está prohibido.
+ 
+2. **api-general es la única puerta de entrada para los frontends.** Ni recomendaciones,
+   ni notificaciones, ni ningún otro repo interno son accesibles directamente desde
+   Frontend Usuario o Frontend Vendedor/Admin. Todo pasa por api-general.
+ 
+3. **Comunicación asíncrona vía RabbitMQ**, con un exchange/cola por tipo de evento. Eventos
+   definidos hasta ahora:
+   - `recomendacion.actualizar`: publica api-general → consume el worker de recomendaciones
+     (vive en el repo `recomendaciones`, aunque el broker lo hostea el repo `notificaciones`).
+   - `reporte.generar`: publica api-general → consume el Módulo de Reportes Exportables
+     (repo `notificaciones`).
+   - `notificacion.enviar`: publica api-general u otros módulos → consume el Módulo de
+     Notificaciones Push/Mail (repo `notificaciones`).
+   - `reporte.listo`: publica el Módulo de Reportes Exportables → consume el Módulo de
+     Notificaciones Push/Mail.
+   El repo `notificaciones` es dueño de la infraestructura del broker (deploy, definición base
+   de exchanges/colas), pero NINGÚN repo es dueño unilateral del contrato/schema de un evento:
+   esos contratos son compartidos y viven documentados en el repo `api-general`. Cualquier
+   cambio a un contrato de evento requiere actualizar esa documentación y avisar a todos los
+   repos consumidores/publicadores antes de mergear.
+ 
+4. **Comunicación síncrona vía REST con contratos versionados.** Todo endpoint que un repo
+   expone para ser consumido por otro repo debe:
+   - Estar documentado con OpenAPI.
+   - Vivir documentado (o linkeado) desde el repo `api-general`.
+   - Versionarse explícitamente si el cambio rompe compatibilidad (no se modifica un endpoint
+     existente de forma breaking sin coordinar con los repos consumidores).
+ 
+5. **Autenticación servicio-a-servicio**: las llamadas REST internas entre repos (por ejemplo,
+   Data Transformer o Analytics llamando a endpoints internos de api-general) usan una API key
+   interna compartida por entorno, distinta de la autenticación de usuarios finales. Ningún
+   servicio interno queda expuesto públicamente sin este control.
+ 
+6. **Cada repo es responsable de sus propias migraciones y esquema de base de datos.** Ningún
+   otro repo puede asumir la estructura interna de una base ajena más allá de lo que el
+   contrato REST expone explícitamente.
+ 
+7. **Nombres de eventos y convenciones de API son compartidos y no se redefinen por repo.**
+   Si un equipo necesita un evento o endpoint nuevo que afecta a otro repo, se define primero
+   en la documentación de contratos (repo `api-general`) antes de implementarlo en cualquier lado.
+ 
+## Qué debe generar la constitution de este repo específicamente
+ 
+- Los principios de este repo deben ser consistentes con las reglas cross-repo de arriba:
+  ninguna regla interna puede contradecirlas (ej. "por simplicidad este repo va a leer directo
+  otra base" NO es una decisión válida).
+- Debe dejar explícito cuáles son las responsabilidades y límites de ESTE repo puntual dentro
+  del sistema mayor (usando la lista de los 4 repos de arriba como referencia).
+- Debe definir el stack tecnológico de este repo según lo ya decidido para el sistema (ver
+  detalle de tecnologías por componente arriba), sin reabrir esas decisiones salvo justificación
+  fuerte y coordinación con el resto de los equipos.
+- Debe incluir cómo este repo publica/consume eventos de RabbitMQ y/o expone/consume endpoints
+  REST, siguiendo las reglas cross-repo.
+- Debe incluir requisitos mínimos de testing, especialmente contract testing o pruebas de
+  integración contra los contratos documentados en api-general, para detectar rupturas de
+  compatibilidad antes de deployar.
+- Debe dejar constancia de que los cambios a contratos compartidos (eventos o endpoints
+  consumidos por otros repos) requieren coordinación explícita fuera de este repo, y no se
+  consideran "internos".
