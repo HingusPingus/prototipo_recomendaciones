@@ -1,4 +1,18 @@
-# Implementation Plan: Servicio de Recomendaciones Híbridas Precomputadas (MVP)
+# Implementation Plan: Servicio de Recomendaciones Híbridas P```text
+specs/001-recomendaciones-precomputadas/
+├── plan.md              # Este archivo
+├── spec.md              # Especificación clarificada
+├── checklists/          # Auditoría de calidad de requisitos (30/30)
+├── contracts/           # OpenAPI propio + JSON Schema del evento — producido por T049
+└── tasks.md             # Generado por /speckit.tasks
+```
+
+> **Nota (hallazgo F6 del análisis)**: `research.md`, `data-model.md` y `quickstart.md` se
+> **omiten deliberadamente**. Su contenido ya está incorporado: las decisiones técnicas y sus
+> alternativas viven en §7 *Decisiones abiertas* (D1–D10) y en las clarificaciones de `spec.md`;
+> el modelo de datos vive en §2 de este plan. Duplicarlos crearía dos fuentes de verdad divergentes.
+> `contracts/` **sí es necesario** y se produce en T049, antes de los contract tests (T043).
+````as (MVP)
 
 **Branch**: `001-recomendaciones-precomputadas` | **Date**: 2026-09-07 | **Spec**: [spec.md](./spec.md)
 
@@ -177,15 +191,18 @@ posterior.
 | Clave | Valor | TTL |
 |---|---|---|
 | `reco:v{cfg}:{user_id}:{module}` | JSON: ítems + score + rank + `config_version` + `computed_at` | `TTL_FRESH` (ej. 24 h) |
-| `reco:stale:{user_id}:{module}` | Copia del último resultado conocido | `TTL_STALE` (ej. 7 d) |
+| `reco:stale:v{cfg}:{user_id}:{module}` | Copia del último resultado conocido | `TTL_STALE` (ej. 7 d) |
 | `filters:{user_id}` | `max_age_rating` + set de exclusiones | `TTL_FILTERS` (ej. 1 h) |
 | `fallback:{module}` | Top-N de respaldo diversificado | `TTL_FALLBACK` (ej. 6 h) |
 | `recompute:lock:{user_id}:{module}` | Marca de supresión de señales | `TTL_SUPPRESS` (ej. 5 min) |
 | `dedupe:event:{event_id}` | Marca de evento procesado | `TTL_DEDUPE` (ej. 24 h) |
 
 **Invalidación / regeneración**: no hay invalidación masiva. Al vencer `TTL_FRESH` la entrada pasa a
-servirse como obsoleta desde `reco:stale` hasta `TTL_STALE`; superado ese límite se responde
-"pendiente". La pérdida total de Redis es recuperable: todo lo necesario para recalcular vive en
+servirse como obsoleta desde `reco:stale:v{cfg}` hasta `TTL_STALE`; superado ese límite se responde
+"pendiente". **Ambas familias (`reco:` y `reco:stale:`) incluyen `config_version` en la clave**: un
+resultado obsoleto generado con una configuración anterior nunca se sirve bajo la versión vigente,
+lo que preserva la trazabilidad exigida por la clarificación Q4 y la reproducibilidad de SC-021.
+La pérdida total de Redis es recuperable: todo lo necesario para recalcular vive en
 Postgres. La reconstrucción se hace por un job de *warm-up* que publica señales de recálculo con
 límite de tasa, no en línea.
 
@@ -254,9 +271,15 @@ verificada por test: `api/` no importa `engine/`.
 
 | Fase | Objetivo | Cambios principales | Riesgos | Criterios de aceptación |
 |---|---|---|---|---|
-| **1 — Vertical slice** | Servir top-N precomputado end-to-end | Esquema DB + migraciones; `engine/` completo con post-proceso; worker consumiendo el evento; API de lectura cache-first; config v1; unit tests del motor | Contrato del evento aún no cerrado con `api-general`; datos de actividad sin tipo de señal | US1 y US2 demostrables; SC-002/003 (0 % violaciones de filtros); SC-005 (idempotencia básica); SC-009 (sin cómputo en request) |
-| **2 — Robustez operativa** | Que sobreviva a fallos reales | Data Transformer completo; idempotencia por `event_id` + DLQ + backoff; stale-while-revalidate con supresión; batch de respaldo; métricas, health checks y logging estructurado; contract testing en CI | Avalancha de recálculos tras pérdida de caché; drift de contratos | US3/US4/US6/US7; SC-006/007/008/015; SC-013 (contract tests bloqueantes); SC-024/026/027 |
-| **3 — Optimización y endurecimiento** | Rendimiento y gobernanza | Índices pgvector y tuning de consultas; propagación cross-module condicional afinada; consolidación de ráfagas; job de warm-up con límite de tasa; harness de evaluación offline reproducible; alertas | Regresión de calidad al tocar pesos; costo del recálculo doble | SC-001 (latencia estable a 10× catálogo); SC-010/011 (cold start cruzado y diversidad); SC-016/017; SC-021 (reproducibilidad exacta) |
+| **1 — Vertical slice** | Servir top-N precomputado end-to-end **y cerrar el ciclo de recálculo** | Esquema DB + migraciones; `engine/` completo con post-proceso; worker consumiendo el evento **con idempotencia y propagación cross-module**; batch de respaldo; API de lectura cache-first **con registro de feedback que publica el evento**; config v1; unit tests del motor | Contrato del evento aún no cerrado con `api-general`; datos de actividad sin tipo de señal | US1 y US2 demostrables; SC-002/003 (0 % violaciones de filtros); SC-005 (idempotencia básica); SC-009 (sin cómputo en request). **Tareas: T001–T024, T027, T033–T038** |
+| **2 — Robustez operativa** | Que sobreviva a fallos reales | Data Transformer completo; DLQ + backoff + manejo de payload inválido; stale-while-revalidate con supresión; métricas, health checks, logging estructurado, alertas probadas y runbook; contract testing en CI | Avalancha de recálculos tras pérdida de caché; drift de contratos | US3/US4/US6/US7; SC-006/007/008/015; SC-013 (contract tests bloqueantes); SC-024/026/027. **Tareas: T025, T026, T028–T032, T039–T042, T046, T049** |
+| **3 — Optimización y endurecimiento** | Rendimiento y gobernanza | Índices pgvector y tuning de consultas; propagación cross-module afinada; consolidación de ráfagas; **pruebas de carga a 10× catálogo (T050)**; harness de evaluación offline reproducible | Regresión de calidad al tocar pesos; costo del recálculo doble | SC-001 (latencia estable a 10× catálogo, **verificado por T050**); SC-010/011 (cold start cruzado y diversidad); SC-016/017; SC-021 (reproducibilidad exacta). **Tareas: T043–T045, T047, T048, T050** |
+
+> **Corrección aplicada (hallazgo F1)**: la Fase 1 promete US2 y SC-005, que dependen del worker.
+> Por eso T023, T024 y T027 (consumo, idempotencia y recálculo) pertenecen a Fase 1, junto con T036
+> (feedback que dispara el evento) y T038 (respaldo, sin el cual el estado `fallback` de FR-056 es
+> inalcanzable, hallazgo F2). En Fase 2 quedan T025 y T026, que son **robustez** ante fallos, no
+> funcionalidad del ciclo.
 
 ---
 

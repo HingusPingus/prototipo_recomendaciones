@@ -32,11 +32,30 @@ Estos cuatro se verifican en **toda** tarea, no solo donde se mencionan:
 | **INV-3** | Edad y exclusión no admiten bypass (FR-049→FR-055) | Existe una ruta de datos hacia la respuesta que no atraviesa ambos filtros |
 | **INV-4** | Sin acceso a DB de otros repos (Principio I) | Cualquier credencial o driver apuntando fuera de DB Recomendaciones |
 
+## Asignación de fases (autoritativa)
+
+Los milestones agrupan por **dominio técnico**; las fases agrupan por **entregable demostrable**. No
+coinciden, y esta tabla manda sobre el encabezado de cada milestone.
+
+| Fase | Tareas | Entregable |
+|---|---|---|
+| **1 — Vertical slice** | T001–T024, **T027**, T033–T038 | Ciclo completo: leer, registrar feedback, recalcular. Cierra US1, US2, US5 |
+| **2 — Robustez operativa** | T025, T026, T028–T032, T039–T042, T046, **T049** | Sobrevive a fallos. Cierra US3, US4, US6, US7 |
+| **3 — Optimización y cierre** | T043–T045, T047, T048, **T050** | Rendimiento, gates de CI y gobernanza |
+
+> **Correcciones del análisis de consistencia (2026-09-08)**:
+> - **F1** — T023, T024 y T027 se movieron a Fase 1: `plan.md` §4 promete US2 y SC-005 en esa fase,
+>   y ambos dependen del worker. En Fase 2 quedan T025/T026, que son robustez ante fallos.
+> - **F2** — T038 se movió a Fase 1: sin el batch de respaldo, el estado `fallback` de FR-056 es
+>   inalcanzable y T020 no puede testearse completa.
+> - **F8** — T036 confirmada en Fase 1: es lo que cierra el ciclo de US2.
+
 ---
 
 # FASE 1 — Vertical slice
 
-> **Objetivo**: servir top-N precomputado end-to-end. Cierra US1, US2, US5.
+> **Objetivo**: servir top-N precomputado end-to-end **y cerrar el ciclo de recálculo**.
+> Cierra US1, US2, US5. Incluye T023, T024, T027 (Milestone 5), T033–T038 (Milestone 7).
 
 ## Milestone 1 — Fundaciones
 
@@ -433,13 +452,16 @@ parte de la clave, de modo que resultados de versiones distintas conviven sin co
 
 **Criterios de aceptación**:
 - [ ] Las claves se construyen por función tipada; **no hay concatenación de strings ad-hoc**
-- [ ] `config_version` está en la clave de `reco:`
+- [ ] `config_version` está en la clave de `reco:` **y también en la de `reco:stale:`** (hallazgo F3):
+      un resultado obsoleto de una configuración anterior nunca debe servirse bajo la versión vigente
 - [ ] Los TTL vienen de configuración (FR-068), no de constantes
 - [ ] `filters:{user_id}` tiene TTL **más corto** que `reco:` — corrige P4 del prototipo, donde compartían 7 días
 - [ ] **Deuda del prototipo resuelta**: caché en memoria reemplazada por Redis persistente
 - [ ] `INV-2`: no hay dato cuya única copia esté en Redis
 
-**Tests**: `tests/unit/test_cache_keys.py` — colisión imposible entre módulos y entre `config_version`. `tests/integration/test_redis.py` — TTL efectivos; `filters:` expira antes que `reco:`.
+**Tests**: `tests/unit/test_cache_keys.py` — colisión imposible entre módulos, entre `config_version`
+y entre vigente/obsoleto; una entrada obsoleta de `v1` no es legible desde `v2`.
+`tests/integration/test_redis.py` — TTL efectivos; `filters:` expira antes que `reco:`.
 
 ---
 
@@ -528,13 +550,16 @@ colateral del tráfico de lectura.
 
 ## Milestone 5 — Worker de recálculo asíncrono
 
-| ID | Tarea | Dep. | [P] | Est. |
-|---|---|---|---|---|
-| T023 | Consumo de `recomendacion.actualizar` | T003, T005 | | M |
-| T024 | Idempotencia por `event_id` | T023 | | M |
-| T025 | Reintentos con backoff y DLQ | T023 | | M |
-| T026 | Manejo de payload inválido sin bloquear la cola | T025 | | S |
-| T027 | Recálculo y propagación cross-module condicional | T024, T016, T019 | | L |
+> ⚠️ **Este milestone está repartido entre fases** (hallazgo F1). T023, T024 y T027 son **Fase 1**:
+> sin ellas no hay US2 ni SC-005. T025 y T026 son Fase 2: robustez ante fallos, no funcionalidad.
+
+| ID | Tarea | Fase | Dep. | [P] | Est. |
+|---|---|---|---|---|---|
+| T023 | Consumo de `recomendacion.actualizar` | **1** | T003, T005 | | M |
+| T024 | Idempotencia por `event_id` | **1** | T023 | | M |
+| T027 | Recálculo y propagación cross-module condicional | **1** | T024, T016, T019 | | L |
+| T025 | Reintentos con backoff y DLQ | 2 | T023 | | M |
+| T026 | Manejo de payload inválido sin bloquear la cola | 2 | T025 | | S |
 
 ### T023 — Consumo de `recomendacion.actualizar`
 
@@ -642,7 +667,11 @@ motivo quedan registrados (FR-010c).
 | T029 | Materialización idempotente de usuarios, catálogo y actividad | T028, T003 | | L |
 | T030 | Derivación del vocabulario compartido versionado | T029, T007 | | M |
 | T031 | Registro de freshness de sincronización | T029 | [P] | S |
-| T032 | Comportamiento ante `api-general` no disponible | T028 | [P] | M |
+| T032 | Comportamiento ante `api-general` no disponible | T028, T031 | | M |
+
+> **Hallazgo F5**: T032 perdió su marca `[P]`. Compartía `transformer/pipeline.py` con T031, lo que
+> garantizaba conflicto de merge si se tomaban en paralelo. Ahora depende de T031 y su lógica de
+> resiliencia vive en un módulo propio.
 
 ### T028 — Cliente REST autenticado y de solo lectura
 
@@ -724,14 +753,15 @@ la versión nueva (FR-010g).
 
 ---
 
-### T032 [P] — Comportamiento ante `api-general` no disponible
+### T032 — Comportamiento ante `api-general` no disponible
 
 **Descripción**: la caída de `api-general` degrada la **frescura**, no la disponibilidad. El servicio
 sigue sirviendo con los datos materializados.
 
-**Archivos**: `src/recomendaciones/transformer/pipeline.py`
+**Archivos**: `src/recomendaciones/transformer/resilience.py` (módulo propio — **hallazgo F5**: ya no
+comparte `pipeline.py` con T031)
 
-**Dep.**: T028
+**Dep.**: T028, T031
 
 **Criterios de aceptación**:
 - [ ] `api-general` caído → la sincronización falla de forma limpia y registrada
@@ -745,14 +775,16 @@ sigue sirviendo con los datos materializados.
 
 ## Milestone 7 — API de lectura
 
+> Todo este milestone es **Fase 1**. T038 se adelantó desde Fase 2 (hallazgo F2).
+
 | ID | Tarea | Dep. | [P] | Est. |
 |---|---|---|---|---|
 | T033 | Endpoint de top-N con paginación | T020, T005 | | M |
 | T034 | Autenticación por API key interna y no alcanzabilidad desde frontends | T002, T033 | | M |
 | T035 | Errores tipados y contrato estable | T033, T005 | | S |
 | T036 | Registro de feedback y emisión del evento de recálculo | T033, T003 | | M |
-| T037 | Filtrado de salida sobre el respaldo (acotado) | T033, T013, T014 | | M |
-| T038 | Batch de top-N de respaldo | T012, T015, T029 | [P] | M |
+| T038 | Batch de top-N de respaldo | T012, T015, T003 | [P] | M |
+| T037 | Filtrado de salida sobre el respaldo (acotado) | T033, T013, T014, **T038** | | M |
 
 ### T033 — Endpoint de top-N con paginación
 
@@ -840,7 +872,8 @@ recomputación de scores, sin reordenamiento, sin diversificación.
 
 **Archivos**: `src/recomendaciones/api/services/read_service.py`
 
-**Dep.**: T033, T013, T014
+**Dep.**: T033, T013, T014, **T038** (hallazgo F4 — sin el batch no existe el respaldo que esta
+tarea filtra, y su test no sería significativo)
 
 **Criterios de aceptación**:
 - [ ] Se aplican edad y exclusión sobre el respaldo antes de responder (FR-036, FR-049)
@@ -860,7 +893,12 @@ volumen de likes propio en ventana acotada (D10, FR-033a1). Global por módulo, 
 
 **Archivos**: `src/recomendaciones/batch/fallback.py`
 
-**Dep.**: T012, T015, T029
+**Dep.**: T012, T015, T003
+
+> **Nota de fase (hallazgo F2)**: adelantada a Fase 1. Su dependencia original de T029 (sincronización
+> del catálogo, Fase 2) se sustituyó por T003: la popularidad se computa sobre `user_signals`, que ya
+> se puebla con el feedback de T036. La sincronización completa de T029 **enriquece** el catálogo en
+> Fase 2, pero no es condición para que el respaldo exista y sea testeable.
 
 **Criterios de aceptación**:
 - [ ] La popularidad sale del volumen de likes propio, sin campo externo (FR-033a)
@@ -999,11 +1037,63 @@ involucra.
 
 ## Milestone 9 — Testing y verificación
 
-| ID | Tarea | Dep. | [P] | Est. |
-|---|---|---|---|---|
-| T043 | Contract testing contra `api-general` como gate de CI | T023, T033 | | M |
-| T044 | Suite de casos críticos obligatorios | T017, T027, T032, T038 | | L |
-| T045 | Pipeline de CI con gates bloqueantes | T017, T043, T044 | | M |
+| ID | Tarea | Fase | Dep. | [P] | Est. |
+|---|---|---|---|---|---|
+| T049 | Materializar `contracts/` (OpenAPI + JSON Schema) | 2 | T033, T023 | | M |
+| T043 | Contract testing contra `api-general` como gate de CI | 3 | T049 | | M |
+| T044 | Suite de casos críticos obligatorios | 3 | T017, T027, T032, T038 | | L |
+| T045 | Pipeline de CI con gates bloqueantes | 3 | T017, T043, T044 | | M |
+| T050 | Pruebas de carga y verificación de SC-001 | 3 | T033, T038 | [P] | M |
+
+### T049 — Materializar `contracts/` (OpenAPI + JSON Schema)
+
+**Descripción**: producir los artefactos de contrato que T043 asume existentes. **Hallazgo F6**: el
+plan los referenciaba pero nadie los generaba, con lo que los contract tests no habrían tenido contra
+qué validar.
+
+**Archivos**: `specs/001-recomendaciones-precomputadas/contracts/read-api.openapi.yaml`,
+`contracts/recomendacion-actualizar.schema.json`, `contracts/README.md`
+
+**Dep.**: T033 (endpoint definido), T023 (consumo definido)
+
+**Criterios de aceptación**:
+- [ ] `read-api.openapi.yaml` describe el endpoint de lectura con los cinco `result_type` (FR-056)
+      y los errores de T035 (`401`, `422`, `503`)
+- [ ] `recomendacion-actualizar.schema.json` declara los seis campos mínimos de FR-061 como requeridos
+- [ ] `contracts/README.md` declara explícitamente que el schema del evento es **propiedad de
+      `api-general`** y que esta copia es derivada (Principio II) — no es fuente de verdad
+- [ ] La copia derivada registra la versión del contrato origen y su fecha de sincronización
+- [ ] El OpenAPI propio se genera desde el código, no se mantiene a mano
+
+**Tests**: `tests/contract/test_openapi_sync.py` — el OpenAPI publicado coincide con las rutas reales
+de la aplicación; falla si divergen.
+
+---
+
+### T050 [P] — Pruebas de carga y verificación de SC-001
+
+**Descripción**: verificar SC-001 (`spec.md:692`) — la latencia de lectura se mantiene dentro del
+umbral con el catálogo a 10×. **Hallazgo F7**: era el único Success Criterion sin tarea asignada.
+
+**Archivos**: `tests/performance/test_read_latency.py`, `tests/performance/fixtures/catalog_10x.py`,
+`docs/validation/performance-report.md`
+
+**Dep.**: T033, T038
+
+**Criterios de aceptación**:
+- [ ] Existe un generador reproducible de catálogo a 1×, 10× y volumen de usuarios equivalente
+- [ ] La latencia de lectura a 10× permanece dentro del umbral declarado en SC-001
+- [ ] Se mide con caché **poblada** y con caché **fría**, y ambos escenarios se reportan por separado
+- [ ] Se verifica que la latencia no depende del tamaño del catálogo — si dependiera, habría cómputo
+      en el request path y sería violación de INV-1
+- [ ] El resultado queda versionado en `docs/validation/performance-report.md` con la configuración
+      de hardware usada
+- [ ] **No es gate bloqueante de CI** (sería demasiado lento): corre bajo demanda y antes de release
+
+**Tests**: es la tarea de test. La aserción clave es la **independencia respecto del tamaño del
+catálogo**, no el valor absoluto de latencia, que depende del hardware.
+
+---
 
 ### T043 — Contract testing contra `api-general` como gate de CI
 
@@ -1012,7 +1102,7 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 
 **Archivos**: `tests/contract/`
 
-**Dep.**: T023, T033
+**Dep.**: T049 (los artefactos de contrato deben existir antes de validarlos)
 
 **Criterios de aceptación**:
 - [ ] El evento consumido se valida contra el schema oficial de `api-general`
@@ -1104,7 +1194,7 @@ que reconstruir el razonamiento desde cero.
 
 **Archivos**: `docs/validation/traceability-matrix.md`, `tests/contract/test_traceability.py`
 
-**Dep.**: T045, T046, T047
+**Dep.**: T045, T046, T047, T050
 
 **Criterios de aceptación**:
 - [ ] La matriz cubre los 30 ítems del checklist, cada uno con su evidencia: ruta de test, ruta de
@@ -1130,21 +1220,28 @@ T001 → T003 → T014 ─┐
 T001 → T004 → T007 → T008 → T012 → T015 ─┼→ T016 → T017
 T001 → T004 → T013 ────────────────────┘
                                           │
-T016 → T019 → T020 → T033 → T036 → T043 → T044 → T045 → T048
-   └→ T027 (worker) ────────────────────┘
+T016 → T019 → T020 → T033 → T036 → T038 → T037 → T049 → T043 → T044 → T045 → T048
+   └→ T023 → T024 → T027 (worker, ahora Fase 1) ──────┘
 ```
 
 **Cuello de botella real: T016** (pipeline de post-proceso). Bloquea persistencia, worker y API a la
 vez. Priorizarlo por encima de cualquier tarea `[P]`.
 
-**Ruta crítica**: `T001 → T004 → T007 → T008 → T012 → T015 → T016 → T019 → T020 → T033 → T036 → T043 → T044 → T045 → T048` (15 tareas).
+**Ruta crítica**: `T001 → T004 → T007 → T008 → T012 → T015 → T016 → T019 → T020 → T033 → T036 →
+T038 → T037 → T049 → T043 → T044 → T045 → T048` (18 tareas).
+
+> **Cambio tras el análisis de consistencia**: la ruta creció de 15 a 18 tareas. T038 y T037 entraron
+> por la cadena de dependencias corregida (F2, F4); T049 entró porque T043 no puede validar contratos
+> que nadie produjo (F6). Ninguna es trabajo nuevo: eran dependencias que estaban implícitas y ahora
+> son visibles. **La ruta no se alargó — se dejó de subestimar.**
 
 **Paralelizables tempranas** (tras T001): T004, T005, T006 — luego T009/T010/T011 en simultáneo tras T008.
 
 **Riesgo de cronograma**: T027 (propagación cross-module) es `L` y depende de casi todo el motor.
 Si el contrato del evento con `api-general` no se cierra a tiempo (DEP-1), T023 se bloquea y arrastra
-T024→T027. **Mitigación**: desarrollar contra un doble del contrato desde el día 1 y escalar DEP-1
-como bloqueante de Fase 1, según D1.
+T024→T027. **Este riesgo se agravó al mover el worker a Fase 1** (F1): ahora DEP-1 bloquea el hito
+de Fase 1 completo, no solo el de Fase 2. **Mitigación**: desarrollar contra un doble del contrato
+desde el día 1 y escalar DEP-1 como bloqueante inmediato, según D1.
 
 ---
 
@@ -1161,17 +1258,21 @@ como bloqueante de Fase 1, según D1.
 - [ ] Cero conexiones a DB de otros repos (T002, T028)
 
 ## Funcionalidad
-- [ ] US1 (lectura) y US2 (recálculo) demostrables end-to-end
+- [ ] US1 (lectura) y US2 (recálculo) demostrables end-to-end **al cierre de Fase 1** (T023, T024, T027, T036)
 - [ ] US5 (filtros obligatorios) verificado por T017
 - [ ] US3, US4, US6, US7 completos
-- [ ] Los cinco `result_type` alcanzables y correctamente discriminados
+- [ ] Los cinco `result_type` alcanzables y correctamente discriminados — **incluido `fallback`**,
+      que requiere T038 en Fase 1
 - [ ] Cold start cruzado produce recomendaciones no triviales (SC-010)
 
 ## Calidad y contratos
+- [ ] `contracts/` materializado con OpenAPI y JSON Schema (T049)
 - [ ] Contract tests en verde como gate bloqueante (T043)
 - [ ] Los nueve casos críticos en verde (T044)
 - [ ] Configuración versionada trazable en cada recomendación servida
+- [ ] `config_version` presente en **ambas** familias de clave, vigente y obsoleta (T018)
 - [ ] `v1.yaml` valida contra el loader; configuración inválida impide el arranque
+- [ ] SC-001 verificado: la latencia no depende del tamaño del catálogo (T050)
 
 ## Deuda del prototipo
 - [ ] Caché en memoria → Redis persistente (T018)
