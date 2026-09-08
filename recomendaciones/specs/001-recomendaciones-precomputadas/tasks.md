@@ -18,8 +18,40 @@ popularidad por likes propios (D10).
 ## Formato: `[ID] [P?] Descripción`
 
 - **[P]**: paralelizable — sin dependencias cruzadas ni archivos compartidos con otra tarea `[P]` activa
+- **[TDD]**: la tarea se desarrolla test-first — ver *Política TDD* abajo
 - **Estimación**: S (≤½ día) · M (1-2 días) · L (3-5 días)
 - Toda tarea de producción declara sus tests. Una tarea sin criterio verificable no está lista para tomarse.
+
+## Política TDD (selectiva)
+
+**Alcance: T007–T017** — el motor de recomendación y el post-procesamiento. Son funciones puras, sin
+I/O ni reloj, con entradas y salidas completamente definidas: el caso donde el test *es* la
+especificación ejecutable, no su verificación posterior.
+
+El resto del backlog **no** es test-first. En infraestructura (T001, T018, T028) el orden aporta poco:
+no se descubre el diseño de un cliente de Redis escribiendo su test antes. Ahí basta con que el test
+exista y bloquee el merge.
+
+**Razón del alcance elegido**: en T013 (filtro de edad) y T017 (batería de invariantes), un test
+escrito *después* tiende a acomodarse a lo que el código ya hace. Es el modo de fallo clásico y
+justamente el que no podemos permitirnos en un invariante de seguridad. Escribir el test primero
+obliga a fijar el contrato antes de tener una implementación que lo condicione.
+
+### Ciclo obligatorio en tareas `[TDD]`
+
+| Paso | Acción | Evidencia exigida |
+|---|---|---|
+| **1 — Rojo** | Escribir el test que codifica el criterio de aceptación. Ejecutarlo y **verlo fallar** | Commit propio, solo con tests. CI en rojo esperado |
+| **2 — Verde** | Implementar lo mínimo para pasar | Commit siguiente. CI en verde |
+| **3 — Refactor** | Limpiar sin cambiar comportamiento | Tests siguen en verde, sin modificarlos |
+
+**Regla de revisión**: en un PR de tarea `[TDD]`, el commit de test **debe preceder** al de
+implementación en el historial. Un PR con un solo commit que trae test e implementación juntos no
+demuestra haber visto el rojo y se rechaza.
+
+> **Por qué importa ver el rojo**: un test que nunca falló no prueba nada. Puede estar afirmando algo
+> trivialmente cierto, o no estar ejecutándose. El paso 1 no es ceremonia — es la única evidencia de
+> que el test tiene poder de detección.
 
 ## Invariantes transversales
 
@@ -194,16 +226,19 @@ que alguien "resuelva" una latencia calculando en línea.
 
 ## Milestone 2 — Motor de recomendación
 
-| ID | Tarea | Dep. | [P] | Est. |
-|---|---|---|---|---|
-| T007 | Vectorización TF-IDF sobre vocabulario compartido | T004, T005 | | M |
-| T008 | Similitud coseno y construcción de perfil | T007 | | S |
-| T009 | Señal content-based | T008 | [P] | M |
-| T010 | Señal colaborativa (k vecinos) | T008 | [P] | M |
-| T011 | Señal cross-module | T008 | [P] | M |
-| T012 | Combinación lineal y desempate determinista | T009, T010, T011 | | M |
+> 🔴 **Milestone test-first.** Todas las tareas son `[TDD]`: ver *Política TDD*. El commit de test
+> precede al de implementación, y el rojo debe haberse visto.
 
-### T007 — Vectorización TF-IDF sobre vocabulario compartido
+| ID | Tarea | Dep. | [P] | [TDD] | Est. |
+|---|---|---|---|---|---|
+| T007 | Vectorización TF-IDF sobre vocabulario compartido | T004, T005 | | ✅ | M |
+| T008 | Similitud coseno y construcción de perfil | T007 | | ✅ | S |
+| T009 | Señal content-based | T008 | [P] | ✅ | M |
+| T010 | Señal colaborativa (k vecinos) | T008 | [P] | ✅ | M |
+| T011 | Señal cross-module | T008 | [P] | ✅ | M |
+| T012 | Combinación lineal y desempate determinista | T009, T010, T011 | | ✅ | M |
+
+### T007 [TDD] — Vectorización TF-IDF sobre vocabulario compartido
 
 **Descripción**: TF-IDF sobre un **espacio vectorial único** para ambos módulos (FR-010d). Cada vector
 producido registra la `vocab_version` con la que se generó (FR-010f).
@@ -219,11 +254,16 @@ producido registra la `vocab_version` con la que se generó (FR-010f).
 - [ ] El vocabulario es determinista: mismo catálogo → mismo espacio, mismo orden de dimensiones
 - [ ] Función pura: sin I/O, sin reloj
 
-**Tests**: `tests/unit/test_vocabulary.py` — determinismo con dos órdenes de entrada distintos; comparar versiones distintas lanza; un tag presente solo en un módulo sigue teniendo dimensión en el espacio común.
+**🔴 Paso 1 — Rojo** (`tests/unit/test_vocabulary.py`, commit propio):
+determinismo con dos órdenes de entrada distintos; comparar vectores de `vocab_version` distinta
+lanza error; un tag presente solo en un módulo sigue teniendo dimensión en el espacio común.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. El test de espacio común es el que fija el diseño:
+escrito primero, hace imposible «resolverlo» con un vocabulario por módulo (P5 del prototipo).
 
 ---
 
-### T008 — Similitud coseno y construcción de perfil
+### T008 [TDD] — Similitud coseno y construcción de perfil
 
 **Descripción**: coseno acotado a `[-1,1]` y perfil de usuario L2-normalizado (FR-022c). **Solo likes
 y dislikes construyen el perfil; el consumo no lo altera** (FR-022b, corrige P1 del prototipo).
@@ -241,11 +281,16 @@ y dislikes construyen el perfil; el consumo no lo altera** (FR-022b, corrige P1 
 - [ ] Ante señales contradictorias, gana la más reciente por `occurred_at` (FR-029d)
 - [ ] El perfil `general` se construye agregando pesos por tag sobre ambos módulos
 
-**Tests**: `tests/unit/test_profile.py` — property-based: norma ≈ 1 para cualquier conjunto no vacío; consumo no altera el perfil; like posterior revierte un dislike previo; vector nulo no rompe.
+**🔴 Paso 1 — Rojo** (`tests/unit/test_profile.py`, commit propio): property-based — norma ≈ 1 para
+cualquier conjunto no vacío de señales; una señal `consumo` **no altera** el vector; un like posterior
+revierte un dislike previo; vector nulo → similitud 0 sin excepción; coseno siempre en `[-1,1]`.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. El test de `consumo` codifica la decisión Q3 antes de
+que exista código que pueda contradecirla.
 
 ---
 
-### T009 [P] — Señal content-based
+### T009 [P] [TDD] — Señal content-based
 
 **Descripción**: puntuar candidatos por similitud entre el perfil del módulo y el vector del ítem.
 
@@ -259,11 +304,14 @@ y dislikes construyen el perfil; el consumo no lo altera** (FR-022b, corrige P1 
 - [ ] Función pura, determinista con semilla fija
 - [ ] Vectores con `vocab_version` distinta → error, no resultado silencioso
 
-**Tests**: `tests/unit/test_content.py` — usuario con perfil de terror puntúa más alto un ítem de terror; perfil vacío no lanza.
+**🔴 Paso 1 — Rojo** (`tests/unit/test_content.py`): usuario con perfil de terror puntúa más alto un
+ítem de terror; perfil vacío → señal neutra sin lanzar; vectores de `vocab_version` distinta → error.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar.
 
 ---
 
-### T010 [P] — Señal colaborativa (k vecinos)
+### T010 [P] [TDD] — Señal colaborativa (k vecinos)
 
 **Descripción**: k vecinos más similares (k=20, D4) y agregación de sus preferencias.
 
@@ -278,11 +326,15 @@ y dislikes construyen el perfil; el consumo no lo altera** (FR-022b, corrige P1 
 - [ ] La selección de vecinos es determinista ante empates de similitud (FR-070)
 - [ ] Función pura: recibe la matriz de perfiles, no la consulta
 
-**Tests**: `tests/unit/test_collaborative.py` — con k=3 y 2 usuarios, no falla; empate de similitud resuelve igual en 100 ejecuciones.
+**🔴 Paso 1 — Rojo** (`tests/unit/test_collaborative.py`): con k=3 y solo 2 usuarios no falla; cero
+vecinos → señal neutra; empate de similitud resuelve idéntico en 100 ejecuciones con orden barajado.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. El test de empate escrito primero fuerza a definir
+el criterio de desempate (FR-070) en vez de heredar el orden de iteración.
 
 ---
 
-### T011 [P] — Señal cross-module
+### T011 [P] [TDD] — Señal cross-module
 
 **Descripción**: boost desde el perfil general del módulo opuesto, normalizado a `[-1,1]`. Es la
 señal que sostiene el cold start cruzado (US4).
@@ -297,11 +349,15 @@ señal que sostiene el cold start cruzado (US4).
 - [ ] El boost se calcula sobre el vocabulario compartido (posible gracias a T007)
 - [ ] Un usuario con solo actividad en películas recibe recomendaciones no triviales en juegos (SC-010)
 
-**Tests**: `tests/unit/test_cross_module.py` — usuario con likes de terror en películas obtiene juegos de terror por encima del ordenamiento base; sin actividad opuesta → 0.
+**🔴 Paso 1 — Rojo** (`tests/unit/test_cross_module.py`): usuario con likes de terror en películas
+obtiene juegos de terror por encima del ordenamiento base; sin actividad en el módulo opuesto → 0;
+el boost nunca sale de `[-1,1]`.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. Este test es la definición ejecutable de SC-010.
 
 ---
 
-### T012 — Combinación lineal y desempate determinista
+### T012 [TDD] — Combinación lineal y desempate determinista
 
 **Descripción**: `score = α·content + β·collaborative + γ·cross`, con pesos de configuración versionada.
 Desempate por criterio secundario estable (FR-070).
@@ -316,23 +372,30 @@ Desempate por criterio secundario estable (FR-070).
 - [ ] El desempate usa `tiebreak_criteria` de configuración y **nunca** el orden de iteración (FR-070)
 - [ ] El `config_version` usado viaja en la salida del scoring, no se pierde
 
-**Tests**: `tests/unit/test_scoring.py` — reproducibilidad exacta en 100 corridas con orden de entrada barajado; cambiar `config_version` cambia el resultado de forma trazable.
+**🔴 Paso 1 — Rojo** (`tests/unit/test_scoring.py`): reproducibilidad exacta en 100 corridas con el
+orden de entrada barajado; cambiar `config_version` cambia el resultado de forma trazable; el módulo
+no contiene constantes numéricas (test de inspección).
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. El test de reproducibilidad es SC-021 ejecutable.
 
 ---
 
 ## Milestone 3 — Post-procesamiento (invariantes de seguridad)
 
 > Este milestone implementa INV-3. Ninguna tarea acá admite una excepción "por performance".
+>
+> 🔴 **Milestone test-first.** Es donde el TDD más importa: un test de invariante escrito *después*
+> tiende a describir lo que el código hace, no lo que la spec exige. Escrito antes, es la spec.
 
-| ID | Tarea | Dep. | [P] | Est. |
-|---|---|---|---|---|
-| T013 | Filtro de edad por `age_rating` (fail-closed) | T004, T005 | | M |
-| T014 | Filtro de exclusión | T003, T005 | | M |
-| T015 | Diversificación MMR | T012 | | M |
-| T016 | Pipeline de post-proceso con orden garantizado | T013, T014, T015 | | M |
-| T017 | Batería exhaustiva de invariantes | T016 | | L |
+| ID | Tarea | Dep. | [P] | [TDD] | Est. |
+|---|---|---|---|---|---|
+| T013 | Filtro de edad por `age_rating` (fail-closed) | T004, T005 | | ✅ | M |
+| T014 | Filtro de exclusión | T003, T005 | | ✅ | M |
+| T015 | Diversificación MMR | T012 | | ✅ | M |
+| T016 | Pipeline de post-proceso con orden garantizado | T013, T014, T015 | | ✅ | M |
+| T017 | Batería exhaustiva de invariantes | T016 | | ✅ | L |
 
-### T013 — Filtro de edad por `age_rating` (fail-closed)
+### T013 [TDD] — Filtro de edad por `age_rating` (fail-closed)
 
 **Descripción**: filtrar por clasificación etaria en modo **fail-closed** (FR-049→FR-053). Corrige
 directamente P2 del prototipo, donde un rating desconocido se trataba como apto para todo público.
@@ -348,11 +411,17 @@ directamente P2 del prototipo, donde un rating desconocido se trataba como apto 
 - [ ] **No existe** parámetro, flag ni rama que desactive el filtro (FR-054)
 - [ ] Un rating desconocido nuevo (p. ej. `"NC-17"` sin declarar) se filtra, no se admite
 
-**Tests**: `tests/invariants/test_age_filter.py` — producto cartesiano `age_rating` × franja etaria (FR-055); property-based: para todo usuario menor, ningún ítem para adultos sobrevive; valores basura (`None`, `""`, `"XYZ"`, `123`) → no apto.
+**🔴 Paso 1 — Rojo** (`tests/invariants/test_age_filter.py`, commit propio): producto cartesiano
+`age_rating` × franja etaria (FR-055); property-based — para todo usuario menor, ningún ítem para
+adultos sobrevive; valores basura (`None`, `""`, `"XYZ"`, `123`, `"NC-17"` no declarado) → no apto.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. **Este es el caso más importante del alcance TDD**:
+el test de valores basura escrito primero hace estructuralmente imposible reintroducir el
+`.get(rating, 0)` permisivo del prototipo (P2). Escrito después, se habría acomodado a él.
 
 ---
 
-### T014 — Filtro de exclusión
+### T014 [TDD] — Filtro de exclusión
 
 **Descripción**: excluir ítems ya vistos/jugados/dislikeados/likeados. La exclusión se deriva de
 `user_signals` con "gana la más reciente"; consumo excluye permanentemente, dislike es revertible.
@@ -368,11 +437,17 @@ directamente P2 del prototipo, donde un rating desconocido se trataba como apto 
 - [ ] **Deuda del prototipo resuelta**: el conjunto de exclusión expone una interfaz pública de consulta; ningún llamador accede a sus atributos internos
 - [ ] `INV-2`: las exclusiones se derivan de Postgres; Redis solo las cachea
 
-**Tests**: `tests/invariants/test_exclusion.py` — ningún ítem excluido aparece en ninguno de los cinco `result_type`; like posterior revierte dislike; consumo no se revierte. `tests/unit/test_exclusion_api.py` — el batch no accede a atributos privados.
+**🔴 Paso 1 — Rojo** (`tests/invariants/test_exclusion.py` + `tests/unit/test_exclusion_api.py`):
+ningún ítem excluido aparece en ninguno de los cinco `result_type`; like posterior revierte dislike;
+consumo no se revierte; conjunto no disponible → se rechaza la solicitud; el batch no accede a
+atributos privados del conjunto de exclusión.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. El test de acceso privado escrito primero fuerza a
+diseñar la interfaz pública en vez de agregarla como refactor posterior (deuda del prototipo).
 
 ---
 
-### T015 — Diversificación MMR
+### T015 [TDD] — Diversificación MMR
 
 **Descripción**: MMR con `lambda_mmr=0.7` (D4) sobre el espacio de tags. La restricción dura: **MMR
 selecciona de un conjunto ya filtrado y no puede reintroducir nada** (FR-031).
@@ -388,11 +463,16 @@ selecciona de un conjunto ya filtrado y no puede reintroducir nada** (FR-031).
 - [ ] Con `lambda=1` el orden coincide con el de relevancia pura (caso degenerado correcto)
 - [ ] Determinista ante empates (FR-070)
 
-**Tests**: `tests/unit/test_mmr.py` — property-based: `set(salida) ⊆ set(entrada)` siempre; la diversidad medida mejora frente al top-N sin diversificar.
+**🔴 Paso 1 — Rojo** (`tests/unit/test_mmr.py`): property-based — `set(salida) ⊆ set(entrada)` para
+toda entrada; con `lambda=1` el orden coincide con relevancia pura; la diversidad medida mejora
+frente al top-N sin diversificar; determinista ante empates.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. La property de subconjunto escrita primero es FR-031
+convertido en spec ejecutable: hace imposible que MMR reintroduzca un ítem filtrado.
 
 ---
 
-### T016 — Pipeline de post-proceso con orden garantizado
+### T016 [TDD] — Pipeline de post-proceso con orden garantizado
 
 **Descripción**: componer scoring → edad → exclusión → MMR **en ese orden**, de forma que el orden
 sea una propiedad del tipo y no una convención de llamada.
@@ -407,11 +487,16 @@ sea una propiedad del tipo y no una convención de llamada.
 - [ ] Cada etapa registra cuántos candidatos descartó, para auditoría
 - [ ] Conjunto vacío tras filtrar → resultado vacío explícito, nunca relleno con no aptos (FR-033)
 
-**Tests**: `tests/invariants/test_pipeline_order.py` — para toda entrada, la salida satisface simultáneamente las tres restricciones; intentar saltar una etapa no compila/no es alcanzable.
+**🔴 Paso 1 — Rojo** (`tests/invariants/test_pipeline_order.py`): para toda entrada, la salida
+satisface simultáneamente las tres restricciones (edad, exclusión, subconjunto); las etapas no son
+invocables sueltas desde fuera del módulo; conjunto vacío tras filtrar → vacío explícito, no relleno.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar. El test de no-invocabilidad escrito primero empuja al
+diseño estructural del orden; escrito después, se habría aceptado el orden como convención de llamada.
 
 ---
 
-### T017 — Batería exhaustiva de invariantes
+### T017 [TDD] — Batería exhaustiva de invariantes
 
 **Descripción**: la suite que hace de INV-3 algo demostrable y no aspiracional (FR-055).
 
@@ -427,7 +512,10 @@ sea una propiedad del tipo y no una convención de llamada.
 - [ ] Es property-based, no solo por ejemplos
 - [ ] Corre en CI como **gate bloqueante**: si falla, no hay merge
 
-**Tests**: es la tarea de test. Verificación: mutar deliberadamente el filtro de edad debe hacer fallar la suite.
+**Tests**: es la tarea de test — consolida y extiende las suites de T013–T016. Verificación de poder
+de detección: **mutar deliberadamente el filtro de edad debe hacer fallar la suite**. Si una mutación
+pasa, el test no está afirmando lo que dice afirmar. Esta comprobación es obligatoria antes de cerrar
+la tarea y se documenta en el PR.
 
 ---
 
@@ -1149,6 +1237,9 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 - [ ] Los tests de integración corren con testcontainers reales, no mocks
 - [ ] La cobertura de `engine/` y `postprocess` es reportada; caída bajo el umbral bloquea
 - [ ] El pipeline falla si `v1.yaml` no valida contra el loader
+- [ ] **Test de mutación** sobre `engine/postprocess.py`: si una mutación del filtro de edad o de
+      exclusión sobrevive, el pipeline falla. Es la verificación de que los tests de T017 tienen poder
+      de detección real y no solo cobertura de líneas
 - [ ] Ningún gate puede saltarse con un flag desde el PR
 
 **Tests**: verificación: un PR que rompa un invariante no puede mergearse.
@@ -1266,6 +1357,10 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato, según D1.
 - [ ] Cold start cruzado produce recomendaciones no triviales (SC-010)
 
 ## Calidad y contratos
+- [ ] **T007–T017 desarrolladas test-first**: en cada PR, el commit de test precede al de
+      implementación (verificable en el historial de git)
+- [ ] **Test de mutación en verde**: mutar el filtro de edad o el de exclusión hace fallar la suite
+      (T017, T045)
 - [ ] `contracts/` materializado con OpenAPI y JSON Schema (T049)
 - [ ] Contract tests en verde como gate bloqueante (T043)
 - [ ] Los nueve casos críticos en verde (T044)
