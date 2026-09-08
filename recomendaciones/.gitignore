@@ -1,0 +1,24 @@
+# Salida generada por los scripts de backlog->issues.
+# Se versiona la fuente (gen_issues.py, link_and_epics.py, publish_issues.sh),
+# no el producto: los cuerpos ya viven en GitHub y duplicarlos aca haria que diverjan.
+specs/**/.issues/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
