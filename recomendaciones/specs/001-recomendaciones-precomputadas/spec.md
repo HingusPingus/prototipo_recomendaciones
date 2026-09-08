@@ -18,6 +18,21 @@
 - **Q**: ¿Dónde vive la configuración del motor y qué ocurre al cambiar su versión (FR-025)? → **A**: Archivo de configuración versionado dentro del repo y desplegado junto con el código, con un identificador de versión único. Cambiarla requiere un PR y un nuevo despliegue, lo que la deja auditable y reproducible. Existe **una sola versión activa** por entorno en un momento dado (sin A/B testing en el MVP). Un cambio de versión **no** dispara invalidación ni recálculo masivo: los top-N existentes siguen siendo válidos y conviven etiquetados con su versión de origen hasta que un recálculo natural los reemplace.
 - **Q**: ¿Qué se devuelve ante cold start puro, sin actividad alguna del usuario (US4, FR-033)? → **A**: Un top-N de respaldo basado en popularidad del módulo (ítems más likeados globalmente), **diversificado por MMR** para exponer variedad de clusters de tags y acelerar el aprendizaje sobre el usuario. Se precomputa de forma global por módulo, no por usuario, pero se personaliza al servirlo aplicando los filtros obligatorios del usuario concreto (edad y exclusión). Se marca explícitamente como resultado de respaldo, para distinguirlo de una recomendación personalizada.
 
+## Dependencias Externas Bloqueantes
+
+> Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature
+> **no es implementable**: no se trata de supuestos operativos sino de precondiciones. Ver FR-061 a
+> FR-064.
+
+| # | Dependencia | Requisitos que la necesitan | Consecuencia si no se cumple |
+|---|---|---|---|
+| DEP-1 | Tipo de señal (like / dislike / consumo) por registro de actividad | FR-022a, FR-022b, FR-029a-d, FR-062 | El perfil de tags no puede construirse; la señal content-based queda sin insumo confiable |
+| DEP-2 | Marca temporal por señal de actividad | FR-029d, FR-062 | No puede resolverse el conflicto entre señales contradictorias |
+| DEP-3 | Identificador único de evento en `recomendacion.actualizar` | FR-011, FR-061 | El worker no puede garantizar idempotencia ante reentregas |
+| DEP-4 | ~~Fuente de popularidad global por ítem~~ — **resuelto**: se deriva del volumen de likes propio (FR-033a). No es dependencia externa. | FR-033a | — |
+| DEP-5 | Edad o fecha de nacimiento del usuario | FR-030, FR-052 | Todos los usuarios caen en la restricción máxima (FR-052), degradando el producto |
+| DEP-6 | Acuerdo sobre el conjunto de estados de respuesta | FR-006, FR-056, FR-057 | El contrato de lectura no puede cerrarse |
+
 ## User Scenarios & Testing *(mandatory)*
 
 > Nota de rol: el consumidor directo de este servicio es **siempre `api-general`**, nunca un
@@ -378,6 +393,20 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   en el payload del evento ni modificación del contrato compartido.
 - **FR-010c**: La decisión de recalcular o no el módulo opuesto MUST quedar registrada con su
   motivo, para poder auditar por qué un top-N no se actualizó tras una actividad.
+- **FR-010d**: El vocabulario de tags MUST ser **único y compartido por ambos módulos**: la
+  representación vectorial de un ítem de películas y la de un ítem de juegos MUST vivir en el mismo
+  espacio, de modo que la similitud entre ellos sea una operación definida. MUST NOT construirse un
+  espacio vectorial independiente por módulo.
+- **FR-010e**: El vocabulario compartido MUST ser un **artefacto versionado propiedad de este
+  repositorio**, derivado del catálogo ya sincronizado. MUST NOT ser un contrato compartido ni
+  requerir aprobación de `api-general`, dado que es un detalle interno del motor y no cruza la
+  frontera del servicio.
+- **FR-010f**: Toda representación vectorial persistida MUST registrar la versión de vocabulario con
+  la que fue generada. Vectores generados con versiones distintas MUST NOT compararse entre sí.
+- **FR-010g**: MUST estar definido en configuración versionada el criterio de regeneración del
+  vocabulario y el procedimiento de transición, que MUST recalcular las representaciones afectadas
+  antes de que la nueva versión pase a estar vigente. Un vocabulario desactualizado MUST degradar
+  únicamente la calidad de las recomendaciones, nunca su corrección ni los invariantes obligatorios.
 - **FR-011**: El procesamiento del evento MUST ser idempotente: reprocesar el mismo evento MUST
   producir el mismo resultado final, incluida la decisión sobre el módulo opuesto.
 - **FR-012**: Un evento cuyo payload no valide contra el schema MUST fallar de forma explícita y
@@ -460,16 +489,26 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-033**: Si tras los filtros no quedan candidatos válidos, el resultado MUST ser un top-N vacío
   explícito y distinguible del vacío por recálculo pendiente, nunca un relleno con ítems no aptos.
 - **FR-033a**: MUST existir un top-N de respaldo por módulo, basado en la popularidad global de los
-  ítems (volumen de likes), destinado a usuarios sin actividad suficiente para generar un perfil de
-  tags.
+  ítems, destinado a usuarios sin actividad suficiente para generar un perfil de tags. La
+  popularidad MUST derivarse del **volumen de likes registrados en el propio sistema**, y MUST NOT
+  depender de ningún campo de valoración externo provisto por `api-general`.
+- **FR-033a1**: La popularidad MUST computarse sobre una **ventana temporal acotada** definida en
+  configuración versionada, no sobre el histórico completo, para que el respaldo refleje interés
+  actual y no quede fijado por ítems antiguos acumulados.
+- **FR-033a2**: Mientras no exista volumen de likes suficiente para poblar el respaldo, la respuesta
+  MUST reportarse como *sin candidatos* según la precedencia de FR-056. MUST NOT sustituirse por
+  ningún otro criterio de ordenamiento no declarado en configuración.
 - **FR-033b**: El top-N de respaldo MUST diversificarse por MMR sobre el espacio de tags, de modo
   que exponga distintos clusters en lugar de concentrarse en el género globalmente dominante.
 - **FR-033c**: El top-N de respaldo MUST precomputarse de forma global por módulo mediante un
   proceso asíncrono, con su propia periodicidad de actualización, y MUST NOT calcularse por usuario
   ni durante un request.
 - **FR-033d**: Al servirse a un usuario concreto, el top-N de respaldo MUST someterse a los filtros
-  obligatorios de ese usuario (edad y exclusión). Este filtrado opera sobre un conjunto acotado y ya
-  ordenado y NO constituye scoring, similitud ni diversificación, por lo que no contradice FR-003.
+  obligatorios de ese usuario (edad y exclusión). Este filtrado está acotado a **operaciones de
+  pertenencia y comparación sobre una lista ya ordenada y de tamaño acotado**: MUST NOT implicar
+  cálculo de similitud, recomputación de scores, reordenamiento por relevancia ni diversificación.
+  Cualquier operación fuera de ese conjunto MUST considerarse violación de FR-003, sin excepción por
+  rendimiento o simplicidad.
 - **FR-033e**: Un top-N de respaldo servido MUST marcarse explícitamente como resultado no
   personalizado, distinguible de una recomendación personalizada, de un vacío por falta de
   candidatos y de un vacío por recálculo pendiente.
@@ -521,6 +560,94 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-048**: El servicio MUST validar automáticamente su conformidad con esos contratos antes de
   desplegar, de modo que una ruptura de compatibilidad se detecte antes de producción.
 
+**Fail-safe y seguridad (resueltos en revisión 2026-09-08)**
+
+- **FR-049**: Todo filtro obligatorio MUST operar en modo **fail-closed**: ante cualquier
+  incertidumbre —dato ausente, desconocido, ilegible o no disponible— MUST excluirse el ítem, nunca
+  incluirlo. Esta regla prevalece sobre cualquier consideración de disponibilidad o rendimiento.
+- **FR-050**: Si el conjunto de exclusión o los datos de edad del usuario **no están disponibles**
+  al momento de servir, el servicio MUST rechazar la solicitud con un error explícito y reintentable;
+  MUST NOT servir un resultado sin filtrar ni asumir un conjunto de exclusión vacío.
+- **FR-051**: Un `age_rating` ausente, nulo, vacío o **no perteneciente al catálogo de valores
+  válidos** MUST tratarse como no apto para todo público. La implementación MUST NOT usar un valor
+  por defecto permisivo ante un rating desconocido.
+- **FR-052**: Si la edad del usuario no puede determinarse, MUST aplicarse la restricción máxima:
+  solo ítems aptos para todo público. La ausencia de edad MUST NOT omitir el filtro.
+- **FR-053**: El catálogo de valores válidos de `age_rating` y su equivalencia a edad mínima MUST
+  estar definido explícitamente en la configuración versionada; incorporar un valor nuevo MUST
+  requerir un cambio revisable.
+- **FR-054**: Una configuración que intente desactivar, omitir o relajar los filtros obligatorios
+  MUST provocar un fallo de arranque del componente, además de ser rechazada al cargarse.
+- **FR-055**: La batería de verificación de los invariantes MUST cubrir, como mínimo: cada valor de
+  `age_rating` válido cruzado con cada franja etaria relevante, cada origen de exclusión, cada uno
+  de los estados de respuesta posibles, y los valores límite de edad. Un caso no cubierto MUST
+  tratarse como cobertura incompleta.
+
+**Contrato de lectura y estados de respuesta (resueltos en revisión 2026-09-08)**
+
+- **FR-056**: Los estados de respuesta MUST ser mutuamente excluyentes y exhaustivos, resueltos por
+  esta precedencia estricta: (1) recálculo pendiente si no hay resultado alguno servible;
+  (2) sin candidatos si el resultado personalizado quedó vacío tras filtrar; (3) respaldo si se
+  sirve el precomputado global; (4) obsoleto si el personalizado excedió su vigencia; (5) vigente.
+  Un respaldo que queda vacío tras aplicar los filtros del usuario MUST reportarse como **sin
+  candidatos**, no como respaldo.
+- **FR-057**: El conjunto de estados de respuesta MUST tratarse como parte del contrato compartido:
+  agregar, quitar o resignificar un estado MUST requerir coordinación y aprobación de `api-general`
+  antes de mergear.
+- **FR-058**: El endpoint de lectura MUST estar versionado explícitamente. MUST considerarse cambio
+  incompatible: eliminar o renombrar un campo, volver obligatorio uno opcional, cambiar su tipo o
+  semántica, agregar un estado de respuesta, o endurecer validaciones. Un cambio incompatible MUST
+  publicarse como versión nueva conservando la anterior durante un período de coexistencia acordado.
+- **FR-059**: La credencial de servicio MUST estar acotada a un único entorno. Una credencial
+  válida en otro entorno MUST rechazarse igual que una credencial ausente, sin revelar el motivo
+  del rechazo.
+- **FR-060**: La inalcanzabilidad desde los frontends MUST ser verificable de forma automatizada:
+  el servicio MUST NOT declarar ninguna ruta de exposición pública y su alcanzabilidad MUST
+  restringirse por configuración de red auditable.
+
+**Contrato de datos requerido a `api-general` (resuelto en revisión 2026-09-08)**
+
+- **FR-061**: El evento `recomendacion.actualizar` MUST incluir, como mínimo: un **identificador
+  único de evento** estable ante reentregas, el identificador del usuario, el módulo afectado, el
+  ítem involucrado, el **tipo de señal** y su **marca temporal**. La ausencia de cualquiera de estos
+  campos MUST considerarse un contrato insuficiente que impide implementar la feature.
+- **FR-062**: El endpoint de actividad MUST permitir distinguir el tipo de señal (like, dislike,
+  consumo) y su marca temporal por registro.
+- **FR-063**: MUST mantenerse en este repo un documento único que enumere todos los campos
+  requeridos de `api-general`, como insumo de la coordinación de contratos; ese documento MUST NOT
+  sustituir a la documentación oficial alojada en `api-general`.
+- **FR-064**: Si el contrato de actividad no expone el tipo de señal, la feature MUST considerarse
+  bloqueada. MUST NOT implementarse un modo degradado que infiera preferencia a partir del consumo,
+  salvo decisión explícita y documentada fuera de este repo.
+
+**Resiliencia ante indisponibilidad (resueltos en revisión 2026-09-08)**
+
+- **FR-065**: Ante indisponibilidad total de la caché —distinta de un miss— el servicio MUST
+  responder con un error de servicio no disponible e indicación de reintento. MUST NOT recurrir a la
+  base de datos para calcular en línea ni servir resultados sin filtrar.
+- **FR-066**: La reconstrucción masiva de la caché MUST realizarse mediante un proceso asíncrono
+  dedicado, con límite de tasa configurable y priorización, y MUST NOT dispararse como efecto
+  colateral del tráfico de lectura.
+- **FR-067**: El recálculo de cada módulo MUST ser una unidad independiente: MUST NOT exigirse
+  atomicidad entre el módulo de la actividad y el módulo opuesto. El fallo de uno MUST NOT revertir
+  ni invalidar el resultado ya persistido del otro, y MUST reintentarse por separado.
+- **FR-068**: MUST declararse como parámetros de configuración obligatorios, con valor explícito por
+  entorno: ventana de supresión de señales, número máximo de reintentos y política de backoff,
+  período de retención de la marca de idempotencia, límite de antigüedad para servir resultados
+  obsoletos, y vigencia de cada tipo de entrada en caché. Ninguno MUST quedar como valor implícito
+  en el código.
+- **FR-069**: Un evento duplicado que llegue **después** de expirar su marca de idempotencia MUST
+  poder reprocesarse sin corromper el estado: el resultado MUST ser equivalente al ya existente.
+
+**Determinismo y diversidad (resueltos en revisión 2026-09-08)**
+
+- **FR-070**: El desempate entre ítems con idéntico score MUST resolverse por un criterio secundario
+  estable e independiente del orden de llegada de los datos, definido en la configuración versionada.
+  El orden de iteración de las estructuras de datos MUST NOT ser el criterio de desempate.
+- **FR-071**: La diversidad MUST medirse como la **proporción máxima del top-N atribuible a un mismo
+  cluster de tags**, con la definición de cluster y el umbral máximo declarados en la configuración
+  versionada. Esta métrica MUST ser evaluable de forma automatizada sobre cualquier top-N producido.
+
 ### Key Entities
 
 - **Perfil de tags de usuario**: representación ponderada de las preferencias de un usuario sobre el
@@ -528,10 +655,11 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   cruzada. Derivado de la actividad sincronizada; no es fuente de verdad.
 - **Vector de tags de ítem**: representación de una película o juego en el espacio de tags, junto
   con su `age_rating` y el módulo al que pertenece.
-- **Vocabulario de tags compartido**: subconjunto de tags que aparecen en ítems de ambos módulos
-  (p. ej. terror, comedia, ciencia ficción). Determina qué actividades propagan su efecto al módulo
-  opuesto y sostiene el cross-module boost. Se deriva de los datos materializados y se recalcula al
-  sincronizar el catálogo.
+- **Vocabulario de tags compartido**: espacio vectorial **único** para ambos módulos, dentro del
+  cual se representan tanto películas como juegos. Su subconjunto de tags presentes en ítems de los
+  dos módulos (p. ej. terror, comedia, ciencia ficción) determina qué actividades propagan su efecto
+  al módulo opuesto y sostiene el cross-module boost. Es un **artefacto versionado propiedad de este
+  repositorio**, derivado del catálogo sincronizado; no es contrato compartido.
 - **Similitud entre usuarios**: relación de cercanía entre perfiles, usada para identificar a los k
   vecinos que alimentan la señal colaborativa.
 - **Conjunto de exclusión del usuario**: ítems que nunca pueden aparecer en una recomendación,

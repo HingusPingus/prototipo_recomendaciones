@@ -341,11 +341,13 @@ críticas: Redis para la API; Redis+DB+broker para el worker; DB para el transfo
 | D1 | Tipo de señal en el contrato de actividad de `api-general` | (a) exponerlo; (b) derivarlo localmente | (b) rompe el modelo de perfil acordado en clarify | **(a)**, escalar de inmediato: es bloqueante de Fase 1 |
 | D2 | `result_type` en el contrato de respuesta | (a) enum explícito; (b) flags booleanos | El enum es más claro y extensible | **(a)**, coordinar con `api-general` |
 | D3 | Cómputo de vecinos colaborativos | (a) online en cada recálculo; (b) matriz de similitud precalculada en batch | (a) es simple pero O(usuarios) por evento | **(b)** en Fase 3; (a) en Fase 1 con k y muestra acotados |
-| D4 | Valores iniciales | α=0.5, β=0.3, γ=0.2, k=20, λ_MMR=0.7 | Sin datos aún | Adoptar como `v1.yaml` y ajustar con evaluación offline en Fase 3 |
+| D4 | ✅ **CERRADA** — Valores iniciales | α=0.5, β=0.3, γ=0.2, k=20, λ_MMR=0.7 | Sin datos aún | **Adoptado** como `v1.yaml`. Prevalece sobre los valores del prototipo (α=0.5/β=0.4/γ=0.1); γ mayor porque el boost cruzado es la hipótesis diferencial a medir. Ajustar con evaluación offline en Fase 3 |
 | D5 | TTLs | `FRESH` 24 h, `STALE` 7 d, `FILTERS` 1 h, `FALLBACK` 6 h | Frescura vs. carga del worker | Adoptar como defaults configurables y revisar con datos reales |
 | D6 | Umbral de personalización | (a) ≥1 señal; (b) ≥3 señales | (a) personaliza antes pero con perfil pobre | **(b)**, mejor calidad percibida al salir del respaldo |
 | D7 | Publicación de la señal de recálculo desde la API | (a) publicar a RabbitMQ; (b) tabla outbox | (a) acopla la API al broker | **(a)** con *fire-and-forget* y fallo silencioso registrado; la lectura nunca debe fallar por el broker |
 | D8 | Almacenamiento del respaldo | (a) solo Redis; (b) Redis + tabla | (a) se pierde con la caché | **(b)**, permite rehidratar sin recomputar |
+| D9 | ✅ **CERRADA** — Espacio vectorial de tags | (a) único compartido; (b) independiente por módulo | (b) hace indefinida la similitud cruzada | **(a)** (FR-010d). Artefacto versionado propiedad de este repo, no contrato compartido (FR-010e) |
+| D10 | ✅ **CERRADA** — Fuente de popularidad del respaldo | (a) volumen de likes propio; (b) score externo del catálogo | (b) agregaría dependencia bloqueante de `api-general` | **(a)** (FR-033a), sobre ventana temporal acotada y configurable (FR-033a1) |
 
 ---
 

@@ -3,7 +3,7 @@
 **Purpose**: Auditar la calidad de los requisitos de la feature 001 antes de generar tareas. Foco
 principal en contratos e integración cross-repo, con cobertura de los invariantes críticos.
 
-**Created**: 2026-09-08
+**Created**: 2026-09-08 · **Última revisión**: 2026-09-08 (post-análisis de `Prototipo-Referencia/`)
 
 **Feature**: [spec.md](../spec.md) · [plan.md](../plan.md)
 
@@ -20,45 +20,45 @@ principal en contratos e integración cross-repo, con cobertura de los invariant
 
 ## A. Contratos con `api-general` (foco principal)
 
-- [ ] CHK001 🔴 El tipo de señal (like/dislike/consumo) que exige FR-022a, ¿está declarado como dependencia externa **bloqueante** y no como supuesto? [D1]
-- [ ] CHK002 🔴 ¿Está especificado el comportamiento degradado si `api-general` no puede exponer el tipo de señal? El plan lo menciona como plan B; la spec no lo exige. [Gap]
-- [ ] CHK003 🔴 FR-011 exige idempotencia por evento, pero la spec nunca declara que el schema deba incluir un **identificador único de evento**. [Gap crítico]
-- [ ] CHK004 ¿Se declara que cada señal requiere **marca temporal**, dado que FR-029d hace depender toda la resolución de conflictos de "la más reciente"? [Completitud]
-- [ ] CHK005 ¿Existe una lista única y revisable de **todos** los campos que este repo necesita de `api-general`, entregable al otro equipo? [Completitud, FR-015]
-- [ ] CHK006 La popularidad global del respaldo (FR-033a) se define como "volumen de likes": ¿está especificado si `api-general` expone ese dato? [Gap]
-- [ ] CHK007 🔴 ¿Los cinco `result_type` de FR-006 son mutuamente excluyentes y exhaustivos? Caso sin estado: respaldo que queda vacío tras filtrar. [Cobertura]
-- [ ] CHK008 ¿Está explícito que el enum `result_type` es **contrato compartido** y requiere aprobación de `api-general` antes de mergear? [Principio II, D2]
-- [ ] CHK009 ¿La spec enumera los campos mínimos que el schema de `recomendacion.actualizar` debe contener para que la feature sea implementable? [Completitud, FR-009]
-- [ ] CHK010 ¿Está definido el **versionado del endpoint de lectura** y qué constituye un cambio breaking desde este repo? [Gap]
-- [ ] CHK011 ¿Se especifica el comportamiento ante API key válida pero de **otro entorno**, o solo ante ausencia de key? [Ambigüedad, FR-007]
-- [ ] CHK012 ¿FR-008 (no alcanzable desde frontends) es verificable, o es declaración de intención? [Medibilidad; SC-012 lo cubre parcialmente]
-- [ ] CHK013 ¿Algún requisito, leído aisladamente, podría justificar una excepción "por performance" a las reglas cross-repo? [Consistencia con constitution]
+- [x] CHK001 🔴 El tipo de señal (like/dislike/consumo) que exige FR-022a, ¿está declarado como dependencia externa **bloqueante** y no como supuesto? [D1] → **Resuelto**: sección *Dependencias Externas Bloqueantes* (DEP-1) + FR-062. Ya no vive en Assumptions.
+- [x] CHK002 🔴 ¿Está especificado el comportamiento degradado si `api-general` no puede exponer el tipo de señal? → **Resuelto por FR-064**: se prohíbe el modo degradado que infiera preferencia desde el consumo. Criterio profesional: un motor que confunde "lo vio" con "le gustó" produce recomendaciones activamente erróneas; es peor que no tenerlas. La excepción requiere decisión explícita fuera del repo.
+- [x] CHK003 🔴 ¿La spec declara que el schema debe incluir un **identificador único de evento**? → **Resuelto**: FR-061 + DEP-3. Sin él, la idempotencia (FR-011) es inimplementable.
+- [x] CHK004 ¿Se declara que cada señal requiere **marca temporal**? → **Resuelto**: FR-061, FR-062, DEP-2.
+- [x] CHK005 ¿Existe una lista única y revisable de **todos** los campos requeridos de `api-general`? → **Resuelto**: FR-063 obliga a mantener ese documento, y la tabla DEP-1..DEP-6 es su índice. Explicita que no sustituye a la documentación oficial (Principio II).
+- [x] CHK006 La popularidad global del respaldo (FR-033a): ¿está especificada su fuente? → **Resuelto por FR-033a + FR-033a1 + FR-033a2**: volumen de likes registrado en el propio sistema, sobre ventana temporal acotada y configurable. Al no depender de un campo externo, DEP-4 deja de ser dependencia bloqueante y el respaldo no queda atado al roadmap de `api-general`.
+- [x] CHK007 🔴 ¿Los estados de respuesta son mutuamente excluyentes y exhaustivos? → **Resuelto por FR-056**: precedencia estricta de 5 niveles. El caso huérfano (respaldo vacío tras filtrar) se resuelve como *sin candidatos*.
+- [x] CHK008 ¿Está explícito que los estados de respuesta son **contrato compartido**? → **Resuelto**: FR-057 + DEP-6.
+- [x] CHK009 ¿La spec enumera los campos mínimos del schema del evento? → **Resuelto**: FR-061 los enumera taxativamente.
+- [x] CHK010 ¿Está definido el **versionado del endpoint** y qué es un cambio breaking? → **Resuelto por FR-058**: lista cerrada de cambios incompatibles + período de coexistencia. Alineado con el Principio III de la constitution de `api-general`.
+- [x] CHK011 ¿Se especifica el rechazo de una API key de **otro entorno**? → **Resuelto por FR-059**: credencial acotada por entorno; se rechaza sin revelar el motivo (evita oráculo de enumeración).
+- [x] CHK012 ¿FR-008 (no alcanzable desde frontends) es verificable? → **Resuelto por FR-060**: sin rutas públicas declaradas + restricción de red auditable.
+- [x] CHK013 ¿Algún requisito podría justificar una excepción "por performance" a las reglas cross-repo? → **Auditado**: el único vector era FR-033d, ahora acotado con lista cerrada de operaciones permitidas. FR-041, FR-049 y FR-065 cierran las vías restantes.
 
 ## B. Invariantes de seguridad
 
-- [ ] CHK014 🔴 ¿Está definido qué ocurre si el **conjunto de exclusión no está disponible** al servir (clave de filtros vencida)? ¿Se sirve sin filtrar, se degrada o se falla? [Gap de seguridad]
-- [ ] CHK015 ¿El filtro de edad está exigido en las cinco `result_type`, incluidas obsoleta y respaldo? [Cobertura, FR-036 + FR-033d]
-- [ ] CHK016 FR-030 cubre `age_rating` ausente: ¿y el caso de valor **presente pero desconocido** o fuera del catálogo válido? [Gap]
-- [ ] CHK017 ¿"La restricción más conservadora disponible" (edad no disponible) es implementable como está redactado? [Ambigüedad]
-- [ ] CHK018 ¿Está definido si el rechazo de una config que desactiva filtros es fallo de arranque, error al cargar, o ambos? [Ambigüedad, FR-027 + FR-029]
-- [ ] CHK019 ¿SC-002/SC-003/SC-026 definen la cobertura de la "batería de verificación", o queda sin especificar? [Medibilidad]
+- [x] CHK014 🔴 ¿Qué ocurre si el **conjunto de exclusión no está disponible** al servir? → **Resuelto por FR-049 + FR-050**: modo *fail-closed*; se rechaza la solicitud antes que servir sin filtrar. Criterio profesional: en un invariante de seguridad, la indisponibilidad nunca puede degradar a permisivo.
+- [x] CHK015 ¿El filtro de edad se exige en todos los estados de respuesta? → **Resuelto**: FR-036 (obsoleto), FR-033d (respaldo), FR-049 (transversal). Cubre los cinco estados de FR-056.
+- [x] CHK016 🔴 ¿Y el `age_rating` presente pero **desconocido**? → **Resuelto por FR-051 + FR-053**: valor fuera del catálogo = no apto; el catálogo válido vive en configuración versionada. Corrige explícitamente el patrón permisivo del prototipo.
+- [x] CHK017 ¿"La restricción más conservadora" es implementable? → **Resuelto por FR-052**: si no hay edad, solo contenido apto para todo público. Criterio unívoco, sin interpretación.
+- [x] CHK018 ¿El rechazo de una config que desactiva filtros es fallo de arranque o error al cargar? → **Resuelto por FR-054**: ambos. Un componente mal configurado no debe quedar corriendo en estado inseguro.
+- [x] CHK019 ¿Está definida la cobertura de la "batería de verificación"? → **Resuelto por FR-055**: producto cartesiano `age_rating` × franja etaria, más cada origen de exclusión, cada estado de respuesta y los valores límite.
 
 ## C. Motor y gobernanza de configuración
 
-- [ ] CHK020 ¿Está especificada la relación válida entre alpha/beta/gamma (rango, suma acotada)? [Completitud, FR-021 + FR-027]
-- [ ] CHK021 ¿Está definido el criterio de **desempate** concreto que exige FR-026, o se difiere? [Ambigüedad; SC-021 depende de ello]
-- [ ] CHK022 FR-032 exige "criterio de diversidad medible y documentado": ¿está definido, o diferido sin dueño? [Ambigüedad; SC-011 y SC-025 dependen de ello]
-- [ ] CHK023 ¿FR-022c ("rango acotado y numéricamente estable") es verificable sin un criterio explícito? [Medibilidad]
-- [ ] CHK024 ¿Está definida la periodicidad de actualización del vocabulario compartido (FR-010b) y el efecto de que quede desactualizado? [Completitud]
-- [ ] CHK025 ¿Está definido cómo se construye el perfil **general** en relación con los perfiles por módulo? [Gap, FR-024]
+- [x] CHK020 ¿Está especificada la relación válida entre alpha/beta/gamma? → **Resuelto**: pesos en `[0,1]` con suma 1.0, validado al cargar (FR-027). Valores iniciales cerrados en D4 (α=0.5, β=0.3, γ=0.2).
+- [x] CHK021 ¿Está definido el criterio de **desempate**? → **Resuelto por FR-070**: criterio secundario estable en configuración versionada, y prohibición explícita de depender del orden de iteración. Sin esto, SC-021 (reproducibilidad) es inverificable.
+- [x] CHK022 ¿Está definido el criterio de diversidad? → **Resuelto por FR-071**: métrica = proporción máxima del top-N atribuible a un mismo cluster; definición de cluster y umbral en configuración versionada.
+- [x] CHK023 ¿FR-022c es verificable? → **Resuelto**: normalización L2 del perfil y acotación de las señales a `[-1,1]`, con guarda para vector nulo.
+- [x] CHK024 ¿Periodicidad del vocabulario compartido (FR-010b) y efecto de su desactualización? → **Resuelto por FR-010d..FR-010g**: espacio vectorial único para ambos módulos, versionado y propiedad de este repo; cada vector persistido registra su versión; la transición recalcula las representaciones afectadas antes de activar la nueva versión. Un vocabulario desactualizado degrada calidad, nunca corrección ni invariantes.
+- [x] CHK025 ¿Cómo se construye el perfil **general** respecto de los perfiles por módulo? → **Resuelto**: agregación de pesos por tag sobre ambos módulos, estructuralmente distinta del vector TF-IDF por módulo.
 
 ## D. Resiliencia y cold start
 
-- [ ] CHK026 🔴 ¿Está definido el comportamiento de la API cuando **Redis está caído** (indisponibilidad, no miss)? [Gap: la spec cubre miss, no caída]
-- [ ] CHK027 🔴 FR-033d afirma que filtrar el respaldo "no es scoring": ¿está suficientemente acotado para no volverse vía de escape al Principio III? [Consistencia crítica con FR-003]
-- [ ] CHK028 ¿Está especificado **cómo se dispara** la reconstrucción masiva tras pérdida de caché y con qué control de tasa? [Gap; resuelto en plan, ausente en spec]
-- [ ] CHK029 ¿Está definido si el recálculo de ambos módulos (FR-010a) debe ser atómico o admite éxito parcial? [Cobertura]
-- [ ] CHK030 ¿Están declarados como parámetros requeridos la ventana de supresión (FR-035), el límite de reintentos (FR-013) y la retención de la marca de idempotencia (FR-011)? [Medibilidad; SC-015 depende de ello]
+- [x] CHK026 🔴 ¿Comportamiento cuando la caché está **caída** (no un miss)? → **Resuelto por FR-065**: error de servicio no disponible con reintento; prohibido recurrir a la DB para calcular en línea. Preserva FR-003 incluso bajo incidente.
+- [x] CHK027 🔴 ¿FR-033d está acotado para no volverse vía de escape al Principio III? → **Resuelto**: reescrito con lista cerrada de operaciones permitidas (pertenencia y comparación) y prohibiciones explícitas.
+- [x] CHK028 ¿Cómo se dispara la reconstrucción masiva tras pérdida de caché? → **Resuelto por FR-066**: proceso asíncrono dedicado, con límite de tasa, nunca como efecto colateral del tráfico de lectura. Evita la avalancha auto-infligida.
+- [x] CHK029 ¿El recálculo de ambos módulos es atómico o admite éxito parcial? → **Resuelto por FR-067**: unidades independientes, sin atomicidad cruzada, reintento por separado. La atomicidad distribuida sobre dos claves de caché sería complejidad injustificada.
+- [x] CHK030 ¿Están declarados como parámetros requeridos las ventanas, reintentos y retenciones? → **Resuelto por FR-068 + FR-069**, incluido el caso del duplicado que llega tras expirar la marca de idempotencia.
 
 ---
 
@@ -69,7 +69,25 @@ principal en contratos e integración cross-repo, con cobertura de los invariant
 - `/speckit-implement` reads checklist checkbox state as a gate and must not modify markers
 - `checklists/requirements.md` has a separate built-in lifecycle maintained by `/speckit-specify` and `/speckit-clarify`
 
-🔴 = alta severidad: genera retrabajo en implementación si no se resuelve antes de `/speckit.tasks`.
+**Estado**: ✅ **30 / 30 resueltos.** Sin ítems pendientes.
 
-**Para la conversación con `api-general`**: CHK001, CHK002, CHK003, CHK005, CHK006, CHK008
-(cubren las decisiones abiertas D1 y D2 del plan).
+### Requisitos incorporados en esta revisión
+
+FR-049 a FR-071 (23 requisitos) + FR-010d a FR-010g (vocabulario compartido versionado) +
+FR-033a1 y FR-033a2 (popularidad del respaldo) + sección *Dependencias Externas Bloqueantes*
+(DEP-1..DEP-6, con DEP-4 cerrada) + FR-033d reescrito + decisiones D4, D9 y D10 cerradas en el plan.
+
+### Correcciones respecto de `Prototipo-Referencia/`
+
+El prototipo es material de referencia y precede a las clarificaciones. Estos puntos **no deben
+replicarse**; ya están cubiertos por requisitos explícitos:
+
+| # | Patrón del prototipo | Corregido por |
+|---|---|---|
+| P1 | Consumo con peso 0.3 sobre el perfil | FR-022b (el consumo no altera el perfil) |
+| P2 | `age_rating` desconocido → apto para todos | FR-051 (fail-closed) |
+| P3 | Filtros solo en el batch, no al servir | FR-036, FR-049 |
+| P4 | Exclusiones con TTL propio que puede vencer antes | FR-050 (rechazar si no están disponibles) |
+| P5 | Vocabulario TF-IDF independiente por módulo | FR-010d (espacio único compartido) |
+| P6 | α=0.5, β=0.4, γ=0.1 | D4 (α=0.5, β=0.3, γ=0.2) |
+
