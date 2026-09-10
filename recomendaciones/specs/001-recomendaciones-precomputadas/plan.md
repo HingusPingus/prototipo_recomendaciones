@@ -1,18 +1,4 @@
-# Implementation Plan: Servicio de Recomendaciones Híbridas P```text
-specs/001-recomendaciones-precomputadas/
-├── plan.md              # Este archivo
-├── spec.md              # Especificación clarificada
-├── checklists/          # Auditoría de calidad de requisitos (30/30)
-├── contracts/           # OpenAPI propio + JSON Schema del evento — producido por T049
-└── tasks.md             # Generado por /speckit.tasks
-```
-
-> **Nota (hallazgo F6 del análisis)**: `research.md`, `data-model.md` y `quickstart.md` se
-> **omiten deliberadamente**. Su contenido ya está incorporado: las decisiones técnicas y sus
-> alternativas viven en §7 *Decisiones abiertas* (D1–D10) y en las clarificaciones de `spec.md`;
-> el modelo de datos vive en §2 de este plan. Duplicarlos crearía dos fuentes de verdad divergentes.
-> `contracts/` **sí es necesario** y se produce en T049, antes de los contract tests (T043).
-````as (MVP)
+# Implementation Plan: Servicio de Recomendaciones Híbridas Precomputadas (MVP)
 
 **Branch**: `001-recomendaciones-precomputadas` | **Date**: 2026-09-07 | **Spec**: [spec.md](./spec.md)
 
@@ -77,12 +63,17 @@ DB ajenas; no expuesto a frontends
 specs/001-recomendaciones-precomputadas/
 ├── plan.md              # Este archivo
 ├── spec.md              # Especificación clarificada
-├── research.md          # Phase 0: decisiones técnicas y alternativas
-├── data-model.md        # Phase 1: entidades, tablas, claves Redis
-├── quickstart.md        # Phase 1: levantar el stack local
-├── contracts/           # Phase 1: OpenAPI propio + copias derivadas de api-general
-└── tasks.md             # Phase 2: generado por /speckit.tasks
+├── data-model.md        # Refinamiento de §2: entidades, claves Redis, invariantes de datos
+├── checklists/          # Auditoría de calidad de requisitos (30/30)
+├── contracts/           # OpenAPI propio + JSON Schema del evento — producido por T049
+└── tasks.md             # Generado por /speckit.tasks
 ```
+
+> **Nota (corrige el hallazgo F6)**: `research.md` y `quickstart.md` se **omiten deliberadamente**:
+> las decisiones técnicas y sus alternativas viven en §7 *Decisiones abiertas* (D1–D10) y en las
+> clarificaciones de `spec.md`, y duplicarlas crearía dos fuentes de verdad divergentes.
+> `data-model.md` **sí existe**: la §2 enumera las tablas pero no sus atributos, nulabilidad,
+> índices ni invariantes, y la DoD los exige. `contracts/` se produce en T049.
 
 ### Source Code (repository root)
 
@@ -166,6 +157,13 @@ evento → validar schema → dedupe por event_id → cargar perfil/candidatos d
 ---
 
 ## 2. Modelo de datos y almacenamiento
+
+> 📐 **Refinado en [data-model.md](./data-model.md)**: atributos, nulabilidad, índices, restricciones
+> de integridad, invariantes de datos (DI-1..DI-9) y ciclo de vida. Esta sección da la vista general;
+> aquel documento es la especificación. **Ante discrepancia, manda `data-model.md`.**
+>
+> Cambios que introduce: `shared_tags` se consolida en `tags.is_shared`, y se agrega
+> `engine_config_versions` (11 tablas, no 10) — la trazabilidad de Q4 la exigía pero no estaba listada.
 
 ### PostgreSQL + pgvector (estado derivado y duradero)
 
@@ -378,7 +376,7 @@ críticas: Redis para la API; Redis+DB+broker para el worker; DB para el transfo
 
 - [ ] D1 y D2 escalados al equipo de `api-general` y con respuesta registrada
 - [ ] `research.md` con las decisiones D3–D8 resueltas y justificadas
-- [ ] `data-model.md` con tablas, índices, claves Redis y TTLs finales
+- [x] `data-model.md` con tablas, índices, claves Redis y TTLs finales — **completo (2026-09-10)**
 - [ ] `contracts/` con el OpenAPI del endpoint de lectura y la copia derivada del JSON Schema del evento
 - [ ] `quickstart.md` con el stack local reproducible (Postgres+pgvector, Redis, RabbitMQ)
 - [ ] `engine_config/v1.yaml` con los valores de D4 y su validación
