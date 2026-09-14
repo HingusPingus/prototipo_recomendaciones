@@ -18,6 +18,12 @@
 - **Q**: ¿Dónde vive la configuración del motor y qué ocurre al cambiar su versión (FR-025)? → **A**: Archivo de configuración versionado dentro del repo y desplegado junto con el código, con un identificador de versión único. Cambiarla requiere un PR y un nuevo despliegue, lo que la deja auditable y reproducible. Existe **una sola versión activa** por entorno en un momento dado (sin A/B testing en el MVP). Un cambio de versión **no** dispara invalidación ni recálculo masivo: los top-N existentes siguen siendo válidos y conviven etiquetados con su versión de origen hasta que un recálculo natural los reemplace.
 - **Q**: ¿Qué se devuelve ante cold start puro, sin actividad alguna del usuario (US4, FR-033)? → **A**: Un top-N de respaldo basado en popularidad del módulo (ítems más likeados globalmente), **diversificado por MMR** para exponer variedad de clusters de tags y acelerar el aprendizaje sobre el usuario. Se precomputa de forma global por módulo, no por usuario, pero se personaliza al servirlo aplicando los filtros obligatorios del usuario concreto (edad y exclusión). Se marca explícitamente como resultado de respaldo, para distinguirlo de una recomendación personalizada.
 
+### Session 2026-09-14
+
+- **Q**: ¿Qué constituye «popularidad» para el conjunto de respaldo (FR-033a1)? → **A**: **Límite inferior del intervalo de confianza de Wilson** sobre la proporción de señales positivas. Se descartan el recuento bruto —que encabeza con ítems polarizantes—, la diferencia —dominada por el volumen— y la proporción cruda —que encabeza con ítems de muy pocas señales—. La definición exige persistir el numerador y el denominador —`like_count` y `engaged_user_count`, precisados en Q7—, y **agrega un parámetro nuevo a la configuración del motor**: `popularity_confidence_z`, el nivel de confianza del estimador. El puntaje se **materializa** en `item_popularity.popularity_score`: no se calcula al servir ni al ordenar. Con cero señales el puntaje es `0`. Cambiar `popularity_confidence_z` obliga a recalcular el puntaje de todo el catálogo, pero **no** a recorrer el historial de señales, porque los recuentos quedan persistidos. El desempate a igual score pasa a ser por `popularity_score`.
+- **Q**: ¿Participan las señales de consumo del cálculo de popularidad? → **A**: **Sí, en el denominador y no en el numerador**. El puntaje mide *«de quienes interactuaron con el ítem, qué proporción lo likeó»*. No contradice FR-022b: el consumo sigue sin expresar preferencia, pero sí constituye la oportunidad de expresarla. **El denominador cuenta usuarios distintos, no señales**: sumar los recuentos por tipo contaría dos veces a quien consumió y además likeó —un ítem unánimemente likeado puntuaría como si la mitad lo hubiera rechazado, y el sesgo castigaría más a los ítems mejores—. Se persisten numerador y denominador; **no** se persiste un recuento de dislikes ni de consumos por separado, porque ninguna consulta los necesita. Costo aceptado: esta definición penaliza a los ítems recién ingresados, que acumulan consumos antes que likes; queda registrado como pendiente de revisión con una métrica asociada, sin corregirlo por anticipación.
+- **Q**: ¿Cuál es la política de retención de las señales de actividad (NC-2)? → **A**: **Purga por antigüedad con horizonte largo**, declarado como parámetro de configuración. Se descarta la retención indefinida —que deja al sistema sin mecanismo de supresión y resuelve la primera obligación legal de borrado con una operación manual en producción— y se descarta la purga de horizonte corto, que erosiona la evidencia del filtrado colaborativo, única dimensión donde conservar historial mejora efectivamente el motor. La popularidad **no se ve afectada** mientras el horizonte supere su ventana, porque el puntaje solo considera señales dentro de ella. Lo que se pierde es la **verificabilidad** de las exclusiones permanentes, no las exclusiones mismas: ya están materializadas, y la reconstrucción sobre ellas es aditiva. **No se fija el número**: es empírico y depende del aporte del historial antiguo al filtrado colaborativo, que no es medible antes de tener tráfico. Se registra que el horizonte **puede acortarse más adelante pero no alargarse**, porque lo purgado no vuelve; por eso el valor inicial debe ser conservador.
+
 ## Dependencias Externas Bloqueantes
 
 > Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature
@@ -477,6 +483,11 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   like, un dislike o un consumo (visto/jugado); ninguno de ellos MUST aparecer en el top-N.
 - **FR-029b**: La exclusión originada en un consumo (visto/jugado) MUST ser permanente y no
   reversible por señales posteriores.
+- **FR-029b1**: La permanencia de una exclusión MUST ser independiente de la retención de la señal
+  que la originó. Purgar la señal MUST NOT hacer reaparecer el ítem. En consecuencia, la exclusión
+  MUST estar materializada y toda reconstrucción de derivados sobre ella MUST ser aditiva: ningún
+  procedimiento de recálculo MUST vaciar el conjunto de exclusiones para reconstruirlo desde las
+  señales vivas.
 - **FR-029c**: La exclusión originada en un dislike MUST ser permanente salvo que exista un like
   posterior sobre el mismo ítem, en cuyo caso la exclusión por dislike MUST considerarse revertida;
   el ítem permanece excluido si además fue consumido.
@@ -490,11 +501,29 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   explícito y distinguible del vacío por recálculo pendiente, nunca un relleno con ítems no aptos.
 - **FR-033a**: MUST existir un top-N de respaldo por módulo, basado en la popularidad global de los
   ítems, destinado a usuarios sin actividad suficiente para generar un perfil de tags. La
-  popularidad MUST derivarse del **volumen de likes registrados en el propio sistema**, y MUST NOT
+  popularidad MUST derivarse de **señales registradas en el propio sistema**, y MUST NOT
   depender de ningún campo de valoración externo provisto por `api-general`.
 - **FR-033a1**: La popularidad MUST computarse sobre una **ventana temporal acotada** definida en
   configuración versionada, no sobre el histórico completo, para que el respaldo refleje interés
   actual y no quede fijado por ítems antiguos acumulados.
+- **FR-033a3**: La popularidad de un ítem MUST definirse como el **límite inferior del intervalo de
+  confianza de Wilson** sobre la **tasa de conversión a like entre quienes interactuaron** con el
+  ítem dentro de la ventana. El nivel de confianza MUST ser un parámetro de la configuración
+  versionada (`popularity_confidence_z`), MUST validarse como estrictamente positivo al cargar, y
+  una configuración que no lo satisfaga MUST impedir el arranque (FR-027).
+- **FR-033a3a**: El denominador de esa tasa MUST ser el número de **usuarios distintos** con alguna
+  señal sobre el ítem en la ventana —like, dislike o consumo—, y MUST NOT ser la suma de los
+  recuentos por tipo de señal: un mismo usuario puede haber registrado varias y contaría más de una
+  vez. El numerador MUST ser el número de usuarios distintos cuya señal vigente sobre el ítem es un
+  like. El numerador MUST NOT exceder al denominador.
+- **FR-033a3b**: Las señales de consumo MUST participar del denominador y MUST NOT participar del
+  numerador. Esto no contradice FR-022b: el consumo sigue sin expresar preferencia —por eso no suma
+  como señal positiva—, pero constituye la oportunidad de expresarla.
+- **FR-033a4**: El puntaje de popularidad MUST estar **materializado** antes de servirse: MUST NOT
+  calcularse durante la atención de una solicitud ni durante el ordenamiento del respaldo (FR-003).
+  Un ítem sin señales en la ventana MUST tener puntaje cero y MUST seguir siendo representable.
+- **FR-033a5**: El numerador y el denominador MUST persistirse junto al puntaje, de modo que un
+  cambio del nivel de confianza pueda recalcularse **sin recorrer el historial de señales**.
 - **FR-033a2**: Mientras no exista volumen de likes suficiente para poblar el respaldo, la respuesta
   MUST reportarse como *sin candidatos* según la precedencia de FR-056. MUST NOT sustituirse por
   ningún otro criterio de ordenamiento no declarado en configuración.
@@ -636,6 +665,19 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   período de retención de la marca de idempotencia, límite de antigüedad para servir resultados
   obsoletos, y vigencia de cada tipo de entrada en caché. Ninguno MUST quedar como valor implícito
   en el código.
+- **FR-068a**: La retención de señales de actividad MUST ser finita y declarada como parámetro de
+  configuración obligatorio por entorno. Las señales cuya antigüedad supere ese horizonte MUST
+  purgarse. No MUST existir un modo de operación sin política de supresión.
+- **FR-068b**: El horizonte de retención MUST ser estrictamente mayor que toda ventana operativa
+  que dependa de las señales —en particular la ventana de popularidad y el período de retención de
+  la marca de idempotencia—. La validación MUST ocurrir al cargar la configuración y MUST impedir
+  el arranque si no se cumple, en lugar de manifestarse como degradación silenciosa.
+- **FR-068c**: Antes de purgar una señal de consumo, el procedimiento MUST verificar que la
+  exclusión permanente correspondiente ya esté materializada. Una señal cuya exclusión no esté
+  materializada MUST NOT purgarse.
+- **FR-068d**: El sistema MUST exponer una medida de cuántas exclusiones permanentes han perdido su
+  señal de origen. Sin ella no es observable cuánto del conjunto de exclusiones dejó de ser
+  verificable, que es el costo asumido por la política de retención.
 - **FR-069**: Un evento duplicado que llegue **después** de expirar su marca de idempotencia MUST
   poder reprocesarse sin corromper el estado: el resultado MUST ser equivalente al ya existente.
 

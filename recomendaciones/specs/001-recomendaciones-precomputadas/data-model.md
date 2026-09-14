@@ -44,8 +44,8 @@ de verdad de un dato ajeno, violando el Principio I.
 | **Configuración** | `engine_config_versions` | Loader | Desde el repo |
 | **Caché** | Redis (§3) | Worker / batches | Desde Postgres |
 
-⁽¹⁾ **`user_exclusions` es de zona mixta (RD-29)**: sus filas revertibles (`is_permanent = false`)
-son recomputables desde `user_signals`; sus filas permanentes (`is_permanent = true`) **no lo son**
+⁽¹⁾ **`user_exclusions` es de zona mixta (RD-29)**: sus filas con `origin ≠ 'consumo'`
+son recomputables desde `user_signals`; sus filas con `origin = 'consumo'` **no lo son**
 si la señal de `consumo` que las originó fue purgada por retención. Toda reconstrucción sobre esta
 tabla debe ser **aditiva** (DI-20).
 
@@ -432,7 +432,7 @@ reconstrucción puede truncarla (§1.1, RD-27).
 | `user_id` | UUID | No | Integridad | FK → `users.id` **ON DELETE CASCADE** (RD-30) |
 | `item_id` | UUID | No | Integridad | FK → `items.id` **ON DELETE RESTRICT** (RD-31) |
 | `signal_type` | enum(`like`,`dislike`,`consumo`) | **No** | Funcional | **Sin default.** FR-064 prohíbe inferirlo |
-| `occurred_at` | timestamptz | **No** | Funcional | Momento de la interacción **en el origen** (CR-13). Resuelve señales contradictorias (FR-029d) |
+| `occurred_at` | timestamptz | **No** | Funcional | Momento de la interacción **en el origen** (CR-12). Resuelve señales contradictorias (FR-029d) |
 | `received_at` | timestamptz | No | Operativo | `default now()`. Momento de ingreso a este repositorio. Consumidor declarado: `signal_ingest_lag_seconds` (RD-32) |
 | `source` | enum(`sync`,`feedback_api`) | No | Operativo | Origen. Consumidor declarado: segmentación de `signal_ingest_lag_seconds` y de `signal_duplicate_rejections_total` (RD-32) |
 
@@ -465,29 +465,43 @@ por `ORDER BY occurred_at DESC, id DESC`. La unicidad impide el empate exacto de
 
 ### 2.7 `user_exclusions` — conjunto de exclusión resuelto
 
-**Zona: mixta.** Las filas con `is_permanent = false` son **proyección local** (recomputables desde
-`user_signals`). Las filas con `is_permanent = true` son **registro de hechos**: su origen puede
-haber sido purgado y entonces no son reconstruibles (RD-29, DI-20).
+**Zona: mixta — la única del modelo.** Las filas con `origin ≠ 'consumo'` son **proyección local**
+(recomputables desde `user_signals`). Las filas con `origin = 'consumo'` son **registro de hechos**:
+su señal de origen puede haber sido purgada y entonces no son reconstruibles (RD-29, DI-20).
+
+> La zona depende de un **valor de atributo**, no de la tabla. Es la consecuencia de RD-35: al
+> eliminar `is_permanent`, el discriminante de zona pasa a ser `origin`, que es el único hecho
+> registrado. La clasificación no se debilita — se apoya ahora en el dato que **no** es derivable.
 
 **Propósito**: aplicar el filtro de exclusión en tiempo acotado, sin recorrer el histórico de señales.
 
+**Escritor único**: el resolutor de exclusiones (T009). Ni el Data Transformer ni el worker la
+escriben.
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `user_id` | UUID | No | **PK compuesta**, FK → `users.id` ON DELETE CASCADE |
-| `item_id` | UUID | No | **PK compuesta**, FK → `items.id` |
-| `origin` | enum(`like`,`dislike`,`consumo`) | No | Señal que la produjo |
-| `is_permanent` | boolean | No | `consumo` ⟹ `true`; `dislike` es revertible por like posterior |
-| `resolved_at` | timestamptz | No | Trazabilidad de la resolución |
+| Atributo | Tipo | Nulo | Naturaleza | Notas |
+|---|---|---|---|---|
+| `user_id` | UUID | No | Identidad | **PK compuesta**, FK → `users.id` **ON DELETE CASCADE** (NC-10) |
+| `item_id` | UUID | No | Identidad | **PK compuesta**, FK → `items.id` **ON DELETE RESTRICT** (RD-35) |
+| `origin` | enum(`like`,`dislike`,`consumo`) | No | Funcional | Señal que la produjo. **Determina la permanencia**: `consumo` ⟹ permanente; `like`/`dislike` ⟹ revertible |
+| `resolved_at` | timestamptz | No | Operativo | Consumidor declarado: `exclusion_resolve_lag_seconds` (§7.11, RD-35) |
+
+> **`is_permanent` eliminado (RD-35)**: era función de `origin`. Dos representaciones del mismo
+> hecho habilitan un estado inconsistente que el esquema no puede impedir — el defecto que RD-2 ya
+> corrigió en `users`.
+
+**Permanencia — regla única y derivada**:
+
+> `es_permanente(fila) ≡ (origin = 'consumo')`
 
 **Índices**: PK compuesta — cubre la consulta de pertenencia, que es la única que el request path
-necesita (FR-033d).
+necesita (FR-033d). La guarda pregunta **pertenencia**, no permanencia: `origin` viaja en la fila y
+no necesita índice. **Sin índice adicional.**
 
 **Integridad**: vista materializada de `user_signals` bajo «gana la más reciente». Su regeneración
 es determinista y auditable: dadas las mismas señales, produce el mismo conjunto.
 
 > ⚠️ **La regeneración es aditiva, no destructiva (DI-20, RD-29)**. Un procedimiento de
-> reconstrucción **no puede truncar** esta tabla: las filas con `is_permanent = true` cuya señal de
+> reconstrucción **no puede truncar** esta tabla: las filas con `origin = 'consumo'` cuya señal de
 > origen fue purgada no volverían a producirse, y un ítem ya consumido reaparecería como
 > recomendable. Es el mismo fallo que se invocó en RD-7 para rechazar el borrado físico de ítems.
 
@@ -499,56 +513,91 @@ uno que solo vive en Redis violaría INV-2 al expirar. Debe ser durable y barato
 
 ### 2.8 `engine_config_versions` — configuración versionada del motor
 
+**Zona: Configuración.** El contenido se versiona en git; esta tabla registra su historia de
+activación. **Escritor único**: el loader de configuración (T004).
+
 **Propósito**: que un top-N generado hace un mes siga siendo interpretable (Q4, FR-025).
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `config_version` | text | No | **PK**. Hash del archivo. **Inmutable** |
-| `payload` | jsonb | No | Copia íntegra de la configuración |
-| `activated_at` | timestamptz | No | |
-| `deactivated_at` | timestamptz | Sí | `NULL` = versión activa |
+| Atributo | Tipo | Nulo | Naturaleza | Notas |
+|---|---|---|---|---|
+| `config_version` | text | No | Identidad | **PK**. Hash del archivo. **Inmutable por construcción**: cambiar el contenido cambia el identificador |
+| `payload` | jsonb | No | Funcional | Copia íntegra. **Inmutable, garantizado por trigger** (RD-37) |
+| `activated_at` | timestamptz | No | Funcional | **Inmutable, garantizado por trigger** (RD-37) |
+| `deactivated_at` | timestamptz | Sí | Funcional | `NULL` = versión activa. **Único atributo mutable**, y en un solo sentido: `NULL` → valor, nunca al revés (RD-37) |
 
 **Integridad**:
-- Índice parcial único sobre `deactivated_at IS NULL`: **a lo sumo una versión activa**.
-- Las filas son **append-only**. Editar una versión existente rompería la trazabilidad de todo
-  resultado que la referencie.
+- Índice parcial único sobre `deactivated_at IS NULL`: **a lo sumo una versión activa** (DI-7).
+- **Trigger `BEFORE UPDATE`** que rechaza toda modificación de `config_version`, `payload` o
+  `activated_at`, y toda transición de `deactivated_at` de valor a `NULL` (DI-24).
+- **La tabla no es *append-only*.** La afirmación anterior era literalmente falsa: la desactivación
+  es un `UPDATE`. Lo correcto es **inmutabilidad por atributo**, hecha cumplir por estructura y no
+  por convención (RD-37).
 
 **Relación con el repo**: la fuente de verdad del *contenido* es `engine_config/vN.yaml`, versionado
 en git (Q4). Esta tabla registra qué versiones **estuvieron activas y cuándo** — información que el
 archivo no tiene y que hace falta para interpretar un resultado viejo.
 
+**Identificador**: hash criptográfico del archivo. Determinista: mismo contenido ⟹ mismo
+identificador, en cualquier máquina.
+
+**Trazabilidad (FR-025, Q4)**: toda recomendación persistida y servida referencia su
+`config_version`. Está en el valor de Redis (§3.2), en la clave (§3.1) y en la respuesta de la API.
+Sin esto, «¿por qué el sistema recomendó esto?» es incontestable.
+
+**Cambio de versión activa**:
+
+| Paso | Efecto |
+|---|---|
+| Se activa `vN+1` | `deactivated_at` de `vN` deja de ser nulo; nueva fila activa |
+| Claves `reco:v{N}`, `reco:stale:v{N}`, `fallback:v{N}` | Siguen existiendo; **ya no se leen** (la clave incorpora la versión) |
+| Lecturas nuevas | Miss bajo `vN+1` → precedencia FR-056: respaldo o pendiente |
+| Expiración | Las claves de `vN` se purgan solas por TTL |
+
+**No hay invalidación masiva**, y esa es la ventaja de tener la versión en la clave: el cambio de
+configuración es un no-evento operativo.
+
 ---
 
 ### 2.9 `sync_runs` — metadatos del Data Transformer
 
+**Zona: Registro de hechos** (bitácora). No reconstruible. **Escritor único**: el Data Transformer
+(T029). **Sin FK, deliberadamente**: una bitácora que restringiera el borrado de entidades sería una
+bitácora que gobierna el modelo.
+
 **Propósito**: freshness observable (FR-040, T031).
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `id` | bigserial | No | **PK** |
-| `started_at` / `finished_at` | timestamptz | No / Sí | `finished_at` nulo ⟹ en curso o interrumpida |
-| `status` | enum(`running`,`success`,`failed`) | No | |
-| `entity_counts` | jsonb | Sí | Volumen por entidad |
-| `failure_reason` | text | Sí | |
+| Atributo | Tipo | Nulo | Naturaleza | Notas |
+|---|---|---|---|---|
+| `id` | bigserial | No | Identidad | **PK** subrogada. Estable: tabla no reconstruible (mismo fundamento que RD-33) |
+| `started_at` | timestamptz | No | Operativo | Duración de la corrida, en panel |
+| `finished_at` | timestamptz | Sí | Operativo | Nulo ⟹ en curso o interrumpida. Consumidor: `catalog_sync_last_success_timestamp` |
+| `status` | enum(`running`,`success`,`failed`) | No | Operativo | Consumidor: el índice parcial de liveness |
+| `entity_counts` | jsonb | Sí | Operativo | Volumen por entidad. Consumidor declarado: `sync_volume_delta_ratio` (§7.11, RD-38) |
+| `failure_reason` | text | Sí | Operativo | **Forense.** No sostiene lógica: ningún componente ramifica sobre su contenido (criterio RD-6) |
 
-**Índices**: `idx_sync_runs_success (finished_at DESC) WHERE status='success'` — la métrica de
-freshness es el **último éxito**, no el último intento (T031).
+**Índices**: `idx_sync_runs_success (finished_at DESC) WHERE status='success'` — sirve **una sola
+consulta**: «¿cuándo terminó la última corrida exitosa?», que es la métrica de freshness (T031). Es
+el **último éxito**, no el último intento. **Sin índice adicional**: no hay consulta por `started_at`
+ni por `status` en general.
 
 ---
 
 ### 2.10 `processed_events` — idempotencia
 
+**Zona: Registro de hechos** (bitácora). **Escritor único**: el worker de eventos (T024). Sin FK,
+por el mismo motivo que `sync_runs`.
+
 **Propósito**: FR-011. Un evento reentregado no debe recomputar dos veces.
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `event_id` | UUID | No | **PK**. Provisto por `api-general` (DEP-3) |
-| `processed_at` | timestamptz | No | |
-| `result` | enum(`recomputed`,`skipped_no_shared_tag`,`dlq`) | No | Auditoría de FR-010c |
-| `expires_at` | timestamptz | No | Retención configurable (FR-068) |
+| Atributo | Tipo | Nulo | Naturaleza | Notas |
+|---|---|---|---|---|
+| `event_id` | UUID | No | Identidad | **PK**. Provisto por `api-general` (DEP-3) |
+| `processed_at` | timestamptz | No | Operativo | **Forense**: reconstruir la secuencia de procesamiento en un incidente. No sostiene lógica (criterio RD-6) |
+| `result` | enum(`recomputed`,`skipped_no_shared_tag`,`dlq`) | No | Operativo | Consumidor declarado: tasa de DLQ y de omisión por falta de tag compartido — auditoría **accionable** de FR-010c (criterio RD-9) |
+| `expires_at` | timestamptz | No | Funcional | Retención configurable (FR-068). Lo consume la purga |
 
 **Índices**: PK — la única consulta es pertenencia por `event_id` · `idx_processed_expires
-(expires_at)` para la purga.
+(expires_at)` — sirve la consulta de purga `WHERE expires_at < now()`.
 
 **Integridad**: PK sobre `event_id` hace la doble inserción **estructuralmente imposible**, no
 dependiente de una comprobación previa que podría tener carrera.
@@ -556,8 +605,6 @@ dependiente de una comprobación previa que podría tener carrera.
 **Relación con Redis**: `dedupe:event:{event_id}` es la copia caliente. Perder Redis degrada latencia,
 no corrección: la PK sigue rechazando el duplicado (INV-2). Tras `expires_at`, un duplicado tardío
 debe poder reprocesarse sin corromper estado (FR-069) — de ahí que el recálculo sea convergente.
-
----
 
 ---
 
@@ -571,9 +618,49 @@ proceso propio desde señales locales. Nadie más lo produce ni lo consume (RD-1
 | Atributo | Tipo | Nulo | **Naturaleza** | Notas |
 |---|---|---|---|---|
 | `item_id` | UUID | No | **Identidad** | **PK compuesta** con `config_version`. FK → `items.id` |
-| `config_version` | text | No | **Identidad + Integridad** | **PK compuesta.** FK → `engine_config_versions`. Define `popularity_window_days`: **es la unidad de medida** del recuento (RD-13) |
-| `like_count` | integer | **No** | **Funcional** | Señales positivas en la ventana. Default 0. Ver NC-7: **qué constituye popularidad no está definido** |
+| `config_version` | text | No | **Identidad + Integridad** | **PK compuesta.** FK → `engine_config_versions` **ON DELETE RESTRICT** (RD-43). Define `popularity_window_days` **y `popularity_confidence_z`**: **es la unidad de medida** del puntaje (RD-13) |
+| `like_count` | integer | **No** | **Funcional** | **Usuarios distintos** cuya señal vigente sobre el ítem es `like`, en la ventana. Default 0. Es el **numerador** |
+| `engaged_user_count` | integer | **No** | **Funcional** | **Usuarios distintos** con **alguna** señal sobre el ítem en la ventana (`like`, `dislike` o `consumo`). Default 0. Es el **denominador** (Q7, RD-45) |
+| `popularity_score` | double precision | **No** | **Funcional** | Límite inferior del intervalo de Wilson. **Materializado**, no calculado al leer (RD-44) |
 | `computed_at` | timestamptz | **No** | **Operativo** | Cuándo se calculó esta fila |
+
+**Definición de popularidad (decisiones Q6 y Q7, cierran NC-7)** — límite inferior del intervalo de
+confianza de Wilson sobre la **tasa de conversión a like entre quienes interactuaron**:
+
+$$
+\text{popularity\_score} = \frac{\hat{p} + \frac{z^2}{2n} - z\sqrt{\frac{\hat{p}(1-\hat{p})}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}}
+$$
+
+donde $n = \texttt{engaged\_user\_count}$, $\hat{p} = \texttt{like\_count}\,/\,n$, y $z$ =
+`popularity_confidence_z`, parámetro **nuevo** de la configuración del motor (§4).
+
+**Lectura del puntaje**: *«de las personas que interactuaron con este ítem, qué proporción lo
+likeó — descontando la incertidumbre de una muestra chica»*.
+
+> ⚠️ **Por qué el denominador es un conteo de usuarios distintos y no `like + dislike + consumo`
+> (RD-45).** Sumar los tres recuentos **cuenta dos veces a la misma persona**: quien likea un ítem
+> casi siempre lo consumió antes, y ambas señales existen en `user_signals` —son de tipos distintos,
+> así que la unicidad de RD-28 no las colapsa—. Un ítem con 100 likes de 100 personas que además lo
+> consumieron daría $n = 200$ y $\hat{p} = 0{,}5$: un ítem **unánimemente likeado** puntuaría como si
+> la mitad lo hubiera rechazado. El defecto es silencioso y sistemático, y afecta más a los ítems
+> mejores. Contar usuarios distintos lo vuelve irrepresentable.
+
+**Caso degenerado $n = 0$**: `popularity_score = 0`. La fórmula es indefinida, y cero es el valor
+correcto —no hay evidencia alguna—, no una convención arbitraria. Se hace explícito porque es el
+estado de **todo ítem recién ingresado**.
+
+**Invariante estructural**: $0 \le \texttt{like\_count} \le \texttt{engaged\_user\_count}$, por
+construcción — quien likeó está en el conjunto de quienes interactuaron. Lo verifica un `CHECK`, y
+es lo que garantiza $\hat{p} \in [0,1]$ sin validación en código (DI-26).
+
+**Por qué se persisten los dos recuentos y no solo el puntaje**: el puntaje **no es reconstruible**
+desde sí mismo si cambia $z$. Con numerador y denominador en la fila, recalibrar es un barrido sobre
+`item_popularity`; sin ellos exige recorrer `user_signals`, que es la tabla más grande del modelo.
+Mismo criterio que RD-17: el derivado se guarda junto a los insumos que lo determinan.
+
+> **`dislike_count` no se persiste**: es derivable como $n - \texttt{like\_count}$ menos los
+> consumos sin preferencia, y **ninguna consulta lo necesita**. Incorporarlo sería un atributo sin
+> consumo declarado — la regla que RD-11 y NC-7 ya aplicaron al rechazar recuentos por anticipación.
 
 **Clave primaria `(item_id, config_version)`**: permite que convivan los recuentos de la ventana
 saliente y la entrante durante una transición, sin que se pisen. Es lo que hace la transición
@@ -584,13 +671,19 @@ saliente y la entrante durante una transición, sin que se pisen. Es lo que hace
 | Índice | Consulta que sirve |
 |---|---|
 | PK `(item_id, config_version)` | Upsert del batch; reunión con `items` |
-| `idx_popularity_ranking (config_version, like_count DESC)` | **Batch de respaldo** (T038): top por ventana activa, previo a la reunión con `items` para filtrar vigencia y módulo |
+| `idx_popularity_ranking (config_version, popularity_score DESC)` | **Batch de respaldo** (T038): top por ventana activa, previo a la reunión con `items` para filtrar vigencia y módulo. **Ordena por el puntaje, no por `like_count`** (Q6) |
 
 **Integridad**:
-- `config_version` es FK real y **parte de la clave**: un recuento sin ventana declarada es
-  irrepresentable. No hay «popularidad» a secas — hay «popularidad bajo esta ventana».
+- `config_version` es FK real y **parte de la clave**: un puntaje sin ventana ni nivel de confianza
+  declarados es irrepresentable. No hay «popularidad» a secas — hay «popularidad bajo estos
+  parámetros».
+- `ON DELETE RESTRICT` hacia `engine_config_versions` (RD-43): omisión equivalente a las que RD-19,
+  RD-31 y RD-35 determinaron que eran olvidos. Purgar una versión de configuración con recuentos
+  vivos dejaría el puntaje sin unidad de medida.
 - `ON DELETE CASCADE` desde `items`: a diferencia de `user_signals`, esto **sí** es derivado
   descartable. Si el ítem desapareciera físicamente, su recuento no tiene sentido ni valor histórico.
+- `CHECK (like_count >= 0 AND like_count <= engaged_user_count)` — **DI-26** y
+  `CHECK (popularity_score BETWEEN 0 AND 1)`.
 
 **Ciclo de vida**: lo escribe **exclusivamente** el batch de popularidad. El Data Transformer no lo
 toca. Las filas de versiones de config inactivas se purgan tras confirmar la transición.
@@ -599,8 +692,9 @@ toca. Las filas de versiones de config inactivas se purgan tras confirmar la tra
 
 | Atributo | Consumidores | Qué se rompe ante su ausencia |
 |---|---|---|
-| `like_count` | Batch de respaldo T038 → `fallback:{module}` · desempate determinista (RD-10) | El conjunto de respaldo de FR-033a1 |
-| `config_version` | Selección de la ventana activa · aislamiento durante transición · DI-12 | **La comparabilidad.** Recuentos de ventanas distintas mezclados sin señal |
+| `popularity_score` | Batch de respaldo T038 → `fallback:v{cfg}:{module}` · ordenamiento del respaldo | El conjunto de respaldo de FR-033a1 |
+| `like_count`, `engaged_user_count` | Cálculo del puntaje · **recálculo ante cambio de `z`** sin recorrer `user_signals` | La capacidad de recalibrar sin un barrido completo del historial |
+| `config_version` | Selección de la ventana activa · aislamiento durante transición · DI-12 | **La comparabilidad.** Puntajes bajo parámetros distintos mezclados sin señal |
 | `computed_at` | `catalog_popularity_last_success_timestamp` (§7.7) · detección de filas no recalculadas | La observabilidad de un batch parcialmente fallido (RD-13) |
 
 **Efecto de la reubicación sobre el batch de respaldo**: pasa de un índice parcial de una sola
@@ -768,17 +862,73 @@ claves de recomendación llevan **usuario y módulo**.
 | `reco:v{cfg}:{user_id}:{module}` | JSON (§3.2) | `TTL_FRESH` (24 h) | Recálculo del worker |
 | `reco:stale:v{cfg}:{user_id}:{module}` | JSON (§3.2) | `TTL_STALE` (7 d) | Copia del último vigente |
 | `filters:{user_id}` | JSON: `max_age_ordinal` + `age_config_version` + set de exclusiones | `TTL_FILTERS` (1 h) | Desde `users` + `user_exclusions` |
-| `fallback:{module}` | JSON (§3.2, sin `user_id`) | `TTL_FALLBACK` (6 h) | Batch T038 |
-| `retired:{module}` | **Set** de `item_id` retirados | `TTL_FILTERS` (1 h) | Desde `items WHERE status='retired'` |
+| `fallback:v{cfg}:{module}` | JSON (§3.2, sin `user_id`) | `TTL_FALLBACK` (6 h) | Batch T038 (RD-36) |
+| `retired:{module}` | **Set** de `item_id` retirados **en los últimos 8 días** (RD-39) | `TTL_FILTERS` (1 h) | Desde `items WHERE status='retired' AND retired_at > now() - interval '8 days'` |
 | `recompute:lock:{user_id}:{module}` | marca | `TTL_SUPPRESS` (5 min) | No requiere |
 | `dedupe:event:{event_id}` | marca | `TTL_DEDUPE` (24 h) | Desde `processed_events` |
 
+#### Criterio de dimensión de clave
+
+> **Una dimensión entra en la clave cuando valores distintos producen contenidos distintos que
+> deben poder coexistir sin colisionar. Entra en el valor cuando debe verificarse al leer.**
+
+Auditoría completa de las siete claves contra ese criterio (RD-36):
+
+| Clave | `user`/`module` | `config_version` | `vocab_version` | Fundamento |
+|---|---|---|---|---|
+| `reco:` | ✅ clave | ✅ clave | ❌ | El contenido depende de la config. La versión de vocabulario **no** produce contenidos que deban coexistir: un cambio de vocabulario obliga a recalcular, y las entradas viejas son obsoletas, no alternativas |
+| `reco:stale:` | ✅ clave | ✅ clave | ❌ | Ídem |
+| `fallback:` | ✅ `module` en clave | ✅ **clave (corregido)** | ❌ | El contenido **sí** depende de la config: `popularity_window_days` la fija, y RD-13 estableció que recuentos de ventanas distintas no son comparables |
+| `filters:` | ✅ `user` en clave | ❌ **clave**, ✅ valor | ❌ | Ver §3.1.1: no admite coexistencia, y por eso se verifica al leer |
+| `retired:` | ✅ `module` en clave | ❌ | ❌ | La vigencia de un ítem no depende de ninguna configuración |
+| `recompute:lock:` | ✅ clave | ❌ | ❌ | Es un semáforo de concurrencia, no un resultado. Versionarlo permitiría dos recálculos simultáneos del mismo usuario |
+| `dedupe:event:` | — | ❌ | ❌ | La identidad del evento es su `event_id`. Versionar permitiría reprocesarlo tras un cambio de config, violando FR-011 |
+
 **`config_version` en la clave, no solo en el valor**: hace que resultados de versiones distintas
 **coexistan sin colisionar**. Cambiar de configuración no requiere invalidación masiva — las claves
-viejas expiran solas. Aplica a `reco:` **y** a `reco:stale:` (hallazgo F3).
+viejas expiran solas. Aplica a `reco:`, a `reco:stale:` **y a `fallback:`** (RD-36).
+
+> ⚠️ **Corrección (RD-36)**: `fallback:` carecía de la dimensión de configuración. Tras activar una
+> versión nueva, el respaldo servía durante `TTL_FALLBACK` (6 h) un ordenamiento calculado bajo la
+> **ventana de popularidad anterior**. DI-12 prohíbe esa mezcla en Postgres y la caché la
+> reintroducía. La corrección no es cosmética: era el único punto del modelo donde la unidad de
+> medida de RD-13 se perdía.
 
 **`TTL_FILTERS` es deliberadamente el más corto.** Corrige P4 del prototipo, donde `excl:` compartía
 los 7 días de `reco:` (`cache_redis.py:33`): una exclusión vencida servía resultados sin filtrar.
+
+#### 3.1.1 `filters:` — por qué no se versiona la clave, y qué hace la guarda
+
+`filters:{user_id}` sostiene la guarda etaria del request path. Lleva `age_config_version` en el
+**valor** y no en la clave. Es deliberado, y la asimetría con `reco:` tiene fundamento (RD-40):
+
+| | `reco:` | `filters:` |
+|---|---|---|
+| ¿Dos versiones coexisten legítimamente? | **Sí.** Un resultado bajo `vN` sigue siendo un resultado válido e interpretable mientras expira | **No.** Un permiso etario derivado bajo una escala retirada **no es un permiso**: es un valor incomparable |
+| ¿Qué hacer con la versión vieja? | Dejarla expirar. Nadie la lee | **Descartarla activamente.** Servir contra ella sería evaluar con una escala que ya no rige |
+
+Versionar la clave de `filters:` produciría el efecto **contrario** al buscado: la entrada vieja
+quedaría accesible bajo su propio espacio de nombres, y un lector que construyera la clave con una
+versión desactualizada leería un permiso inválido sin advertirlo. La clave sin versión garantiza que
+**hay una sola entrada por usuario** y que la comparación de versión es obligatoria al leerla.
+
+**Comportamiento de la guarda ante desajuste de escala** — con el mismo grado de detalle que la
+tabla del instantáneo etario (§3.2):
+
+| Situación | Significado | Acción |
+|---|---|---|
+| `filters.age_config_version == activa` | El permiso es comparable | **Proceder.** Aplicar `item.min_age_ordinal <= max_age_ordinal` |
+| `filters.age_config_version ≠ activa` | La entrada de caché se derivó bajo una escala retirada | **Descartar la entrada** y repoblar desde `users` (miss de caché, no de resultado). Costo: una lectura a Postgres |
+| `users.age_config_version ≠ activa` tras repoblar | El **derivado durable** está desactualizado: el job de §7.5 no alcanzó a este usuario | **Fail-closed: no servir.** Responder `503` con `Retry-After` (FR-065) e incrementar `age_stale_config_users_total`. **Nunca servir con un ordinal incomparable** |
+
+La asimetría con el instantáneo etario es intencional y se apoya en la misma lógica: allí el caso
+`snapshot < usuario` era **seguro por construcción** y se servía; acá **ninguna** dirección del
+desajuste es segura, porque un cambio de escala puede reordenar los ordinales en cualquier sentido.
+No hay caso conservador que aprovechar, y por eso se cierra en vez de degradar.
+
+> Esto **no introduce cómputo** en el request path: es una comparación de igualdad de cadenas sobre
+> un valor ya leído, más —en el caso raro de desajuste— una lectura puntual por clave primaria. Es
+> el mismo orden de costo que la lectura de `filters:` que ya ocurría. DI-23 lo verifica.
 
 ### 3.2 Estructura del valor
 
@@ -815,14 +965,27 @@ Esto hace que la caducidad por cumpleaños **no** produzca latencia ni indisponi
 `schema_version` permite evolucionar el formato sin ambigüedad: una entrada con versión desconocida
 se descarta como miss, no se interpreta a medias.
 
+**`vocab_version` en el valor — forense, sin lógica asociada (RD-41)**. No tiene consumidor
+funcional y no debe tenerlo: ningún componente lo compara al leer. Su finalidad es **atribución en
+incidente**: si una transición de vocabulario produce resultados degradados, es lo que permite
+distinguir qué entradas se calcularon bajo la versión sospechosa. Aplica el precedente de RD-6, con
+su prohibición: **ninguna rama condicional puede leerlo**.
+
+> **Por qué no se trata como `max_age_ordinal`**: el desajuste de vocabulario produce un resultado
+> **peor**, no **inseguro**. Descartar por ese motivo convertiría toda transición de vocabulario en
+> una invalidación masiva de caché —exactamente lo que el diseño evita— a cambio de calidad marginal.
+> El instantáneo etario se verifica porque su desajuste puede exponer contenido vedado; este no.
+
 ### 3.3 Reconstrucción total
 
 Secuencia (T022), **nunca disparada por tráfico de lectura** (FR-066):
 
 1. El servicio sigue respondiendo: `empty_pending` o `fallback` según precedencia (FR-056).
-2. `fallback:{module}` se rehidrata desde la tabla de respaldo (D8) — sin recomputar.
+2. `fallback:v{cfg}:{module}` se rehidrata ejecutando el batch T038 — la **reunión**
+   `item_popularity × items` filtrando `status='available'` y `config_version = :activa` (RD-12).
+   **No existe una «tabla de respaldo»**: el respaldo es el resultado de esa reunión, no una entidad.
 3. El job de warm-up publica señales de recálculo **con límite de tasa**, priorizando usuarios activos.
-4. `filters:` y `dedupe:` se repueblan por demanda desde Postgres.
+4. `filters:`, `retired:` y `dedupe:` se repueblan por demanda desde Postgres.
 
 Que la reconstrucción sea un proceso dedicado y no un efecto colateral del tráfico es lo que evita la
 avalancha auto-infligida: N lecturas en miss no deben producir N recálculos.
@@ -834,17 +997,48 @@ avalancha auto-infligida: N lecturas en miss no deben producir N recálculos.
 **Contenido** (`engine_config/vN.yaml`): `alpha`, `beta`, `gamma` (pesos de señal, suma 1.0) ·
 `k` (vecinos) · `lambda_mmr` (diversificación) · `top_n_default`, `top_n_max` · `peso_like`,
 `peso_dislike` · `age_rating_catalog` (mapeo de clasificación etaria) ·
-`popularity_window_days` · `diversity_max_cluster_share` · TTLs · umbrales de reintento.
+`popularity_window_days` · **`popularity_confidence_z`** (nivel de confianza de Wilson, Q6) ·
+`diversity_max_cluster_share` · TTLs · umbrales de reintento.
+
+> **`signal_retention_days` NO pertenece a este archivo (Q8, RD-46).** Es configuración
+> **operativa**, no del motor, y la distinción no es estética: todo parámetro de
+> `engine_config_versions` forma parte de la **unidad de medida** de los derivados versionados
+> (RD-13), y cambiarlo exige una `config_version` nueva y el recálculo del catálogo (RD-37, RD-44).
+> Acortar la retención no cambia el significado de ningún puntaje ya calculado: cambia qué filas
+> sobreviven. Incluirlo acá obligaría a versionar la configuración del motor por una decisión de
+> almacenamiento, y haría que `item_popularity` quedara particionada por un atributo que **no
+> participa de su cálculo**. Vive junto a los demás parámetros de FR-068.
+
+> **`popularity_confidence_z` (Q6, RD-44)** — parámetro **real**, no una constante disfrazada como
+> lo era `tiebreak_criteria` (RD-10). La diferencia es que este admite un rango continuo de valores
+> con efectos observables distintos, y **no hay un valor objetivamente correcto**: es la posición de
+> producto sobre cuánta evidencia exigir antes de destacar un ítem.
+>
+> | Valor | Efecto sobre el respaldo |
+> |---|---|
+> | `z = 0` | Degenera en la **proporción cruda** (opción C descartada): un ítem con 3 likes encabeza |
+> | `z ≈ 1,28` (80 %) | Penalización leve de la muestra pequeña |
+> | `z ≈ 1,96` (95 %) | **Convención habitual.** Un ítem necesita decenas de señales para competir con uno establecido |
+> | `z ≈ 2,58` (99 %) | Conservador: el respaldo se vuelve casi estático, dominado por el catálogo antiguo |
+>
+> **Validación al cargar**: `popularity_confidence_z > 0`. El arranque falla si no. El valor `0` se
+> rechaza explícitamente porque **anula el estimador** y reintroduce en silencio el modo de falla
+> que la decisión Q6 descartó — sería una regresión indistinguible de un error de tipeo.
+>
+> **Cambiarlo obliga a recalcular `popularity_score` de todo el catálogo**, y por eso el parámetro
+> vive en `engine_config_versions`: la `config_version` en la PK de `item_popularity` (RD-13) hace
+> que esa transición sea aditiva y aislada, exactamente igual que un cambio de ventana. **No hace
+> falta recorrer `user_signals`**: `like_count` y `engaged_user_count` ya están persistidos.
 
 > ⚠️ **`tiebreak_criteria` eliminado de la configuración (RD-10).** Declaraba configurable un
 > criterio para el cual el modelo ofrece **una sola alternativa**: el recuento de popularidad
-> (`item_popularity.like_count`). Cualquier
+> (`item_popularity.popularity_score`). Cualquier
 > otro valor —antigüedad, novedad, fecha de publicación— referencia atributos que `items` no tiene
 > y que son descriptivos del origen, cuya incorporación las restricciones prohíben. Un parámetro
 > con un único valor posible no es configuración: es una constante disfrazada, que sugiere una
 > flexibilidad inexistente y falla en runtime si alguien la usa.
 >
-> El desempate queda **fijo y documentado**: a igual score, mayor `item_popularity.like_count`; si persiste
+> El desempate queda **fijo y documentado**: a igual score, mayor `item_popularity.popularity_score`; si persiste
 > el empate, orden lexicográfico por `id` — arbitrario pero **determinista**, que es lo que el
 > invariante de reproducibilidad necesita. Si aparece un requisito de desempate por novedad, entra
 > por `/speckit.clarify` junto con el atributo que lo sostenga.
@@ -957,24 +1151,37 @@ devolver menos de `top_n` elementos; no se rellena con sustitutos, porque rellen
 repuebla desde Postgres, igual que `filters:`. `TTL_FILTERS` corto (1 h) acota el rezago entre el
 retiro y su efecto en la guarda.
 
-**Identificador**: hash criptográfico del archivo. Determinista e **inmutable**: mismo contenido ⟹
-mismo identificador, en cualquier máquina.
+**Cota del conjunto (RD-39).** El set **no** contiene todo el histórico de retiros: contiene los
+retirados en los **últimos 8 días**. La cota no es arbitraria ni una heurística de memoria — se
+deduce de que la guarda no puede necesitar más:
 
-**Trazabilidad (FR-025, Q4)**: toda recomendación persistida y servida referencia su
-`config_version`. Está en el valor de Redis (§3.2), en la clave (§3.1) y en la respuesta de la API.
-Sin esto, «¿por qué el sistema recomendó esto?» es incontestable.
-
-**Cambio de versión activa**:
-
-| Paso | Efecto |
+| Paso | Razonamiento |
 |---|---|
-| Se activa `vN+1` | `deactivated_at` de `vN` deja de ser nulo; nueva fila activa |
-| Claves `reco:v{N}` | Siguen existiendo; **ya no se leen** (la clave incorpora la versión) |
-| Lecturas nuevas | Miss bajo `vN+1` → precedencia FR-056: respaldo o pendiente |
-| Expiración | Las claves de `vN` se purgan solas por TTL |
+| ¿Qué puede servir un ítem retirado? | Solo una entrada de caché viva: `reco:` (24 h), `reco:stale:` (7 d) o `fallback:` (6 h) |
+| ¿Cuándo se creó esa entrada? | Hace a lo sumo `TTL_STALE` = 7 días |
+| ¿Qué contenía al crearse? | Solo ítems `available` **en ese momento**: los tres puntos de aplicación lo garantizan |
+| ⟹ | Un ítem retirado hace **más** de 7 días **no puede estar** en ninguna entrada viva. Incluirlo en el set es costo sin efecto |
 
-**No hay invalidación masiva**, y esa es la ventaja de tener la versión en la clave: el cambio de
-configuración es un no-evento operativo.
+La cota es `TTL_STALE + 1 día` de margen, y **se deriva del TTL**: si `TTL_STALE` cambia, la ventana
+del set debe cambiar con él. Se declara como dependencia explícita en la configuración, no como
+constante suelta (DI-25 lo verifica).
+
+**Verificación del costo declarado en RD-8**: la justificación original fue «mismo orden de costo
+que el filtro de exclusión». Sin cota, el set crecía monótonamente con el histórico del catálogo y
+esa afirmación **dejaba de ser cierta** —no por el costo de la consulta, que es `SISMEMBER` en O(1)
+por ítem, sino por el de mantener y transferir el set completo en cada repoblado horario—. Con la
+cota, el tamaño queda proporcional a la **tasa de retiro**, no al histórico, y la afirmación se
+sostiene.
+
+**Métrica**:
+
+| Métrica | Umbral | Acción que dispara | Responsable |
+|---|---|---|---|
+| `retired_set_size{module}` | **> 10 000** | **Alerta.** A esa escala el repoblado horario deja de ser trivial, y una tasa de retiro tan alta sugiere que el origen está reportando listados incompletos (CR-9) más que retiros reales. Verificar `sync_volume_delta_ratio` antes de concluir | Guardia de plataforma |
+
+> `catalog_retired_total` se mantiene **sin umbral**, en panel: mide el histórico y por construcción
+> solo crece. Un umbral sobre ella sería el defecto de RD-6 otra vez. La métrica accionable es la del
+> set acotado, no la del acumulado.
 
 ---
 
@@ -982,11 +1189,11 @@ configuración es un no-evento operativo.
 
 ```mermaid
 erDiagram
-    users ||--o{ user_profiles   : "1..3 (scope)"
+    users ||--o{ user_profiles   : "0..3 por version de vocabulario (RD-22)"
     users ||--o{ user_signals    : emite
     users ||--o{ user_exclusions : acumula
     items ||--o{ item_tags       : etiquetado
-    items ||--o| item_vectors    : "1:0..1 por version (RD-24)"
+    items ||--o{ item_vectors    : "0..1 por version de vocabulario (RD-22, RD-24)"
     items ||--o{ user_signals    : recibe
     items ||--o{ user_exclusions : excluido
     tags  ||--o{ item_tags       : asignado
@@ -1021,8 +1228,10 @@ erDiagram
     }
     item_popularity {
         UUID item_id PK "FK, CASCADE"
-        text config_version PK "FK, unidad de medida"
+        text config_version PK "FK RESTRICT, unidad de medida (RD-43)"
         int like_count "NOT NULL default 0"
+        int engaged_user_count "usuarios distintos, denominador (Q7)"
+        float popularity_score "Wilson, materializado (RD-44)"
         timestamptz computed_at "NOT NULL"
     }
     tags {
@@ -1074,26 +1283,30 @@ erDiagram
         enum source "solo observabilidad (RD-32)"
     }
     user_exclusions {
-        UUID user_id PK,FK
-        UUID item_id PK,FK
-        enum origin
-        bool is_permanent
+        UUID user_id PK,FK "CASCADE - privacidad (NC-10)"
+        UUID item_id PK,FK "RESTRICT - protege el historial (RD-35)"
+        enum origin "determina la permanencia (RD-35)"
+        timestamptz resolved_at "NOT NULL, metrica de lag"
     }
     engine_config_versions {
-        text config_version PK "hash inmutable"
-        jsonb payload
-        timestamptz activated_at
-        timestamptz deactivated_at "NULL = activa"
+        text config_version PK "hash, inmutable por construccion"
+        jsonb payload "inmutable por trigger (RD-37)"
+        timestamptz activated_at "inmutable por trigger (RD-37)"
+        timestamptz deactivated_at "NULL = activa. Unico mutable"
     }
     sync_runs {
-        bigint id PK
-        enum status
+        bigint id PK "sin FK: bitacora"
+        timestamptz started_at
         timestamptz finished_at
+        enum status
+        jsonb entity_counts "metrica de volumen (RD-38)"
+        text failure_reason "forense"
     }
     processed_events {
-        UUID event_id PK
-        enum result
-        timestamptz expires_at
+        UUID event_id PK "sin FK: bitacora"
+        timestamptz processed_at "forense"
+        enum result "auditoria accionable de FR-010c"
+        timestamptz expires_at "lo consume la purga"
     }
 ```
 
@@ -1137,7 +1350,6 @@ erDiagram
 | **DI-6** | El mismo `event_id` no se procesa dos veces | PK sobre `processed_events.event_id`. Test: 10 inserciones → 1 fila, 1 recálculo | FR-011 |
 | **DI-7** | A lo sumo una configuración activa | Índice parcial único sobre `deactivated_at IS NULL` | FR-025 |
 | **DI-8** | Ningún vector se compara con otro de distinta `vocab_version` | `vocab_version NOT NULL` + error explícito al comparar. **Verificable desde RD-17**: `vocab_versions.tag_count` debe igualar la dimensionalidad de todo vector que declare esa versión | FR-010f |
-
 | **DI-9** | Edad y exclusión se resuelven **solo con datos locales** | Test: el request path no emite ninguna llamada a `api-general` | FR-003, INV-1 |
 | **DI-10** | Ningún ítem `retired` se selecciona, rankea ni sirve | Test de invariante (T017): retirar un ítem presente en `reco:*` y en `fallback:*` → la lectura siguiente no lo contiene. Cubre los tres puntos de §4.4 | RD-7, FR nuevo |
 | **DI-11** | El retiro de un ítem **no destruye** señales históricas | Test: retirar un ítem con señales → `user_signals` conserva las filas y los perfiles no cambian. El retiro es lógico | RD-7 |
@@ -1149,9 +1361,13 @@ erDiagram
 | **DI-17** | La dimensionalidad de todo vector **iguala** el `tag_count` de la versión que declara | Test de propiedad sobre ambas tablas vectoriales. Es lo que hace verificable a DI-8: sin él, la dimensionalidad no estaba garantizada por nada tras eliminar `vector(N)` | RD-21 |
 | **DI-18** | Todo vector referencia una versión de vocabulario **existente** | FK real con RESTRICT. Test: insertar con versión inexistente → la base rechaza. Antes era representable (RD-23) | FR-010f |
 | **DI-19** | Todo vector persistido está **L2-normalizado** | Test de propiedad: norma euclídea = 1 ± ε, en ambas tablas. Sin esto, la similitud coseno exigiría normalizar al comparar (RD-26) | FR-022c |
-| **DI-20** | Una exclusión permanente **nunca desaparece** por purga de señales ni por reconstrucción | Test: crear exclusión por `consumo` → purgar la señal → reconstruir derivados → la exclusión sigue presente. La reconstrucción es aditiva sobre `user_exclusions` (RD-29) | FR-029c |
+| **DI-20** | Una exclusión permanente **nunca desaparece** por purga de señales ni por reconstrucción | Test: crear exclusión por `consumo` → purgar la señal → reconstruir derivados → la fila con `origin='consumo'` sigue presente. La reconstrucción es aditiva (RD-29, RD-35) | FR-029c |
 | **DI-21** | Una señal idéntica reentregada **no produce una segunda fila** | UNIQUE `(user_id, item_id, signal_type, occurred_at)`. Test: insertar 10 veces la misma señal → 1 fila, y `item_popularity` no varía (RD-28) | FR-011 |
 | **DI-22** | La resolución de la señal vigente es **determinista** ante empate temporal | Test: dos señales de tipos distintos con idéntico `occurred_at` → la resolución elige siempre la misma, en 100 ejecuciones. `ORDER BY occurred_at DESC, id DESC` (RD-34) | FR-029d |
+| **DI-23** | Ningún resultado se sirve comparando ordinales de **escalas distintas** | Test: alterar `age_config_version` del usuario a una no activa → la lectura responde `503`, **nunca `200`**. Cierra el hueco de §3.1.1: DI-2e lo exigía en el recálculo, este lo exige **al servir** (RD-40) | §4.1, FR-065 |
+| **DI-24** | Una versión de configuración ya registrada **no se altera**, y una desactivada **no se reactiva** | Trigger `BEFORE UPDATE`. Test: intentar modificar `payload` → rechazo; intentar poner `deactivated_at = NULL` → rechazo. Antes dependía de disciplina (RD-37) | FR-025 |
+| **DI-25** | La ventana del set de retirados **cubre** la obsolescencia máxima servible | Test de propiedad: `ventana_retired ≥ TTL_STALE`. Si alguien sube `TTL_STALE` sin subir la ventana, un retirado servible queda fuera del set y la guarda lo deja pasar (RD-39) | RD-8, FR-036 |
+| **DI-26** | El numerador de la popularidad **nunca excede** al denominador | `CHECK (like_count <= engaged_user_count)`. Test: intentar insertar 10 likes con 5 usuarios comprometidos → la base rechaza. Garantiza $\hat{p} \in [0,1]$ **sin validación en código**, y hace irrepresentable el doble conteo que RD-45 describe | RD-45, FR-033a3 |
 
 
 
@@ -1167,6 +1383,50 @@ request path (§4.2) existe.
 invariante pierde su método de verificación**. DI-2 sigue exigiendo `age_derived_at NOT NULL`: es
 una constraint de integridad sobre el registro de auditoría —si existe la fila, existe la marca—,
 no una lógica funcional sobre su valor. Esa distinción es la que RD-6 preserva.
+
+### 6.1 Revisión de conjunto (tras cinco auditorías)
+
+**Numeración.** Vigentes: DI-1..DI-25, con DI-2a'..DI-2e como sufijos de la familia etaria.
+**Eliminado: DI-2a** (RD-2), señalado como tal en la tabla y **no reutilizado**. No hay huecos ni
+identificadores reasignados.
+
+**Invariantes cuyo método de verificación cambió**:
+
+| ID | Qué cambió | Estado |
+|---|---|---|
+| **DI-20** | Dependía de `is_permanent`, que RD-35 elimina | ✅ **Reformulado** sobre `origin = 'consumo'`. No se debilita: se apoya ahora en el dato **no derivable**, que es más fuerte |
+| **DI-8** | Era declarativo hasta RD-17 | ✅ Verificable vía DI-17 |
+| **DI-12** | Mencionaba `WHERE config_version = :activa` solo en Postgres | ✅ RD-36 extiende su alcance a la clave de `fallback:`; el test debe cubrir ambos |
+| **DI-7** | Se apoyaba en un índice parcial, correcto pero incompleto | ✅ DI-24 cubre lo que faltaba: el índice impide *dos activas*, no impide *reactivar una desactivada* |
+
+**Ninguno quedó sin método de verificación.** Los cambios de esquema de esta auditoría son
+eliminaciones de atributos redundantes (RD-35) y agregados de restricción (RD-37, RD-39); ninguno
+retira un atributo del que dependiera un invariante sin sustituirlo.
+
+**Solapamientos evaluados** — se revisaron los que verifican hechos próximos:
+
+| Par | ¿Solapan? | Resolución |
+|---|---|---|
+| DI-2b / DI-23 | **No.** DI-2b verifica el **contenido** de lo almacenado; DI-23 verifica la **comparabilidad de la escala** al servir | Ambos se conservan. Eran los dos lados del mismo riesgo, y solo uno estaba cubierto |
+| DI-2e / DI-23 | **No.** DI-2e prohíbe **evaluar** un usuario con config no activa (recálculo); DI-23 prohíbe **servir** en esa condición (request path) | Ambos. El hueco de §3.1.1 era precisamente que DI-2e no alcanzaba al camino de lectura |
+| DI-3 / DI-10 | **No.** Exclusión por usuario vs. vigencia global del ítem | Ambos |
+| DI-6 / DI-21 | **No.** Idempotencia de **evento** vs. de **señal** — §7.10 declara que son mecanismos distintos y que ninguno sustituye al otro | Ambos. Que parecieran redundantes es exactamente lo que ocultó el hallazgo de RD-28 |
+| DI-13 / zonas de §1.1 | **Parcial**, y deliberado: DI-13 es la forma **verificable** de una regla que §1.1 enuncia | Se conserva |
+
+**Huecos del grupo 1 con invariante asociado**:
+
+| Hueco | Invariante |
+|---|---|
+| Comparabilidad de escala en el camino de la petición | **DI-23** (nuevo) |
+| Inmutabilidad de la configuración | **DI-24** (nuevo) |
+| Cota del set de retirados ligada al TTL | **DI-25** (nuevo) |
+| Mezcla de ventanas de popularidad en caché | **DI-12**, con alcance extendido por RD-36 |
+| Permanencia derivable de la exclusión | **DI-20**, reformulado |
+
+**DI-1, DI-2, DI-7 y DI-24 se cumplen en el esquema**, no en el código. Es la diferencia entre un
+invariante que se puede violar por olvido y uno que la base rechaza. DI-24 es la incorporación de
+esta auditoría a esa lista: la inmutabilidad de la configuración estaba **declarada pero no
+garantizada**.
 
 ---
 
@@ -1197,6 +1457,25 @@ Precedencia **estricta** de FR-056 — el orden importa y es lo que hace el comp
 | 3 | Sin top-N personalizado, hay respaldo | `fallback` |
 | 4 | Vigente vencido, obsoleto disponible | `personalized_stale` |
 | 5 | Top-N vigente | `personalized` |
+
+**Momento de evaluación (RD-42)**: la precedencia se evalúa **sobre la lista posterior a las
+guardas** —etaria (§4.2), de exclusión y de vigencia (§4.4)—, no sobre la entrada de caché cruda.
+Sin esta precisión, un resultado que las guardas vacían por completo caería en el caso 4 o 5 y se
+serviría una lista vacía rotulada `personalized`.
+
+**Exhaustividad y exclusión mutua tras incorporar las guardas**:
+
+| Situación | Estado | Por qué |
+|---|---|---|
+| No hay entrada de caché y hay recálculo encolado | `empty_pending` | Sin cambio |
+| Hay entrada, las guardas la vacían **por completo** | **`empty_no_candidates`** | Los candidatos se agotaron *al filtrar* — que es literalmente el enunciado del caso 2. Que el filtrado ocurra al servir y no al precomputar no cambia el hecho observable |
+| Hay entrada, las guardas la reducen **sin vaciarla** | `personalized` o `personalized_stale` según frescura | FR-075: se sirve la lista reducida, sin relleno. El estado lo determina la frescura, no el tamaño |
+| El respaldo queda vacío tras las guardas | `empty_no_candidates` | Mismo caso 2. **No** se degrada a `empty_pending`: no hay nada pendiente que esperar |
+| `users.age_config_version` no es la activa | **`503`**, no un `result_type` | DI-23. Es indisponibilidad, no un resultado vacío. Precede a toda la tabla |
+
+> **El `503` de DI-23 no es un sexto caso de la precedencia**: la precedencia clasifica *resultados*,
+> y acá no hay resultado que clasificar. Mantenerlo fuera de la tabla es lo que conserva la exclusión
+> mutua — meterlo dentro la rompería, porque podría coincidir con cualquiera de los cinco.
 
 **Nunca se devuelve vacío silencioso** — corrige la deuda del prototipo. Cada estado es distinguible
 y accionable por el consumidor. **Redis caído ≠ miss**: es `503` con `Retry-After` (FR-065), nunca
@@ -1229,8 +1508,15 @@ Regla: **expand → migrate → contract**. Nunca destructivo en un solo desplie
 4. Eliminar lo viejo, en despliegue posterior
 
 Toda migración tiene `downgrade` probado (T003). Un cambio de dimensionalidad del vector implica
-`vocab_version` nueva: los vectores se recalculan **antes** de activarla (FR-010g), nunca conviven
-mezclados.
+`vocab_version` nueva, y **la convivencia de versiones es la condición que vuelve realizable la
+transición** (RD-22): los vectores de la versión entrante se escriben **junto a** los vigentes —la
+clave primaria los distingue—, y la activación es un único `UPDATE` sobre `vocab_versions`, atómico.
+
+> ⚠️ **Corrección**: el texto anterior decía que los vectores «se recalculan antes de activar, nunca
+> conviven mezclados». La primera mitad es correcta; la segunda contradecía a RD-22. **Conviven, y
+> deben hacerlo** — lo que no ocurre es que se *mezclen* en una comparación, cosa que DI-8 impide.
+> Sin convivencia, el recálculo *era* la activación y un fallo parcial dejaba el catálogo con
+> vectores de dos versiones indistinguibles entre sí.
 
 ### 7.5 Ingesta de usuarios y caducidad de los derivados etarios
 
@@ -1243,7 +1529,7 @@ actualiza en modo degradado**:
 | 2 | Se registra como **violación de contrato** (`WARN`), con `user_id` y `sync_run_id`, no como error de datos del usuario |
 | 3 | El usuario queda **fuera del universo recomendable**: sin fila, no hay a quién recomendar. La ausencia es el fail-closed |
 | 4 | Se incrementa `contract_violations_total{field="birth_date"}`, cuyo **valor esperado es 0**. Cualquier valor > 0 alerta: indica que `api-general` incumple CR-1 |
-| 5 | `sync_runs.result` refleja el rechazo; la corrida no se marca exitosa en silencio |
+| 5 | `sync_runs.status = 'failed'` con `failure_reason`; la corrida no se marca exitosa en silencio |
 
 Que la métrica tenga valor esperado cero es lo que la vuelve útil: no mide un fenómeno normal con
 umbral arbitrario, mide un incumplimiento binario.
@@ -1364,9 +1650,9 @@ contra la degradación silenciosa que RD-4 declara como costo.
 **Retiro de ítems.** El origen comunica el retiro por CR-7. Cuando un ítem **desaparece del origen
 sin señal explícita** (CR-8), la sincronización lo marca `status = 'retired'` — **nunca lo borra**:
 
-- El borrado físico **fallaría** por la FK de `user_signals.item_id`, que deliberadamente no tiene
-  `ON DELETE CASCADE` (§2.6), a diferencia de las tablas derivadas. Esa ausencia de cascade no es un
-  olvido: es lo que protege el historial.
+- El borrado físico **fallaría** por la FK de `user_signals.item_id`, declarada **`ON DELETE
+  RESTRICT`** (§2.6, RD-31). Esa política no es un efecto del comportamiento por defecto: es una
+  decisión explícita, y es lo que protege el historial.
 - Forzar el borrado en cascada **destruiría las señales** del usuario, degradando sus perfiles y
   vaciando su conjunto de exclusión — un ítem consumido volvería a ser recomendable si reingresara.
 
@@ -1479,12 +1765,21 @@ irrepresentable es la **misma** señal registrada dos veces, que es el caso que 
 **no se reconstruye** (§1.1) — por eso el fundamento de RD-16, que rechazó la clave subrogada en
 `tags` por inestabilidad ante resincronización, **no aplica acá** (RD-33).
 
-**Purga por retención (NC-2)** — procedimiento obligado por DI-20:
+**Purga por retención (Q8, RD-46)** — procedimiento obligado por DI-20. **Ya no es condicional**:
+Q8 adoptó la purga por antigüedad, de modo que estos pasos describen el régimen normal, no una
+contingencia.
 
 1. Antes de purgar, verificar que toda señal de `consumo` a purgar **ya tenga** su fila en
-   `user_exclusions` con `is_permanent = true`.
-2. Purgar las señales.
+   `user_exclusions` con `origin = 'consumo'`. Una señal cuya exclusión no esté materializada
+   **no se purga** (FR-068c) — se registra y se deja para el ciclo siguiente, porque purgarla
+   convertiría un ítem ya consumido en recomendable.
+2. Purgar las señales con antigüedad mayor a `signal_retention_days`.
 3. **Nunca** truncar `user_exclusions`. La reconstrucción de derivados es aditiva sobre ella.
+
+> **La purga es irreversible y el horizonte solo se puede acortar (RD-46).** No existe operación
+> inversa: una vez borrada la señal, ni el filtrado colaborativo ni la auditoría de exclusiones la
+> recuperan. Por eso el valor inicial es conservador y todo cambio que lo **reduzca** debería
+> tratarse como una migración con aprobación, no como un ajuste de configuración.
 
 **Métricas**:
 
@@ -1492,11 +1787,45 @@ irrepresentable es la **misma** señal registrada dos veces, que es el caso que 
 |---|---|---|---|
 | `signal_ingest_lag_seconds{source}` = `received_at − occurred_at`, p95 | **> 1 h** en `feedback_api` | **Alerta.** El endpoint propio no tiene sync de por medio: un desfasaje alto es reloj del origen desviado o cola acumulada. Segmentar por `source` es lo que permite distinguir uno de otro | Guardia de plataforma |
 | `signal_duplicate_rejections_total{source}` | Salto sostenido | **Panel, sin alerta.** Los rechazos son normales; un salto brusco indica reentrega masiva o bucle del productor | Guardia de plataforma |
-| `exclusions_orphaned_permanent_total` = exclusiones permanentes sin señal de origen viva | — | **Panel.** No es falla: es la medida de cuánto de `user_exclusions` ya **no** es reconstruible. Si crece, DI-20 pasó de precaución a dependencia real | Guardia de plataforma |
+| `exclusions_orphaned_permanent_total` = exclusiones permanentes sin señal de origen viva | — | **Panel.** No es falla: es la medida de cuánto de `user_exclusions` ya **no** es reconstruible. Si crece, DI-20 pasó de precaución a dependencia real. **Con Q8 crecerá por diseño**, de forma monótona: el panel deja de ser una advertencia y pasa a ser la contabilidad del costo aceptado (FR-068d) | Guardia de plataforma |
+| `signals_purge_deferred_total` = señales de `consumo` **no** purgadas por faltarles la exclusión materializada | **> 0 sostenido** | **Alerta.** Un valor persistente significa que la materialización de exclusiones tiene una fuga: hay consumos sin exclusión. La purga se protege sola (FR-068c), pero el defecto está aguas arriba y no se arregla solo | Guardia de plataforma |
 
 > `signal_ingest_lag_seconds` se define sobre la **ventana reciente de ingesta**, no sobre toda la
 > tabla, por el mismo motivo que RD-6 y RD-25: una métrica calculada sobre el histórico completo
 > estaría en rojo por construcción.
+
+### 7.11 Exclusiones y sincronización: consumidores declarados
+
+Esta subsección existe para que ningún atributo de §2.7 y §2.9 quede sin consumidor — la regla que
+las auditorías previas aplicaron a `computed_at`, `source` y `age_derived_at`.
+
+**`user_exclusions.resolved_at`** — mismo caso que RD-13: el resolutor puede reportar éxito habiendo
+procesado solo una parte de los usuarios, y la telemetría del job no lo detecta porque reportó éxito.
+
+| Métrica | Umbral | Acción que dispara | Responsable |
+|---|---|---|---|
+| `exclusion_resolve_lag_seconds` = `now() − min(resolved_at)` sobre usuarios **con señales posteriores a su última resolución** | **> 1 h** | **Alerta.** Hay señales registradas que no llegaron al conjunto de exclusión. Es degradación de un invariante de seguridad (DI-3), no de calidad: un ítem ya rechazado puede volver a recomendarse | Guardia de plataforma |
+
+> La restricción del denominador —solo usuarios con señales pendientes— evita el defecto de RD-6.
+> Calculada sobre toda la tabla, un usuario inactivo desde hace meses la dejaría en rojo permanente
+> sin que nada estuviera mal.
+
+**`sync_runs.entity_counts`** — su consumidor es la detección del listado incompleto que CR-9
+describe y que FR-074 exige tratar. Es la **única evidencia disponible** de que el origen respondió
+parcialmente: si la respuesta es sintácticamente válida pero trae la mitad de los ítems, ningún otro
+mecanismo lo advierte, y el resultado sería un retiro masivo de ítems vigentes.
+
+| Métrica | Umbral | Acción que dispara | Responsable |
+|---|---|---|---|
+| `sync_volume_delta_ratio{entity}` = conteo de esta corrida / conteo de la última exitosa | **< 0,9** | **Alerta, y la corrida aborta sin marcar retiros** (CR-9, FR-074). Una caída del 10 % en el volumen del catálogo es, casi siempre, una respuesta parcial del origen — no un retiro masivo real | Guardia de plataforma |
+
+> **Es una guarda, no solo una métrica.** El umbral no dispara únicamente un aviso: condiciona el
+> comportamiento del sync. Por eso `entity_counts` es atributo funcional-operativo con consumo real,
+> y no cae bajo la regla forense de RD-6.
+
+> ⚠️ **El umbral concreto (0,9) es provisional.** Depende de la volatilidad real del catálogo, que
+> hoy se desconoce. Queda como NC-12: un umbral mal calibrado aborta sincronizaciones legítimas o
+> deja pasar respuestas parciales, y ninguna de las dos es aceptable por omisión.
 
 ---
 
@@ -1518,6 +1847,17 @@ irrepresentable es la **misma** señal registrada dos veces, que es el caso que 
 | — | `sync_runs` | **Entidad ausente** | Crear: freshness observable | T003, T031 |
 | — | `processed_events` | **Entidad ausente** | Crear: idempotencia durable | T003, T024 |
 | — | `engine_config_versions` | **Entidad ausente** | Crear: trazabilidad de Q4 | T003, T004 |
+| — | `item_popularity` | **Entidad ausente.** El prototipo no persiste popularidad: el respaldo no existía | Crear con `config_version` en la PK como unidad de medida (RD-12, RD-13) | T003, T038 |
+| — | `tag_modules` | **Entidad ausente.** El prototipo resolvía la pertenencia por módulo con un booleano en el tag | Crear: la pertenencia es una relación, no un escalar (RD-14, RD-15) | T003, T030 |
+| — | `vocab_versions` | **Entidad ausente.** El vocabulario del prototipo es implícito y se reconstruye en cada corrida | Crear: el identificador es función del contenido, y es lo que hace comparables dos vectores (RD-17) | T003, T030 |
+| — | `vocab_version_tags` | **Entidad ausente** | Crear: registro histórico inmutable de la composición, sin FK (RD-18) | T003, T030 |
+| `Feedback` como lista en memoria | `user_exclusions` con `origin` | Sin distinción entre exclusión revertible y permanente | `origin` la determina; sin booleano redundante (RD-35) | T003, T009 |
+
+> **Las cinco entidades ausentes no son omisiones del prototipo**: cuatro de ellas
+> (`item_popularity`, `tag_modules`, `vocab_versions`, `vocab_version_tags`) existen porque el
+> prototipo recalcula todo en cada corrida y **no necesita versionar nada**. Persistir resultados
+> obliga a declarar bajo qué supuestos se calcularon. Es el costo estructural de dejar de ser un
+> prototipo.
 
 > **Corrección al brief**: se pedía resolver «ausencia de la dimensión de módulo en la clave». El
 > prototipo **sí** la incluye (`cache_redis.py:103`). La ausencia real es la de `config_version`.
@@ -1626,14 +1966,14 @@ guarda de vigencia en el request path. D-items sin cambio.
 
 | Tarea | Acción | Detalle |
 |---|---|---|
-| **T003** | ⚠️ Modificar | **Tabla `item_popularity`** con PK compuesta `(item_id, config_version)`, FK con CASCADE desde `items`, `idx_popularity_ranking`. Quitar `like_count_window` de `items`. Pasa a **12 tablas** |
-| **T038** | ⚠️ **Modificar** | Batch con **reunión** `item_popularity × items`, filtrando `status='available'` y `config_version = :activa`. **Bloqueado por NC-7**: la definición de popularidad determina qué se calcula |
+| **T003** | ⚠️ Modificar | **Tabla `item_popularity`** con PK compuesta `(item_id, config_version)`, FK con CASCADE desde `items`, `idx_popularity_ranking`. Quitar `like_count_window` de `items`. Pasa a **12 tablas** (cifra intermedia; el total final tras el vocabulario es **15**) |
+| **T038** | ⚠️ **Modificar** | Batch con **reunión** `item_popularity × items`, filtrando `status='available'` y `config_version = :activa`. **Desbloqueado por Q6**: ordena por `popularity_score` |
 | **T017** | ⚠️ Modificar | Añadir DI-12 y DI-13 |
 | **T029** | ✏️ Precisar | El Data Transformer **no escribe** `item_popularity` (DI-13) |
 | **T050** | ⚠️ Modificar | Perfilar la reunión del batch: es el costo declarado de RD-12 y no debe asumirse resuelto |
 | **T031** | ✏️ Precisar | `catalog_popularity_last_success_timestamp` desde el batch; `computed_at` permite detectar fallo **parcial** |
 
-**Sobre `spec.md`**: **FR-033a1** debe precisarse con la definición que resuelva NC-7 — hoy dice
+**Sobre `spec.md`**: ✅ resuelto por Q6 → FR-033a3/a4/a5. El texto siguiente describe el estado previo: decía
 «por popularidad» sin definirla, lo que la vuelve no verificable. No corresponde FR nuevo por la
 reubicación: es estructura interna, sin comportamiento observable.
 
@@ -1650,7 +1990,7 @@ la descripción de componentes.
 |---|---|---|
 | RD-5: conservar la versión de config como unidad de medida | ✅ | RD-13 aplica el mismo argumento al mismo tipo de defecto. Difiere solo en que acá va **en la clave**, porque se requiere convivencia durante la transición |
 | RD-11: descartar la marca temporal por fila | ⚠️ **Revisado** | El argumento (replicar un valor idéntico en millones de filas) valía para `items`; no vale para `item_popularity`, cuya existencia entera **es** el resultado del batch. Documentado en RD-11 |
-| «Nada sin consumo entra al modelo» | ✅ | Se **rechaza** incorporar `dislike_count` y `consumo_count` por anticipación, y se explicita por qué la excepción de RD-4 no aplica: no hay costo de contrato compartido |
+| «Nada sin consumo entra al modelo» | ✅ | Se **rechaza** incorporar `dislike_count` y `consumo_count` por anticipación, y se explicita por qué la excepción de RD-4 no aplica: no hay costo de contrato compartido. **Vigente**: Q7 incorporó `engaged_user_count` recién cuando tuvo consumidor, y con otra forma (RD-45) |
 | No duplicar datos del origen | ✅ | No se denormaliza `module` en `item_popularity`, aun al precio de la reunión |
 | Clasificación por zonas verdadera para toda entidad | ✅ | §1.1 revisada entidad por entidad. `item_popularity` era la única mal ubicada |
 | Sin cómputo en el request path | ✅ | La reunión ocurre en el batch (T038) |
@@ -1731,7 +2071,7 @@ ni criterio de aceptación funcional. Es una columna, un mapeo y una métrica.
 |---|---|
 | #3, #4, #13, #17, #29, #47 | ⚠️ **Modificar** cuerpo (criterios de aceptación afectados) |
 | #31, #37, #42 | ✏️ **Precisar** (agregar criterio) |
-| **nuevo #51+** | ➕ **Crear** issue de T051, milestone Fase 1, épica de datos |
+| **#61** | ➕ **Crear** issue de T051, milestone Fase 1, épica de datos. La numeración arranca en 61 porque #51–#60 ya son épicas |
 | — | ✅ **Ninguno se cierra** |
 
 > Los issues afectados por `region` (#3, #29, #31, #47) ya figuran arriba por las correcciones
@@ -1748,9 +2088,9 @@ ni criterio de aceptación funcional. Es una columna, un mapeo y una métrica.
 |---|---|---|
 | **FR-010f** | ✏️ Precisar | Debe decir que los vectores de una versión **conviven** con los de la anterior hasta la activación, y que la activación es un `UPDATE` atómico sobre `vocab_versions`. Hoy la redacción es compatible con recálculo destructivo |
 | **FR-010g** | ✏️ Precisar | «Recalcular todos antes de activar» era irrealizable bajo el esquema anterior (RD-21, RD-22). Con la convivencia pasa a ser verificable: agregar el criterio de que la versión entrante debe estar **completa** antes de activarse |
-| **FR-072** (nuevo) | ➕ Crear | Un ítem sin tags **no tiene vector** y por lo tanto no participa de las dimensiones de contenido ni cruzada, pero **permanece como candidato** por señal colaborativa y popularidad. Es comportamiento observable —cambia qué se recomienda— y hoy no está especificado. Sujeto a NC-9 |
+| **FR-076** (nuevo) | ➕ Crear | Un ítem sin tags **no tiene vector** y por lo tanto no participa de las dimensiones de contenido ni cruzada, pero **permanece como candidato** por señal colaborativa y popularidad. Es comportamiento observable —cambia qué se recomienda— y hoy no está especificado. Sujeto a NC-9 |
 
-> FR-072 requiere aprobación por `/speckit.clarify` junto con las FR de ciclo de vida ya propuestas.
+> FR-076 requiere aprobación por `/speckit.clarify` junto con las FR de ciclo de vida ya propuestas.
 > No lo incorporo por decisión propia.
 
 **`plan.md`** — D-nuevo: la dimensionalidad no se declara en el esquema; el índice vectorial de Fase
@@ -1771,7 +2111,7 @@ con costo operativo, no un detalle de implementación.
 | **T042** | ✏️ Precisar | Alertas y umbrales de las tres métricas (§7.9) |
 | **T022** | ✏️ Precisar | Runbook: recuperación de transición fallida a mitad |
 
-**Ninguna tarea nueva por el modelo de datos.** Si FR-072 se aprueba, sí habrá test de comportamiento
+**Ninguna tarea nueva por el modelo de datos.** Si FR-076 se aprueba, sí habrá test de comportamiento
 nuevo asociado a T007.
 
 **Issues**: modificar **#3, #7, #8, #17, #30, #39** (criterios de aceptación afectados); precisar
@@ -1802,9 +2142,9 @@ nuevo asociado a T007.
 | **FR-029d** | ✏️ Precisar | Declarar el criterio de desempate ante `occurred_at` idéntico |
 | **FR-029c** | ✏️ Precisar | La permanencia de una exclusión de `consumo` es **independiente de la retención de la señal** |
 | **FR-068** | ⚠️ Modificar | La purga debe verificar exclusiones permanentes materializadas antes de borrar señales (§7.10) |
-| **FR-073** (nuevo) | ➕ Crear | Una reconstrucción de derivados **no puede truncar** `user_exclusions`. Es comportamiento observable y hoy no está especificado |
+| **FR-077** (nuevo) | ➕ Crear | Una reconstrucción de derivados **no puede truncar** `user_exclusions`. Es comportamiento observable y hoy no está especificado |
 
-> FR-073 y la modificación de FR-068 requieren aprobación por `/speckit.clarify`. No las incorporo
+> FR-077 y la modificación de FR-068 requieren aprobación por `/speckit.clarify`. No las incorporo
 > por decisión propia.
 
 **`plan.md`** — actualizar la tabla de zonas de §2 con la zona mixta de `user_exclusions` y la
@@ -1843,9 +2183,219 @@ Ninguno se cierra.
 | ¿Algún índice sin consulta declarada? | **No**, y se **eliminó uno** que la tenía ausente (`idx_signals_user_type`, RD-33). El índice restante es la propia restricción UNIQUE, que sirve «gana la más reciente» por prefijo `(user_id, item_id)` |
 | ¿Se debilitó DI-11? | **No.** DI-11 protege el historial frente al **retiro de ítems**; RD-31 lo refuerza haciendo explícito el `RESTRICT` del que dependía sin declararlo |
 
+---
+
+### 9.9 Impactos de la auditoría de secciones pendientes (RD-35..RD-42)
+
+**`spec.md`**:
+
+| FR | Acción | Detalle |
+|---|---|---|
+| **FR-056** | ⚠️ **Modificar** | Declarar que la precedencia se evalúa **sobre la lista posterior a las guardas**, y que un resultado vaciado por ellas es `empty_no_candidates` (RD-42) |
+| **FR-036** | ✏️ Precisar | La reevaluación incluye la **comparabilidad de escala**, no solo la comparación ordinal (RD-40) |
+| **FR-065** | ✏️ Precisar | Agregar la causa de `503`: derivado etario bajo escala no activa (DI-23) |
+| **FR-025** | ✏️ Precisar | La inmutabilidad de una versión registrada es **garantizada**, no convencional. Una versión desactivada no se reactiva (DI-24) |
+| **FR-033a1** | ✏️ Precisar | El respaldo se sirve **bajo la configuración activa**; no se sirve un respaldo calculado con otra ventana (RD-36) |
+| **FR-078** (nuevo) | ➕ Crear | Una sincronización cuyo volumen caiga por debajo del umbral **MUST** abortar sin marcar retiros. Es la forma verificable de CR-9, hoy sin mecanismo (RD-38). Sujeto a NC-12 |
+
+> **Sin colisión de identificadores.** Reasignados en esta auditoría: el «ítem sin tags» pasa de
+> FR-072 a **FR-076**, y la «reconstrucción aditiva» de FR-073 a **FR-077**. FR-072..FR-075 quedan
+> reservados a la familia de ciclo de vida del ítem, que fue la primera en usarlos. El nuevo es
+> FR-078. Ningún identificador designa más de un requisito.
+
+**`plan.md`**:
+
+- §2: la tabla de entidades pasa a **15 tablas** — cifra final y única. La mención de «12 tablas» en
+  §9.3 es una cifra **intermedia** de la auditoría de popularidad, y quedó anotada como tal.
+- Incorporar a la descripción de componentes: el trigger de inmutabilidad (RD-37) y la ventana
+  acotada del set de retirados (RD-39), que es un acoplamiento con `TTL_STALE` y no una constante.
+
+**`tasks.md`**:
+
+| Tarea | Acción | Detalle |
+|---|---|---|
+| **T003** | ⚠️ Modificar | `user_exclusions` **sin `is_permanent`**, con FK `RESTRICT` a `items`. `engine_config_versions` con **trigger de inmutabilidad**. Sin índices nuevos |
+| **T004** | ✏️ Precisar | El loader no puede reactivar una versión desactivada (DI-24) |
+| **T009** | ⚠️ Modificar | El resolutor no escribe `is_permanent`; emite `resolved_at`. Escritura **aditiva** |
+| **T018** | ⚠️ **Modificar** | Clave `fallback:v{cfg}:{module}` (RD-36). Set `retired:` **acotado a la ventana** (RD-39). Comportamiento de `filters:` ante desajuste de versión (RD-40) |
+| **T037** | ⚠️ **Modificar** | Guarda de comparabilidad de escala con `503` (DI-23). Precedencia evaluada post-guardas (RD-42) |
+| **T038** | ✏️ Precisar | El batch escribe bajo la clave versionada; puede **precalcular** el respaldo de la versión entrante antes de activarla |
+| **T029** | ⚠️ Modificar | Guarda de volumen `sync_volume_delta_ratio`; abortar sin marcar retiros bajo el umbral (bloqueado por **NC-12**) |
+| **T017** | ⚠️ Modificar | Cubrir DI-23, DI-24, DI-25. **DI-20 reformulado** sobre `origin`. **DI-12 extendido** a la clave de caché |
+| **T022** | ✏️ Precisar | La rehidratación del respaldo ejecuta el batch T038; **no existe «tabla de respaldo»** |
+| **T031** | ✏️ Precisar | Exponer `exclusion_resolve_lag_seconds`, `sync_volume_delta_ratio{entity}`, `retired_set_size{module}` |
+| **T042** | ✏️ Precisar | Umbrales y acciones de las tres, según §7.11 y §4.4 |
+
+**Ninguna tarea nueva, ningún issue nuevo.** Todo se absorbe en tareas existentes: son restricciones
+de esquema, dimensiones de clave y guardas sobre rutas ya previstas.
+
+**Issues**: modificar **#3, #9, #18, #29, #37**; precisar **#4, #17, #22, #31, #38, #42**. Ninguno
+se cierra.
+
+### 9.10 Verificación de coherencia — auditoría de secciones pendientes
+
+| Verificación | Resultado |
+|---|---|
+| ¿Se introdujo cómputo en el camino de la petición? | **No.** RD-40 agrega una comparación de igualdad de cadenas sobre un valor ya leído; RD-42 no agrega operaciones, solo declara sobre qué lista se clasifica. RD-39 **reduce** el trabajo del repoblado |
+| ¿Algún atributo o índice sin consumo declarado? | **No**, y se cerraron tres huecos: `resolved_at`, `entity_counts` y `vocab_version` del valor de caché. Se **eliminó** un atributo redundante (`is_permanent`). Ningún índice nuevo |
+| ¿Se debilitó algún invariante de seguridad? | **No.** DI-20 se reformula sobre un dato **no derivable**, que es más fuerte. DI-12 amplía alcance. Se agregan DI-23, DI-24 y DI-25 |
+| ¿Coherencia con «unidad de medida por versión» (RD-5, RD-13, RD-17)? | **Sí.** RD-36 aplica el mismo criterio al único punto donde se perdía. RD-40 explica por qué `filters:` es la excepción, en vez de tratarla como olvido |
+| ¿Coherencia con el criterio de atributos redundantes (RD-2)? | **Sí.** RD-35 es el mismo diagnóstico y el mismo razonamiento |
+| ¿Coherencia con el criterio de métricas accionables (RD-6, RD-9)? | **Sí.** Cada métrica nueva declara umbral, acción y responsable, y cada una acota su denominador para no quedar en rojo por construcción. `catalog_retired_total` se mantiene deliberadamente **sin** umbral |
+| ¿Zonas y escritor único verdaderos para toda entidad? | **Sí.** Las cuatro pendientes declaran zona y escritor. `user_exclusions` es la única mixta, y su discriminante pasa a ser `origin` |
+| ¿Decisiones de producto o privacidad resueltas por cuenta propia? | **No.** NC-10 (supresión), NC-12 (umbral de volumen) quedan abiertas. FR-078 y la modificación de FR-056 requieren aprobación |
+
 
 
 ---
+
+
+### 9.11 Impactos de la sesión de clarificación 2026-09-14 (Q6 → RD-44, Q7 → RD-45)
+
+Q6 definió **qué es popularidad** (límite inferior de Wilson) y Q7 definió **sobre qué población se
+mide** (usuarios distintos que interactuaron). Las dos juntas convierten `item_popularity` de una
+tabla de recuento en una tabla de **estimación**, y ese cambio de naturaleza es el que se propaga.
+
+#### `spec.md` — ya aplicado
+
+| Requisito | Estado | Contenido |
+|---|---|---|
+| FR-033a | **Reformulado** | «volumen de likes» → «señales registradas en el propio sistema». La redacción anterior prejuzgaba la opción A, descartada en Q6 |
+| FR-033a3 | **Nuevo** | Popularidad = límite inferior de Wilson sobre la tasa de conversión a like entre quienes interactuaron |
+| FR-033a3a | **Nuevo** | El denominador cuenta **usuarios distintos**, no la suma de recuentos por tipo. El numerador nunca excede al denominador |
+| FR-033a3b | **Nuevo** | `consumo` entra **solo** al denominador. No contradice FR-022b |
+| FR-033a4 | **Nuevo** | El puntaje se **materializa**; no se calcula al servir ni al ordenar |
+| FR-033a5 | **Nuevo** | Se persisten numerador y denominador, no solo el puntaje |
+
+> **Los seis requieren aprobación** antes de propagarse al backlog, junto al bloque FR-072..FR-078
+> ya pendiente. Se listan acá para que la aprobación sea de un solo lote.
+
+#### `plan.md`
+
+| Sección | Cambio |
+|---|---|
+| §Configuración del motor (D4) | Agregar `popularity_confidence_z` al inventario de parámetros. Hoy el inventario está **incompleto**, y un parámetro no listado es un parámetro que nadie valida |
+| §Decisiones | D-nueva o nota en D4: la popularidad es un **estimador con parámetro**, no un recuento. Es la diferencia entre «ordenar por una columna» y «calibrar un modelo», y determina quién es dueño del valor |
+
+#### `tasks.md`
+
+| Tarea | Cambio | Motivo |
+|---|---|---|
+| **T003** (esquema) | `item_popularity`: `engaged_user_count` en lugar de `dislike_count`; `popularity_score double precision`; `CHECK (like_count >= 0 AND like_count <= engaged_user_count)`; `CHECK (popularity_score BETWEEN 0 AND 1)`; FK a `engine_config_versions` **RESTRICT** (RD-43); índice `idx_popularity_ranking` sobre `popularity_score DESC` | El índice **cambia de columna**: ordenar por `like_count` ya no es el orden servido |
+| **T004** (carga de config) | Validar `popularity_confidence_z > 0` **estricto**. Rechazar `0` explícitamente | `z = 0` degenera el estimador en la proporción cruda —opción C, descartada— y lo hace en silencio |
+| **T038** (batch de popularidad) | **Desbloqueada** (NC-7 cerrado). Denominador con `COUNT(DISTINCT user_id)`; numerador con la señal **vigente** por usuario; escribir `popularity_score` calculado | El «vigente» importa: quien dio like y después dislike aporta al denominador, no al numerador |
+| **T017** (tests de invariantes) | Agregar **DI-26**, incluyendo el caso `n = 0 → score = 0` | `n = 0` es el estado de **todo ítem recién ingerido**, no un borde exótico |
+| **T050** (perfilado) | Perfilar la agregación con `DISTINCT` junto a la reunión de RD-12 | Costo declarado, no descubierto en producción |
+| **T031** (métricas) | `fallback_new_item_share`, **condicional a NC-13** | Sin la métrica, NC-13 no es decidible: no hay evidencia de si el sesgo contra ítems nuevos duele |
+
+#### Issues de GitHub
+
+| Issue | Acción |
+|---|---|
+| #3 (T003) | Actualizar el esquema de `item_popularity` y el índice |
+| #4 (T004) | Agregar la validación de `popularity_confidence_z` |
+| #17 (T017) | Agregar DI-26 al criterio de aceptación |
+| #38 (T038) | Quitar la etiqueta de bloqueo por NC-7; precisar la agregación |
+| #50 (T050) | Agregar el perfilado de la agregación distinta |
+
+> **No se editan todavía.** Dependen de FR aún no aprobados, y un issue que describe un requisito no
+> aprobado es peor que un issue desactualizado: parece autoridad.
+
+#### Pendientes abiertos que esta sesión dejó
+
+| Id | Bloquea | Nota |
+|---|---|---|
+| **NC-14** | **T004** | Valor de `popularity_confidence_z`. Es posición de producto: cuánta evidencia exigir antes de recomendar. Bloquea igual que NC-4 |
+| **NC-13** | Nada | Protección de ítems nuevos. Revisable cuando `fallback_new_item_share` sea observable |
+
+### 9.12 Verificación de coherencia — sesión de clarificación
+
+| Criterio previo | ¿Se respeta? | Cómo |
+|---|---|---|
+| Q3 / FR-022b: `consumo` no expresa preferencia | **Sí.** Y se explicita por qué no hay contradicción: el consumo no entra al **perfil** (qué le gusta a esta persona) sino a la **población** de una medición sobre el ítem. Son dos preguntas distintas sobre el mismo evento |
+| RD-11: «nada sin consumo entra al modelo» | **Sí.** `engaged_user_count` entró **cuando** tuvo consumidor —el denominador de Q7—, no por anticipación. El párrafo de NC-7 que lo rechazaba queda marcado como superado, y su razonamiento **confirmado**: la forma que anticipaba (`dislike_count + consumo_count`) era la incorrecta |
+| RD-13: la `config_version` en la clave como unidad de medida | **Sí.** `popularity_confidence_z` vive en `engine_config_versions`, y por eso recalibrar es aditivo y aislado, igual que un cambio de ventana |
+| RD-10: desempate determinista | **Sí**, con la referencia actualizada a `popularity_score` |
+| Sin cómputo en el camino de la petición | **Sí.** FR-033a4 materializa el puntaje. La raíz cuadrada por ítem ocurre en T038 |
+| Sin índice sin consulta declarada | **Sí.** `idx_popularity_ranking` cambia de columna **porque** cambió la consulta que sirve, no para cubrir un caso hipotético |
+| No resolver por cuenta propia lo que es decisión de producto | **Sí.** El valor de `z` queda en NC-14 y la protección de ítems nuevos en NC-13. Ninguno se completó con un valor «razonable» |
+
+> **Observación sobre el método.** Q7 se formuló como «¿participa `consumo`?», una pregunta de
+> sí/no. La respuesta C obligó a decidir algo que la pregunta no contenía: **sobre qué se cuenta**.
+> La formulación ingenua —sumar `consumo_count` al denominador— habría penalizado sistemáticamente
+> a los ítems mejores, que son justamente aquellos donde más gente que consumió además likeó. El
+> defecto no estaba en la respuesta del usuario sino en la pregunta, que presuponía que el
+> denominador era una suma de señales.
+
+---
+
+
+
+### 9.13 Impactos de la decisión de retención (Q8 → RD-46)
+
+Q8 no agrega entidades ni atributos: **el modelo ya estaba preparado**. RD-29 había declarado la
+zona mixta, DI-20 el invariante, §7.10 el procedimiento y la métrica de huérfanas el instrumento.
+Lo que faltaba era la decisión que los volviera vigentes. El impacto es por eso mayormente de
+**activación**, no de diseño — lo cual es la confirmación de que RD-29 anticipó bien.
+
+#### `spec.md` — ya aplicado
+
+| Requisito | Estado | Contenido |
+|---|---|---|
+| FR-029b1 | **Nuevo** | La permanencia de la exclusión es independiente de la retención de la señal. Reconstrucción aditiva; prohibido vaciar el conjunto para reconstruirlo |
+| FR-068a | **Nuevo** | Retención finita y parametrizada. No existe modo sin política de supresión |
+| FR-068b | **Nuevo** | Horizonte estrictamente mayor que toda ventana operativa, **validado al arranque** |
+| FR-068c | **Nuevo** | Verificación de exclusión materializada antes de purgar un `consumo` |
+| FR-068d | **Nuevo** | Medida de exclusiones permanentes sin señal de origen |
+
+#### `plan.md`
+
+| Sección | Cambio |
+|---|---|
+| §Configuración | Distinguir **dos** conjuntos de parámetros: los del motor (versionados, en `engine_config_versions`) y los **operativos** (FR-068, no versionados). `signal_retention_days` pertenece al segundo (RD-46). Hoy `plan.md` los trata como uno solo, y esa confusión llevaría a versionar la config del motor por una decisión de almacenamiento |
+| §Operación | Declarar el batch de purga como proceso periódico con su propio modo de falla: **se detiene, no fuerza** |
+
+#### `tasks.md`
+
+| Tarea | Cambio | Motivo |
+|---|---|---|
+| **T004** (carga de config) | Validar que `signal_retention_days` supere estrictamente `popularity_window_days` y la retención de idempotencia. Fallar el arranque | El modo de falla peor es silencioso: una popularidad sobre ventana parcialmente vaciada devuelve números plausibles |
+| **Tarea nueva** (batch de purga) | No existe en `tasks.md`. Implementa §7.10: verificar → purgar → nunca truncar exclusiones | Es trabajo real que hoy no está en el backlog |
+| **T017** (invariantes) | Test de DI-20 **con purga real**, no simulada: crear exclusión por consumo → purgar → reconstruir → la fila sigue | El test actual ya lo describe; ahora es escenario de régimen, no hipotético |
+| **T022** (runbook) | Documentar la asimetría: el horizonte se acorta pero no se alarga. Un cambio a la baja es migración con aprobación | Sin esto, alguien baja el valor «para liberar espacio» y destruye evidencia irrecuperable |
+| **T031** (métricas) | `exclusions_orphaned_permanent_total` (FR-068d) y `signals_purge_deferred_total` | La primera contabiliza el costo aceptado; la segunda detecta una fuga aguas arriba |
+| **T050** (perfilado) | Incluir el costo de la purga y su efecto sobre índices | Una purga masiva sobre la tabla más grande del modelo no es gratis |
+
+#### Issues de GitHub
+
+| Issue | Acción |
+|---|---|
+| #4 (T004) | Agregar la validación del horizonte |
+| #17, #22, #31, #50 | Según la tabla anterior |
+| **Nuevo** | Batch de purga por retención |
+
+> **No se editan todavía**, por la misma razón que en §9.11: dependen de FR no aprobados.
+
+### 9.14 Verificación de coherencia — decisión de retención
+
+| Criterio previo | ¿Se respeta? | Cómo |
+|---|---|---|
+| DI-20: la exclusión permanente nunca desaparece | **Sí**, y ahora se lo somete a prueba real. Se corrige de paso una afirmación errónea del planteo de opciones: la purga **no** rompe DI-20, porque las filas ya están materializadas (RD-35). Lo que se pierde es verificabilidad |
+| RD-29: zona mixta de `user_exclusions` | **Sí.** RD-29 existía precisamente previendo esta decisión. Q8 la confirma: la previsión no fue defensiva de más |
+| RD-13: la `config_version` como unidad de medida | **Sí**, y el criterio se aplica **en sentido inverso**: así como faltaba versionar lo que depende de la ventana, sobra versionar lo que no participa del cálculo. `signal_retention_days` queda fuera |
+| RD-37: inmutabilidad por atributo de la config del motor | **Sí.** Un parámetro cuyo cambio no invalida ningún derivado no pertenece a esa configuración |
+| RD-6, RD-25: métricas accionables, denominador acotado | **Parcial y declarado.** `exclusions_orphaned_permanent_total` crece de forma monótona por diseño y **por eso no lleva umbral**: sería roja por construcción. Se declara panel, no alerta — mismo tratamiento que `catalog_retired_total` (RD-39). `signals_purge_deferred_total` sí lleva umbral porque su valor normal es cero |
+| Sin cómputo en el camino de la petición | **Sí.** La purga es batch |
+| No resolver por cuenta propia lo que es decisión de producto | **Sí.** El valor queda en NC-15 y la supresión por usuario en NC-10. Ninguno se completó con un número «razonable» |
+
+> **Observación sobre el método.** Al presentar las opciones sobreestimé el costo de esta: afirmé
+> que rompía DI-20 y exigía materializar exclusiones que **ya estaban materializadas** desde RD-35.
+> El error fue razonar sobre el invariante por su nombre en vez de contra el modelo. Vale
+> registrarlo porque tuvo consecuencia: presentó como cara una opción que no lo era, y el criterio
+> de este documento es que las alternativas se descarten por su costo real, no por uno mal medido.
+
+---
+
 
 ## 10. Contrato requerido a `api-general`
 
@@ -2705,7 +3255,7 @@ política de retención que purgue, **esa afirmación es falsa para un subconjun
 
 **El caso grave, en secuencia**:
 
-1. Un usuario consume un ítem → señal de `consumo` → exclusión con `is_permanent = true` (FR-029c).
+1. Un usuario consume un ítem → señal de `consumo` → exclusión con `origin = 'consumo'` (FR-029c).
 2. La retención purga la señal por antigüedad.
 3. Alguien reconstruye los derivados truncando y recomputando —operación que §1 declaraba segura—.
 4. La exclusión permanente **no se regenera**: su origen ya no existe.
@@ -2728,7 +3278,7 @@ por una vía distinta y no señalado.
    que compromete un invariante.
 
 **Alternativa descartada — tabla separada de «efectos permanentes»**: más explícita sobre qué
-sobrevive a la purga. Se descarta porque duplicaría la información que `is_permanent` ya expresa y
+sobrevive a la purga. Se descarta porque duplicaría la información que `origin` ya expresa (RD-35) y
 obligaría a consultar dos tablas en el filtro de exclusión, que está en el camino de la petición
 (FR-033d). El costo es una zona mixta, que es una imprecisión conceptual aceptable frente a cómputo
 en la ruta caliente.
@@ -2878,28 +3428,513 @@ corrupto— y la restricción es explícita al respecto. **Reconsiderar si** CR-
 frecuencia medible; en ese caso deja de ser un caso teórico y merece decisión explícita.
 
 
+---
 
+### RD-35 — `is_permanent` eliminado: la permanencia es función de `origin`
+
+**Hallazgo 1.1**: `is_permanent` era derivable de `origin` por una regla del propio documento
+(`consumo ⟹ permanente`). Dos representaciones del mismo hecho habilitan un estado inconsistente
+—`origin = 'consumo'` con `is_permanent = false`— que el esquema **no puede impedir**, porque un
+`CHECK` que replicara la regla sería una tercera copia de la misma información.
+
+Es literalmente el defecto de RD-2, donde se eliminó `max_age_rating` por ser derivable de
+`max_age_ordinal`.
+
+**Decisión**: eliminar `is_permanent`. Se conserva `origin`, que es el **hecho registrado**; la
+permanencia se deriva.
+
+**Por qué se conserva `origin` y no al revés**: `origin` no es derivable de nada. `is_permanent`
+además **pierde información**: dos exclusiones permanentes indistinguibles podrían venir de orígenes
+distintos si mañana se agregara otro tipo de señal permanente.
+
+**Agravante evaluado — la zona mixta y DI-20 descansaban sobre el atributo eliminado**:
+
+| Objeto | Antes | Después | ¿Se debilita? |
+|---|---|---|---|
+| Clasificación de zona (§1.1, §2.7) | `is_permanent = true` | `origin = 'consumo'` | **No.** Se apoya ahora en el dato no derivable. Antes, una fila con el booleano mal escrito habría sido **clasificada en la zona equivocada** por un procedimiento de reconstrucción |
+| **DI-20** | «la exclusión permanente sigue presente» | Idéntico, sobre `origin` | **No.** El test es el mismo; cambia el predicado |
+| Consulta de pertenencia (FR-033d) | `WHERE (user_id, item_id) = ...` | **Idéntica** | **No.** La guarda nunca leyó `is_permanent`: pregunta pertenencia, no permanencia |
+
+El agravante señalado era real y resultó ser un **argumento adicional a favor** de la eliminación, no
+en contra: un invariante que descansa sobre un atributo que el esquema no puede mantener coherente
+es más frágil de lo que aparenta.
+
+**Costo declarado**: si alguna vez hiciera falta consultar «todas las exclusiones permanentes de un
+usuario», habría que filtrar por `origin = 'consumo'` en vez de por un booleano indexable. Hoy esa
+consulta **no existe** —solo la usaría el procedimiento de purga, que recorre la tabla entera de
+todos modos— y crear un índice para ella violaría la regla de «ningún índice sin consulta declarada».
+
+**Alternativa descartada — conservar `is_permanent` con `CHECK (is_permanent = (origin='consumo'))`**:
+haría el estado inconsistente irrepresentable, que es el criterio que este documento prefiere. Se
+descarta porque el `CHECK` **es** la derivación: si la regla ya está en el esquema, la columna es
+redundante con el esquema mismo. **Reconsiderar si** aparecieran múltiples orígenes de permanencia
+con reglas no triviales.
+
+**`ON DELETE RESTRICT` hacia `items`** (omisión equivalente a RD-19 y RD-31): la FK no declaraba
+política. Se declara `RESTRICT`, **coherente con `user_signals`**: si el borrado físico de un ítem
+está prohibido para no destruir el historial de señales, permitir que destruyera exclusiones
+—incluidas las permanentes— sería incoherente y violaría DI-20 por otra vía.
+
+**`ON DELETE CASCADE` desde `users`**: se conserva y queda **vinculado a NC-10**, con el mismo
+tratamiento que RD-30. No es decisión del esquema: es decisión de privacidad.
 
 ---
+
+### RD-36 — `config_version` en la clave del respaldo
+
+**Hallazgo 1.2**: `fallback:{module}` no llevaba la dimensión de configuración. Tras activar una
+versión nueva, el respaldo servía durante `TTL_FALLBACK` (6 h) un ordenamiento calculado bajo la
+**ventana de popularidad anterior**.
+
+**Por qué es el hallazgo más severo del grupo**: DI-12 declara que «el respaldo **nunca** mezcla
+recuentos de ventanas distintas», y RD-13 puso `config_version` en la PK de `item_popularity`
+justamente para hacer esa mezcla imposible. El invariante se cumplía en Postgres y **la caché lo
+reintroducía**. Era el único punto del modelo donde la unidad de medida de RD-13 se perdía — y el
+invariante lo declaraba resuelto.
+
+**Decisión**: `fallback:v{cfg}:{module}`.
+
+**Auditoría de las siete claves** (§3.1): se verificó cada una contra el criterio *«una dimensión
+entra en la clave cuando valores distintos producen contenidos distintos que deben coexistir»*. Dos
+observaciones que no eran obvias:
+
+1. **`recompute:lock:` y `dedupe:event:` no deben versionarse**, y no por omisión: versionarlas sería
+   **incorrecto**. Un semáforo versionado permitiría dos recálculos simultáneos del mismo usuario; un
+   dedupe versionado permitiría reprocesar un evento tras un cambio de config, violando FR-011.
+2. **`filters:` es un caso aparte**, y se trata en RD-40.
+
+**Alternativa descartada — invalidar `fallback:` al activar una versión**: eliminaría la ventana de
+6 h sin tocar la clave. Se descarta porque reintroduce la invalidación explícita que el diseño evita,
+y porque deja el respaldo vacío justo cuando más se lo necesita —durante una transición—. Con la
+versión en la clave, el batch puede **precalcular** el respaldo de la versión entrante antes de
+activarla, y la transición vuelve a ser un no-evento.
+
+---
+
+### RD-37 — Inmutabilidad por atributo, garantizada por estructura
+
+**Hallazgo 1.4**: la tabla se declaraba *append-only*, pero la desactivación es un `UPDATE`. La
+afirmación era **literalmente falsa**, y la inmutabilidad del resto dependía de que nadie escribiera
+un `UPDATE` sobre `payload` — disciplina de código, precisamente lo que este documento rechaza como
+garantía.
+
+**Decisión**: sustituir la afirmación global por **inmutabilidad declarada por atributo**, hecha
+cumplir con un trigger `BEFORE UPDATE`:
+
+| Atributo | Régimen | Mecanismo |
+|---|---|---|
+| `config_version` | Inmutable | Trigger + es la PK |
+| `payload` | Inmutable | **Trigger** |
+| `activated_at` | Inmutable | **Trigger** |
+| `deactivated_at` | Mutable **en un solo sentido** | Trigger: rechaza valor → `NULL` |
+
+**Por qué trigger y no otra cosa**: es el único mecanismo que actúa en la base y no en el código. Una
+columna generada no sirve —el valor viene de afuera—; un `CHECK` no puede comparar con el estado
+anterior de la fila; revocar `UPDATE` por permisos impediría también la desactivación legítima.
+
+**Qué protege concretamente**: DI-4 exige que todo top-N referencie una `config_version` existente, y
+FR-025 que un resultado viejo siga siendo interpretable. Si `payload` fuera editable, la referencia
+**seguiría existiendo pero apuntaría a otra configuración**. La trazabilidad se rompería sin que nada
+fallara — el peor modo de falla: silencioso y retroactivo.
+
+**La irreversibilidad de la desactivación** cierra un hueco de DI-7: el índice parcial único impide
+que haya *dos versiones activas*, pero no impedía **reactivar** una desactivada, lo que produciría dos
+períodos de actividad disjuntos bajo un solo par de marcas temporales — un registro histórico que
+miente sobre sí mismo. DI-24 lo cubre.
+
+**Alternativa descartada — tabla de activaciones separada, puramente *append-only***: sería la forma
+estrictamente correcta, con una fila por período de actividad. Se descarta por desproporción: exige
+una entidad más y una consulta con `ORDER BY ... LIMIT 1` donde hoy un índice parcial resuelve «la
+activa» directamente. **Reconsiderar si** apareciera un requisito de reactivar versiones —rollback de
+configuración—, que bajo el modelo actual es irrepresentable.
+
+---
+
+### RD-38 — `entity_counts` es una guarda, no una métrica ornamental
+
+**Hallazgo del grupo 2**: el atributo no declaraba consumidor.
+
+**Decisión**: conservar, con consumidor declarado — `sync_volume_delta_ratio` (§7.11).
+
+**Por qué aplica el precedente de RD-9 y no el de RD-6**: no es forense. Es la **única evidencia
+disponible** de que el origen respondió parcialmente. CR-9 exige abortar el sync sin marcar retiros
+si no puede confirmarse la completitud del listado, y FR-074 lo eleva a requisito — pero **ningún
+mecanismo lo detectaba**: una respuesta parcial es sintácticamente válida. Sin esta comparación de
+volumen, CR-9 era un requisito sin forma de verificarse.
+
+**No es solo una métrica: condiciona el comportamiento del sync.** El umbral aborta la corrida. Por
+eso el atributo tiene consumo funcional real.
+
+**Lo que no decido**: el valor del umbral. Queda como **NC-12** — depende de la volatilidad real del
+catálogo, y un umbral mal calibrado aborta sincronizaciones legítimas o deja pasar respuestas
+parciales.
+
+---
+
+### RD-39 — El set de retirados se acota por el TTL máximo servible
+
+**Hallazgo del grupo 3**: `retired:{module}` crecía monótonamente con el histórico del catálogo, sin
+cota. La justificación de RD-8 —«mismo orden de costo que el filtro de exclusión»— **dejaba de ser
+cierta** a medida que el histórico creciera: no por el costo de consulta, que es O(1) por ítem, sino
+por el de construir y transferir el set completo en cada repoblado horario.
+
+**Decisión**: el set contiene solo los ítems retirados en los **últimos `TTL_STALE` + 1 día**.
+
+**Por qué la cota es correcta y no una heurística**: un ítem retirado solo puede aparecer en una
+entrada de caché viva; la entrada más antigua posible tiene `TTL_STALE` = 7 días; y al crearse
+contenía únicamente ítems `available` en ese momento. Un ítem retirado hace más de 7 días **no puede
+estar** en ninguna entrada viva. El set más pequeño que preserva la corrección de la guarda es
+exactamente ese.
+
+**Dependencia declarada**: la ventana **se deriva de `TTL_STALE`**, no es una constante independiente.
+Subir `TTL_STALE` sin subir la ventana dejaría fuera del set ítems retirados que aún pueden servirse
+— la guarda fallaría en silencio. **DI-25** lo verifica, porque es el tipo de acoplamiento que se
+olvida en una revisión de configuración.
+
+**Métrica**: `retired_set_size{module}` con umbral, que es lo que faltaba. `catalog_retired_total` se
+mantiene **sin umbral**: mide el acumulado histórico y por construcción solo crece; ponerle umbral
+sería repetir el defecto de RD-6.
+
+**Alternativa descartada — set sin cota con estructura probabilística** (filtro de Bloom): acotaría la
+memoria sin acotar la ventana. Se descarta porque admite falsos positivos, y un falso positivo acá
+significa **ocultar un ítem vigente** — degradación silenciosa de cobertura, imposible de diagnosticar
+desde el resultado.
+
+---
+
+### RD-40 — `filters:` no versiona la clave; la guarda cierra ante escala incomparable
+
+**Hallazgo 1.6**: la entrada llevaba `age_config_version` en el valor pero no en la clave, y el
+documento decía que «un valor cuya versión no es la activa no se compara» **sin declarar qué hace la
+guarda al detectarlo**. Era un enunciado sin comportamiento asociado, en el punto del modelo donde se
+decide qué contenido ve un menor de edad.
+
+**Decisión 1 — la clave no se versiona**, y no por inercia. La asimetría con `reco:` tiene fundamento:
+dos resultados bajo configuraciones distintas **coexisten legítimamente**; dos permisos etarios bajo
+escalas distintas **no**. Versionar la clave produciría el efecto contrario al buscado: la entrada
+vieja quedaría accesible en su propio espacio de nombres, y un lector que construyera la clave con una
+versión desactualizada leería un permiso inválido **sin advertirlo**. La clave sin versión garantiza
+una sola entrada por usuario y vuelve obligatoria la comparación al leer.
+
+**Decisión 2 — comportamiento declarado** (tabla de §3.1.1), con el grado de detalle de §3.2:
+
+- Versión de la **caché** distinta de la activa → descartar la entrada, repoblar desde Postgres.
+- Versión del **derivado durable** distinta de la activa → **fail-closed: `503`**, nunca servir.
+
+**Por qué no hay caso conservador que aprovechar, a diferencia del instantáneo etario**: allí
+`snapshot < usuario` era seguro **por construcción** —el permiso solo podía haber crecido— y se servía.
+Acá el cambio es de **escala**, y una escala nueva puede reordenar los ordinales en cualquier sentido:
+no existe dirección del desajuste que sea seguro asumir. Por eso se cierra en vez de degradar.
+
+**No introduce cómputo en el request path**: es una comparación de igualdad de cadenas sobre un valor
+ya leído, más —en el caso raro— una lectura por clave primaria. Mismo orden que la lectura de
+`filters:` que ya ocurría.
+
+**Coherencia con DI-2e**: DI-2e prohibía **evaluar** un usuario con config no activa, pero solo
+alcanzaba al recálculo. DI-23 extiende la prohibición al **camino de lectura**, que es donde el
+documento tenía el hueco.
+
+---
+
+### RD-41 — `vocab_version` en el valor de caché: forense, sin lógica
+
+**Hallazgo del grupo 2**: el atributo no declaraba consumidor.
+
+**Decisión**: conservar como **forense**, aplicando el precedente de RD-6 con su prohibición expresa:
+**ninguna rama condicional puede leerlo**.
+
+**Finalidad declarada**: atribución en incidente. Si una transición de vocabulario produce resultados
+degradados, es lo que permite distinguir qué entradas se calcularon bajo la versión sospechosa. Sin
+él, la pregunta «¿este resultado malo viene de la transición?» es incontestable.
+
+**Por qué no se trata como `max_age_ordinal`** —es decir, por qué no se verifica al leer—: un
+desajuste de vocabulario produce un resultado **peor**, no **inseguro**. Descartar por ese motivo
+convertiría toda transición de vocabulario en una invalidación masiva de caché, que es exactamente lo
+que el diseño de claves evita, a cambio de calidad marginal. El instantáneo etario se verifica porque
+su desajuste puede exponer contenido vedado; este no.
+
+**Alternativa descartada — eliminarlo**: sería lo coherente con «nada sin consumo» si no hubiera
+finalidad forense declarada. Se descarta porque el costo es unos bytes por entrada y la pregunta que
+responde aparece justamente cuando ya no se lo puede agregar retroactivamente.
+
+---
+
+### RD-42 — La precedencia se evalúa después de las guardas
+
+**Hallazgo del grupo 6**: FR-056 no declaraba **sobre qué lista** se evalúa. Tras incorporar la guarda
+de vigencia (RD-8) y la lista reducida sin relleno (FR-075), quedó un caso sin clasificar: un
+resultado que existía y que las guardas vacían por completo.
+
+**Decisión**: la precedencia se evalúa **sobre la lista posterior a las guardas**. Un resultado
+vaciado por el filtrado es `empty_no_candidates`.
+
+**Fundamento**: es literalmente el enunciado del caso 2 —«candidatos agotados tras filtrar»—. Que el
+filtrado ocurra al servir y no al precomputar no cambia el hecho observable, y el consumidor necesita
+distinguir «no hay nada para vos» de «esperá que estoy calculando». Sin esta precisión, el resultado
+vacío se habría rotulado `personalized`, que es el vacío silencioso que FR-056 existe para eliminar.
+
+**El `503` de DI-23 queda fuera de la tabla, deliberadamente**: la precedencia clasifica *resultados*,
+y ahí no hay resultado que clasificar. Incorporarlo como sexto caso **rompería la exclusión mutua**,
+porque la condición puede coincidir con cualquiera de los cinco. Se declara como condición previa a
+toda la tabla.
+
+**Exhaustividad verificada** en la tabla de §7.2, caso por caso, incluido el respaldo vacío tras
+guardas —que es `empty_no_candidates` y **no** `empty_pending`: no hay nada pendiente que esperar—.
+
+---
+
+### RD-43 — `ON DELETE RESTRICT` de `item_popularity` hacia la configuración
+
+**Hallazgo detectado al aplicar Q6**: la FK hacia `engine_config_versions` no declaraba política. Es
+la **cuarta** omisión de la misma clase —RD-19 (`item_tags`), RD-31 (`user_signals`), RD-35
+(`user_exclusions`)—, y en las tres anteriores se determinó que era olvido y no decisión tácita.
+
+**Decisión**: `RESTRICT`.
+
+**Fundamento**: `config_version` **es la unidad de medida** del puntaje (RD-13). Purgar una versión
+de configuración con recuentos vivos dejaría filas cuyo `popularity_score` no puede interpretarse:
+no se sabría bajo qué ventana ni bajo qué nivel de confianza se calculó. `CASCADE` sería peor —
+vaciaría el respaldo en silencio ante un borrado accidental. Mismo razonamiento que RD-23 para
+`vocab_versions`.
+
+**Que aparezca una cuarta vez es un dato sobre el proceso, no sobre el esquema**: las políticas de
+borrado se omiten por defecto y el modo por defecto de PostgreSQL (`NO ACTION`) *parece* correcto,
+lo que hace que la omisión no falle en ninguna prueba. La verificación debe ser sistemática —«toda
+FK declara política»— y no caso por caso.
+
+---
+
+### RD-44 — Popularidad: estimador de Wilson y el parámetro que lo acompaña
+
+**Decisión Q6 (sesión 2026-09-14)**: opción **D** — límite inferior del intervalo de confianza de
+Wilson. Cierra NC-7, que bloqueaba T038.
+
+**Por qué las otras tres se descartan** (el análisis completo está en §12, NC-7):
+
+| Opción | Modo de falla en el respaldo |
+|---|---|
+| A — recuento bruto | Encabeza con ítems **polarizantes**: 1000 likes / 900 dislikes supera a 800 / 5 |
+| B — diferencia | Sigue **dominada por el volumen**: un ítem masivo mediocre supera a uno pequeño y excelente |
+| C — proporción | Encabeza con ítems de **muy pocas señales**: 3 likes y 0 dislikes da 100 % |
+| **D — Wilson** ✅ | Corrige ambos sesgos **con un solo estimador**, sin reglas ad hoc de volumen mínimo |
+
+**Por qué importa más acá que en otro ranking**: el respaldo es lo que ve un **usuario nuevo**. Es la
+primera impresión del sistema, y el único caso donde no hay señal personal que corrija un mal
+ordenamiento.
+
+**El parámetro `popularity_confidence_z` es configuración real, no una constante disfrazada.** La
+distinción con `tiebreak_criteria` (RD-10) es exacta y vale la pena declararla, porque el criterio de
+aquella eliminación podría invocarse mal acá:
+
+| | `tiebreak_criteria` (eliminado) | `popularity_confidence_z` (incorporado) |
+|---|---|---|
+| Valores posibles | **Uno solo**; el resto referenciaba atributos inexistentes | Rango continuo positivo |
+| Efecto de variarlo | Ninguno, o falla en runtime | **Observable y gradual** sobre el ordenamiento |
+| ¿Hay un valor correcto? | Sí, y era el único | **No.** Es la posición de producto sobre cuánta evidencia exigir |
+
+**Validación al cargar**: `popularity_confidence_z > 0`, estricto. Se rechaza `0` de forma explícita
+porque **degenera el estimador en la proporción cruda** —la opción C, descartada— y lo haría en
+silencio: un cero por tipeo sería indistinguible de una decisión, y el síntoma aparecería semanas
+después como «el respaldo muestra ítems raros».
+
+**Los recuentos se persisten junto al puntaje** porque el puntaje **no es reconstruible desde sí
+mismo** ante un cambio de $z$. Con `like_count` y `engaged_user_count` en la fila, recalibrar es un
+barrido sobre `item_popularity`; sin ellos, exige recorrer `user_signals`, que es la tabla más grande
+del modelo. Mismo criterio que RD-17: el derivado se guarda junto a los insumos que lo determinan.
+
+**El puntaje se materializa** (FR-033a4). Calcularlo al ordenar sería cómputo en el camino de la
+petición —la fórmula tiene una raíz cuadrada por ítem— y además impediría indexar el orden. El índice
+`idx_popularity_ranking` pasa a ordenar por `popularity_score`, no por `like_count`: **ordenar por el
+recuento ya no equivale a ordenar por popularidad**.
+
+**Caso $n = 0$ declarado explícitamente**: puntaje `0`. La fórmula es indefinida, y cero es el valor
+correcto —ausencia total de evidencia—, no una convención. Se declara porque es el estado de **todo
+ítem recién ingresado**, no un borde raro.
+
+**Recalibración aislada**: cambiar $z$ obliga a recalcular todo el catálogo, pero `config_version`
+está en la PK (RD-13), de modo que la transición es **aditiva** y la activación atómica — idéntico
+tratamiento que un cambio de ventana. La decisión no introduce un modo de transición nuevo.
+
+**Condición de revisión**: si se observara que el respaldo queda dominado por el catálogo antiguo
+—síntoma de $z$ demasiado alto—, el ajuste es del parámetro, **no del estimador**. Cambiar de
+estimador volvería a abrir NC-7.
+
+---
+
+### RD-45 — `consumo` en el denominador: tasa de conversión, contada por usuarios distintos
+
+**Decisión Q7 (sesión 2026-09-14)**: opción **C** — las señales de `consumo` participan del
+**denominador**, no del numerador. El puntaje pasa a medir *«de quienes interactuaron con el ítem,
+qué proporción lo likeó»*.
+
+**Coherencia con Q3 (FR-022b)**: aquella decisión estableció que `consumo` **no altera el perfil**
+del usuario porque no expresa preferencia. Esto no la contradice: el consumo sigue sin expresar
+preferencia, y por eso **no suma al numerador**. Lo que aporta es **la oportunidad de expresarla** —
+alguien vio el ítem y podría haberlo likeado. Que se excluya de una dimensión no implica que deba
+excluirse de la otra, y acá cumple un rol distinto.
+
+**Por qué C y no B**: incluir `consumo` como positiva convertiría el puntaje en una medida de
+**exposición**, no de satisfacción, y premiaría al contenido más promocionado por encima del mejor
+valorado. Es el sesgo que el respaldo —lo primero que ve un usuario nuevo— no debe tener.
+
+#### El denominador cuenta usuarios, no señales
+
+**Este es el punto que la formulación «agregar `consumo_count`» ocultaba, y es un defecto real.**
+Sumar `like_count + dislike_count + consumo_count` **cuenta dos veces a la misma persona**: quien
+likea un ítem casi siempre lo consumió antes, y ambas señales coexisten en `user_signals` —son de
+tipos distintos, de modo que la unicidad de RD-28 no las colapsa, y **correctamente**, porque son
+hechos distintos—.
+
+| Escenario | $n$ con suma de recuentos | $n$ con usuarios distintos |
+|---|---|---|
+| 100 personas consumen y las 100 likean | $200$, $\hat{p} = 0{,}5$ | $100$, $\hat{p} = 1{,}0$ |
+| 100 consumen, 50 likean | $150$, $\hat{p} = 0{,}33$ | $100$, $\hat{p} = 0{,}5$ |
+
+Un ítem **unánimemente likeado** habría puntuado como si la mitad lo hubiera rechazado. El sesgo es
+**sistemático y silencioso**, y —lo peor— **castiga más a los ítems mejores**, porque son los que
+tienen mayor tasa de conversión de consumo a like. Habría degradado exactamente lo que la decisión Q6
+buscaba corregir.
+
+**Decisión**: el denominador es `engaged_user_count` = **usuarios distintos con alguna señal** sobre
+el ítem en la ventana. No se persiste `consumo_count`: no tiene consumidor propio y el dato que hace
+falta es la unión, no la parte.
+
+**DI-26 lo vuelve irrepresentable** en vez de confiarlo al batch: `CHECK (like_count <=
+engaged_user_count)`. Bajo el conteo por señales ese `CHECK` **habría fallado** en el primer caso de
+la tabla, que es la forma más barata de descubrir el error — y es precisamente por eso que se declara
+como restricción y no como test.
+
+**Costo de cómputo declarado**: el batch pasa de `COUNT(*) GROUP BY item_id` a
+`COUNT(DISTINCT user_id)`, que requiere deduplicación y es más caro. Ocurre **fuera del camino de la
+petición**, sobre una ventana acotada, y se perfila en T050 junto con la reunión de RD-12 — no se
+asume resuelto.
+
+**Costo funcional declarado — y es el que importa**: C **penaliza a los ítems recién ingresados** más
+que la alternativa A. Un ítem nuevo acumula consumos antes que likes, de modo que su $\hat{p}$ es
+bajo al principio **por el orden temporal de las señales**, no por su calidad. Y el respaldo es
+justamente lo que alimenta el descubrimiento.
+
+> **La corrección de Wilson mitiga esto, pero no lo elimina.** Con pocas señales el puntaje queda
+> bajo por incertidumbre, no por el sesgo; el problema aparece cuando un ítem nuevo ya acumuló
+> muchos consumos y todavía pocos likes: ahí $n$ es grande, el intervalo es angosto, y el puntaje
+> bajo se vuelve **confiable**. Wilson no distingue «poca evidencia» de «evidencia de que aún no
+> convirtió».
+
+**Alternativa descartada — ventana de gracia para ítems nuevos**: excluir del respaldo a los ítems
+con menos de X días en catálogo, o darles un piso. Se descarta **por ahora** porque introduce un
+parámetro más sin evidencia de que haga falta, y porque un piso artificial es indistinguible de un
+sesgo deliberado. **Reconsiderar si** `fallback_new_item_share` (proporción del respaldo ocupada por
+ítems ingresados en los últimos 30 días) cayera de forma sostenida cerca de cero: ahí el síntoma
+sería medible y la corrección, justificada. Queda como **NC-13**.
+
+**Condición de revisión general**: si el respaldo resultara dominado por ítems de nicho con alta
+conversión y bajo alcance, la corrección no es volver a A —que reintroduce el sesgo de volumen— sino
+evaluar un umbral mínimo de $n$. También es un parámetro, no un cambio de estimador.
+---
+
+### RD-46 — Retención de señales: purga por antigüedad con horizonte largo
+
+**Decisión (Q8)**: las señales de `user_signals` se purgan por antigüedad según
+`signal_retention_days`, parámetro **operativo** (FR-068a), con un valor inicial deliberadamente
+conservador. Cierra NC-2.
+
+**Fundamento**. La alternativa vigente por omisión era la retención indefinida, y no era una
+decisión sino su ausencia. Su costo no es el tamaño de la tabla —eso se resuelve particionando—
+sino que **el sistema no tiene mecanismo de supresión**: la primera obligación de borrado se
+atiende con un `DELETE` manual en producción, sin procedimiento, sin verificación previa de DI-20
+y sin registro. Un sistema que puede borrar pero no sabe cómo es peor que uno que borra por
+política.
+
+**Por qué horizonte largo y no corto**. Las cuatro ventanas que dependen de las señales no pesan
+igual:
+
+| Ventana dependiente | Orden | ¿La afecta la purga? |
+|---|---|---|
+| `popularity_window_days` | días a meses | **No.** El puntaje solo mira dentro de la ventana: las señales viejas ya no cuentan hoy. Conservarlas no lo mejora |
+| Retención de la marca de idempotencia | horas a días | **No**, con cualquier horizonte razonable |
+| Reentrega de RabbitMQ | minutos a horas | **No** |
+| Aporte de una señal antigua al filtrado colaborativo (β = 0,3) | **desconocido** | **Sí.** Es la única dimensión donde conservar historial mejora efectivamente el motor |
+
+FR-068b convierte las tres primeras filas en una **validación al arranque** en lugar de una
+suposición: el horizonte debe superar estrictamente toda ventana operativa. Esto evita el modo de
+falla peor, que no es la pérdida de datos sino la **degradación silenciosa** —una popularidad
+calculada sobre una ventana parcialmente vaciada sigue devolviendo números plausibles.
+
+La cuarta fila es empírica y **no se puede responder antes de tener tráfico**. Por eso se decide el
+criterio y no el número: fijar hoy un valor sería disfrazar una conjetura de configuración.
+
+**Corrección de un costo que se había sobreestimado.** En el planteo inicial de las opciones se
+afirmó que esta política «rompe DI-20» y que exigiría materializar la exclusión antes de purgar.
+**Es incorrecto**: por RD-35 y §1.1, las filas de `user_exclusions` con `origin = 'consumo'` ya
+están materializadas desde la ingesta. DI-20 no afirma que la exclusión se almacene, sino que es
+**reconstruible**; es un invariante de verificabilidad. Lo que la purga destruye es el oráculo, no
+el dato:
+
+| | Antes de la purga | Después |
+|---|---|---|
+| El ítem sigue excluido | Sí | **Sí** |
+| Se puede verificar por qué | Sí, contra la señal | **No** |
+
+La consecuencia real: una fila anómala en `user_exclusions` pasado el horizonte es
+**incuestionable** — no hay forma de distinguir un consumo legítimo de un defecto de hace meses.
+`exclusions_orphaned_permanent_total` (FR-068d) mide exactamente ese perímetro, y con esta decisión
+**crece por diseño**.
+
+**Por qué no vive en `engine_config_versions`**. Todo parámetro de esa configuración integra la
+unidad de medida de los derivados versionados (RD-13) y su cambio exige `config_version` nueva más
+recálculo (RD-37, RD-44). Acortar la retención no altera el significado de ningún puntaje ya
+calculado. Ubicarlo ahí particionaría `item_popularity` por un atributo que no participa de su
+cálculo — el defecto inverso al que RD-13 corrigió.
+
+**Asimetría declarada**: el horizonte **se puede acortar, nunca alargar**. Lo purgado no vuelve. Un
+valor conservador preserva la opción de ajustarlo con evidencia; uno agresivo la cierra de forma
+irreversible. Por eso toda reducción debería tratarse como migración con aprobación, no como cambio
+de configuración (§7.10).
+
+**Alternativas descartadas**:
+
+| Alternativa | Por qué se descarta |
+|---|---|
+| **Retención indefinida** | Deja al sistema sin mecanismo de supresión. No resuelve NC-2, lo pospone |
+| **Anonimización** (quitar `user_id`, conservar la fila) | **La peor combinación evaluada**: no libera espacio porque la fila permanece, y destruye lo mismo que el borrado —colaborativo, perfil, verificabilidad de exclusiones, idempotencia—, ya que todo eso depende de la identidad, no del volumen |
+| **Purga selectiva por tipo** (purgar `like`/`dislike`, nunca `consumo`) | Preserva DI-20 intacto, pero acota poco: `consumo` es previsiblemente el tipo más voluminoso. Paga la complejidad de una política por tipo sin obtener el beneficio |
+| **Solo supresión por usuario a pedido** | Atiende la obligación legal sin acotar el crecimiento, y concentra la ruptura de DI-20 en un caso raro. Sigue abierta como NC-10; **es compatible** con esta decisión, no alternativa a ella |
+| **Fijar el número ahora** | El aporte del historial antiguo al colaborativo no es medible sin tráfico |
+
+**Condición de revisión**: cuando exista medición del aporte marginal al filtrado colaborativo
+según antigüedad de la señal, recalibrar `signal_retention_days`. Hasta entonces el valor es
+conservador por construcción. Revisar también si `signals_purge_deferred_total` se mantiene
+positivo: indicaría una fuga en la materialización de exclusiones, aguas arriba de la purga.
+
+**Queda abierto**: el valor concreto (NC-15) y la supresión por usuario (NC-10), que esta decisión
+**no** resuelve.
+
 
 ## 12. Pendientes de clarificación
 
 | ID | Ambigüedad | Por qué no lo asumo | Bloquea |
 |---|---|---|---|
 | **NC-1** | «Módulo de interés» del usuario | Ningún FR lo requiere; las recomendaciones se piden por módulo en el request (FR-006). Agregarlo sería alcance nuevo | No. `users` está completa sin él |
-| **NC-2** | Retención de `user_signals` | Decisión de producto con implicancias de privacidad. Afecta el tamaño de la tabla, la ventana de FR-033a1 y —esto es lo que faltaba— **la reconstruibilidad de `user_exclusions`**: purgar una señal de `consumo` vuelve no reconstruible la exclusión permanente que originó (RD-29). Ya no es solo dimensionamiento: compromete un invariante | No a Fase 1 (DI-20 lo contiene). **Sí antes de producción** |
+| ~~**NC-2**~~ | ~~Retención de `user_signals`~~ | **CERRADO por Q8 (RD-46)**: purga por antigüedad con horizonte largo, parámetro operativo `signal_retention_days`. El análisis previo sigue siendo el fundamento: la reconstruibilidad de `user_exclusions` era el costo real, y se acepta explícitamente —las exclusiones **persisten**, pierden verificabilidad, no vigencia. El valor numérico pasa a **NC-15** | — |
 | **NC-3** | ~~Formato de la edad~~ | ✅ **Cerrado por RD-1**: `birth_date` obligatoria, único formato admitido (CR-1, CR-3) | — |
 | **NC-4** | Umbrales del `age_rating_catalog` (¿ATP/13/16/18?) | El esquema es agnóstico, pero los valores concretos son decisión de producto/legal | No a T003. Sí a T004 |
 | **NC-5** | ¿`region` es dato personal sujeto a minimización? | Misma familia que NC-2. Un dato de ubicación **persistido sin consumo** es el caso más difícil de justificar ante un principio de minimización: no hay finalidad que invocar. No decido esto solo | No a T003. **Sí antes de producción**, y condiciona RD-4 |
 | **NC-6** | Disponibilidad regional de ítems | Fuera de alcance por RD-4 (§2.2): es dato de licenciamiento, conjunto no escalar, con autoridad fuera de este repositorio | No. Entra por `/speckit.clarify` si aparece segmentación regional |
-| **NC-7** | **¿Qué constituye «popularidad»?** | Decisión de producto, no técnica. Ver abajo | No a T003. **Sí a T038** |
+| **NC-7** | ~~¿Qué constituye «popularidad»?~~ | ✅ **Cerrado por Q6 (sesión 2026-09-14)**: límite inferior del intervalo de Wilson, con `popularity_confidence_z` en configuración. Ver RD-44 | — |
 | **NC-8** | ¿El origen provee `item_tags.weight`? | Si lo provee, es dato ajeno con dominio `[0,1]` y la columna se conserva. Si **no** lo provee, no tiene productor ni consumidor —los pesos TF-IDF viven en `item_vectors`— y debe **eliminarse** por la regla de «nada sin consumo». No lo asumo: es una pregunta de contrato, verificable consultando a `api-general` | No a T003 (la columna es nulable). **Sí a T007**: el vectorizador necesita saber si hay ponderación declarada |
 | **NC-9** | ¿Un ítem que permanece sin tags debe seguir siendo candidato? | RD-24 decidió que **sí** (participa por β y popularidad, no por α ni γ), porque «sin metadatos» no equivale a «no recomendable». Pero es una decisión de producto: puede preferirse ocultarlo hasta que tenga metadatos, para no mostrar ítems cuya pertinencia no puede justificarse. Lo dejo observable con `catalog_unvectorized_ratio` (§7.9) y no lo resuelvo solo | No a Fase 1 (RD-24 da un comportamiento definido). Revisable cuando la métrica supere el umbral |
 | **NC-10** | ¿El borrado de un usuario debe suprimir su historial de señales? | El `CASCADE` actual lo supone, y es la única política compatible con una obligación de supresión. Pero si tal obligación no existe, la política correcta sería `RESTRICT` —coherente con la clasificación de la entidad y con RD-31— y el borrado requeriría procedimiento explícito. Es decisión de privacidad, no técnica (RD-30). Misma familia que NC-2 y NC-5 | No a Fase 1. **Sí antes de producción** |
 | **NC-11** | ¿El origen provee un identificador propio de cada interacción? | Si lo provee, es **clave natural estrictamente superior** a `(user_id, item_id, signal_type, occurred_at)`: no depende de la calidad de una marca temporal ajena, y hace innecesarios CR-13 y CR-14. Si no lo provee, la unicidad de RD-28 queda condicionada a que el origen garantice CR-12 y CR-13. Es pregunta de contrato, verificable consultando a `api-general` — la misma forma que NC-8 | No a T003 (la unicidad actual es aplicable). **Sí antes de Fase 2** |
+| **NC-12** | ¿Cuál es el umbral de `sync_volume_delta_ratio` que debe abortar una sincronización? | Propongo 0,9 provisional, pero **depende de la volatilidad real del catálogo**, que hoy se desconoce. Un umbral demasiado estricto aborta sincronizaciones legítimas y congela el catálogo —con la alerta de freshness disparando—; uno demasiado laxo deja pasar respuestas parciales y produce retiros masivos de ítems vigentes. Ambos extremos son peores que no tener la guarda. No lo calibro sin datos (RD-38) | No a T003. **Sí a T029**, que es donde la guarda se implementa |
+| **NC-13** | ¿Los ítems recién ingresados necesitan protección en el respaldo? | Q7 (RD-45) eligió medir **conversión**, que penaliza al ítem nuevo porque acumula consumos antes que likes — un puntaje bajo por **orden temporal de las señales**, no por calidad. Wilson mitiga el caso de poca evidencia, pero **no** el de «mucha exposición, poca conversión todavía». Las correcciones posibles —ventana de gracia, piso artificial, umbral mínimo de $n$— son todas decisiones de producto sobre cuánto favorecer el descubrimiento frente a la calidad medida. No las tomo por cuenta propia | No a Fase 1: el comportamiento está definido. **Revisable** cuando `fallback_new_item_share` sea observable |
+| **NC-14** | ¿Qué valor toma `popularity_confidence_z`? | Q6 lo incorporó como parámetro, pero **no fijó su valor**. Es la posición de producto sobre cuánta evidencia exigir antes de destacar un ítem: `1,96` (95 %) es la convención habitual; valores mayores hacen el respaldo casi estático; menores lo acercan a la proporción cruda que Q6 descartó. El esquema es agnóstico | No a T003. **Sí a T004**, igual que NC-4 |
+| **NC-15** | Valor de `signal_retention_days` | Derivado de Q8, que decidió el criterio y no el número. Depende del aporte marginal del historial antiguo al filtrado colaborativo, **no medible antes de tener tráfico**. Asimetría crítica: el horizonte se puede **acortar pero no alargar**, por lo que el valor inicial debe errar por exceso. No es intercambiable con NC-14: allí el riesgo de un mal valor es un ordenamiento pobre y reversible; acá es **pérdida irreversible de datos** | No a Fase 1. **Sí antes de activar la purga** |
 
 
-#### NC-7 — Definición de popularidad
+#### NC-7 — Definición de popularidad ✅ CERRADO (Q6 → opción D, Wilson)
+
+> El análisis siguiente se conserva porque **documentó por qué las otras tres opciones se descartaron**,
+> y esa justificación sigue siendo el fundamento de RD-44.
 
 `spec.md` no define qué es popularidad; FR-033a1 solo dice que el respaldo se construye por
 popularidad. El modelo implementa hoy **recuento bruto de señales positivas**, que es una decisión
@@ -2921,16 +3956,24 @@ usuario (Q3, FR-022b) porque no expresan preferencia. Pero sí son **evidencia l
 popularidad** —alguien lo vio o lo jugó— y hoy no participan del cálculo. Que se excluyan de una
 dimensión no implica que deban excluirse de la otra; conviene decidirlo explícitamente.
 
-> **No se incorporan `dislike_count` ni `consumo_count` por anticipación.** Serían atributos sin
+> ~~**No se incorporan `dislike_count` ni `consumo_count` por anticipación.**~~ Serían atributos sin
 > consumo, y **la excepción admitida en RD-4 para `region` no aplica acá**: allí la justificación
 > era el costo de modificar el contrato compartido con `api-general`, que exige coordinación entre
 > repositorios y aprobación. Estos son **datos propios**, derivables de `user_signals` —que ya los
 > registra— mediante una migración local de bajo costo. Sin ese costo asimétrico, no hay excepción
 > que invocar y rige la regla general: nada sin consumo entra al modelo.
+>
+> **Superado por Q7 (RD-45), y el razonamiento se confirma en lugar de contradecirse.** Q7 le dio
+> consumidor al denominador, y en ese momento —no antes— el atributo entró al modelo. Pero entró
+> como `engaged_user_count`, **no** como `dislike_count + consumo_count`: la forma que este párrafo
+> anticipaba habría sido la incorrecta, porque suma señales en vez de contar personas. El párrafo
+> acertó al no adelantarse; de haberlo hecho, habría fijado la forma equivocada.
 
 
-Ninguno bloquea T003. NC-2, NC-4 y **NC-5** deberían cerrarse antes de Fase 2.
-**NC-7 bloquea T038** y debería cerrarse antes: implementar el respaldo exige saber qué se ordena.
+Ninguno bloquea T003. ~~NC-2~~ **cerrado por Q8**; NC-4 y **NC-5** deberían cerrarse antes de Fase 2.
+**NC-15 bloquea la activación de la purga**, no su implementación: el batch puede construirse y probarse
+con un valor de entorno de prueba.
+~~**NC-7 bloquea T038**~~ — **cerrado por Q6**.
 
 > **NC-5 tiene prioridad sobre los demás** porque puede revertir RD-4. Es el único pendiente capaz
 > de convertir una decisión aplicada en un cambio a deshacer.
