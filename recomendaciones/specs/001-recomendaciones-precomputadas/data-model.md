@@ -38,10 +38,16 @@ de verdad de un dato ajeno, violando el Principio I.
 | Zona | Entidades | Escritor único | Reconstrucción |
 |---|---|---|---|
 | **Proyección local** (dato ajeno) | `users`, `items`, `tags`, `item_tags` | Data Transformer | Resincronizando desde `api-general` |
-| **Derivados durables** (estado propio) | `item_vectors`, `user_profiles`, `user_exclusions`, **`item_popularity`** | Procesos propios (vectorizador, resolutor, batch de popularidad) | Recomputando desde señales y proyección |
-| **Registro de hechos** | `user_signals`, `sync_runs`, `processed_events` | Ingesta / jobs | **No reconstruible.** Es el historial |
+| **Derivados durables** (estado propio) | `item_vectors`, `user_profiles`, `user_exclusions` ⁽¹⁾, **`item_popularity`**, **`tag_modules`**, **`vocab_versions`**, **`vocab_version_tags`** | Procesos propios (vectorizador, resolutor, batch de popularidad, proceso de vocabulario) | Recomputando desde señales y proyección |
+
+| **Registro de hechos** | `user_signals`, `user_exclusions` ⁽¹⁾, `sync_runs`, `processed_events` | Ingesta / jobs | **No reconstruible.** Es el historial |
 | **Configuración** | `engine_config_versions` | Loader | Desde el repo |
 | **Caché** | Redis (§3) | Worker / batches | Desde Postgres |
+
+⁽¹⁾ **`user_exclusions` es de zona mixta (RD-29)**: sus filas revertibles (`is_permanent = false`)
+son recomputables desde `user_signals`; sus filas permanentes (`is_permanent = true`) **no lo son**
+si la señal de `consumo` que las originó fue purgada por retención. Toda reconstrucción sobre esta
+tabla debe ser **aditiva** (DI-20).
 
 > **Regla de escritor único**: cada fila tiene **un solo** proceso con autoridad para escribirla. La
 > zona determina cuál. Esto no es una convención de código —que se olvida— sino un criterio de
@@ -52,6 +58,17 @@ local) pero lo escribía el batch de popularidad, no el Data Transformer. Dos es
 misma fila, y una proyección que ya no era reconstruible sincronizando —la resincronización no
 reponía ese valor—. La afirmación de desechabilidad de arriba **era falsa** mientras ese atributo
 estuvo ahí. Reubicarlo la restituye.
+
+**RD-14 corrigió una violación idéntica, de mayor gravedad**: `is_shared` vivía en `tags`
+(proyección local) pero era un agregado sobre `item_tags × items.module`, determinable solo con el
+catálogo local completo. Mismos dos síntomas —doble escritor, desechabilidad falsa— y una
+consecuencia peor: sostiene el término γ del score, no el conjunto de respaldo. Reubicado a
+`tag_modules` (§2.12).
+
+> Que el mismo defecto apareciera **dos veces de forma independiente** sugiere que no es un descuido
+> puntual sino el modo de falla natural de este modelo: un derivado que *habla sobre* una entidad
+> proyectada tiende a alojarse en ella. La regla de escritor único y DI-13 existen para detectarlo.
+
 
 
 ---
@@ -187,7 +204,7 @@ de §7.6, y es una defensa débil. Ver RD-4 para la alternativa descartada.
 | Atributo | Tipo | Nulo | **Naturaleza** | Notas |
 |---|---|---|---|---|
 | `id` | UUID | No | **Identidad** | **PK**. Identificador externo |
-| `module` | enum(`peliculas`,`juegos`) | No | **Funcional** | Dimensión obligatoria. Sostiene `tags.is_shared` y con ello la señal cruzada (ver abajo) |
+| `module` | enum(`peliculas`,`juegos`) | No | **Funcional** | Dimensión obligatoria. Sostiene `tag_modules` y con ello la señal cruzada (ver abajo) |
 | `status` | enum(`available`,`retired`) | **No** | **Funcional** | **Default `available`.** Retiro **lógico**, nunca físico (RD-7) |
 | `retired_at` | timestamptz | Sí | **Auditoría (forense)** | Cuándo se retiró. ⛔ No sostiene lógica: el filtro usa `status` |
 | `min_age_ordinal` | smallint | **No** | **Funcional** | **Edad mínima requerida, en escala ordinal**. Valor comparado. Default = máximo de la escala |
@@ -206,8 +223,8 @@ sostener lógica funcional; `age_rating_source` es la **única excepción** docu
 (RD-9), y lo es porque habilita una métrica accionable que ningún otro atributo puede producir.
 
 **Sobre `module` — justificación principal.** No es solo una dimensión de partición del catálogo.
-Un tag es `is_shared` (§2.3) **sí y solo si** aparece en ítems de **ambos** módulos, determinación
-que exige conocer el módulo de cada ítem. Y `is_shared` es lo que habilita la propagación
+Un tag es compartido (§2.12) **sí y solo si** aparece en ítems **vigentes** de **ambos** módulos,
+determinación que exige conocer el módulo de cada ítem. Y eso es lo que habilita la propagación
 cross-module de FR-010a, es decir el término γ del score (`γ·cross_module`, D4). **Sin `module` en
 `items` no hay forma de saber qué tags son compartidos, y sin eso el tercer término del motor no
 existe.** Esa es la justificación más fuerte del atributo, por encima del filtrado por módulo.
@@ -255,27 +272,54 @@ consulta declarada los requiere.
 
 **Propósito**: sostener el espacio vectorial **único** de FR-010d.
 
+**Zona**: **proyección local**. Escritor único: Data Transformer.
+
+> 🔄 **Revisado 2026-09-14 (RD-14..RD-20)**: `is_shared` reubicado a `tag_modules` (§2.12); `id`
+> serial eliminado en favor de clave natural; se agrega `vocab_versions` (§2.13). Ver §12.
+
 **`tags`**
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `id` | serial | No | **PK** |
-| `name` | text | No | **UNIQUE**. Normalizado |
-| `is_shared` | boolean | No | Aparece en ítems de **ambos** módulos. Deriva la propagación cross-module (FR-010a) |
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `name` | text | No | **Identidad** | **PK**. Valor **tal cual llega del origen** (RD-16). `CHECK (name = btrim(name) AND length(name) > 0)` |
+| `synced_at` | timestamptz | No | **Operativo** | Última sincronización |
+
+**Clave natural, sin `id` serial (RD-16).** El nombre **es** la identidad del tag. Un identificador
+autoincremental se renumeraría al truncar y resincronizar, y las dimensiones vectoriales dejarían de
+corresponder a los mismos tags — corrupción silenciosa (RD-16).
+
+**Índices**: PK (`name`). No hay otros: ninguna consulta declarada los requiere.
 
 **`item_tags`**
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `item_id` | UUID | No | **PK compuesta**, FK → `items.id` ON DELETE CASCADE |
-| `tag_id` | integer | No | **PK compuesta**, FK → `tags.id` |
-| `weight` | real | No | Peso del tag en el ítem |
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `item_id` | UUID | No | **Identidad** | **PK compuesta**, FK → `items.id` **ON DELETE CASCADE** |
+| `tag_name` | text | No | **Identidad** | **PK compuesta**, FK → `tags.name` **ON DELETE RESTRICT** (RD-19) |
+| `weight` | real | Sí | **Funcional** | Relevancia declarada **por el origen**. `CHECK (weight >= 0 AND weight <= 1)`. Ver NC-8 |
 
-**Índices**: PK compuesta · `idx_item_tags_tag (tag_id)` para la búsqueda inversa.
+**Índices**:
 
-> **Decisión**: `is_shared` es atributo de `tags`, no tabla aparte. La tabla `shared_tags` de
-> `plan.md` §2 se **consolida acá**: era la misma información con una indirección extra, y un
-> booleano no justifica una tabla. Impacto en T003 (ver §9).
+| Índice | Consulta que sirve |
+|---|---|
+| PK `(item_id, tag_name)` | Tags de un ítem: vectorización (T007) y determinación de `tag_modules` |
+| `idx_item_tags_tag (tag_name)` | Búsqueda inversa: ítems de un tag. Sostiene el recálculo de `tag_modules` (§2.12) ante un retiro |
+
+**Políticas de integridad referencial — ambas deliberadas (RD-19)**:
+
+| FK | Política | Fundamento |
+|---|---|---|
+| → `items.id` | **CASCADE** | La asignación es un hecho *sobre el ítem*. Sin ítem no significa nada, y es reconstruible resincronizando |
+| → `tags.name` | **RESTRICT** | Un tag con asignaciones **no puede borrarse**. Permitir CASCADE haría que eliminar un tag del vocabulario vaciara asignaciones en silencio, cambiando los vectores sin señal. RESTRICT fuerza a que la retirada de un tag sea una operación **explícita** y ordenada (RD-18) |
+
+La asimetría es del mismo tipo que la de `user_signals` (§2.6): ahí la ausencia de cascade protege
+el historial; acá protege la integridad del espacio vectorial.
+
+**Sobre `weight`**: se declara **dato del origen**, no producido localmente — los pesos TF-IDF viven
+en `item_vectors` (§2.4), calculados por el vectorizador. Si el origen **no** lo provee, la columna
+no tiene productor ni consumidor y debe eliminarse; ver **NC-8**. Valores fuera de `[0,1]` se
+rechazan a nivel de esquema, coherente con el criterio ya aplicado a `region` (§7.6).
+
 
 ---
 
@@ -283,19 +327,50 @@ consulta declarada los requiere.
 
 **Propósito**: señal content-based (FR-009) sin recomputar TF-IDF en cada recálculo.
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `item_id` | UUID | No | **PK**, FK → `items.id` ON DELETE CASCADE |
-| `vector` | vector(N) | No | Espacio **compartido** entre módulos (FR-010d) |
-| `vocab_version` | text | **No** | Versión del vocabulario que lo generó (FR-010f) |
-| `computed_at` | timestamptz | No | |
+**Zona**: **datos derivados durables**. Escritor único: el vectorizador (T007/T030).
 
-**Índices**: PK · `idx_item_vectors_vocab (vocab_version)` para la transición de T030 · índice
-vectorial (ivfflat/hnsw) diferido a Fase 3.
+> 🔄 **Revisado 2026-09-14 (RD-21..RD-26)**: la clave incorpora `vocab_version`; la columna deja de
+> declarar dimensionalidad fija. Ver §12.
 
-**Integridad**: `vocab_version` **NOT NULL**. Comparar vectores de versiones distintas es error, no
-resultado silencioso (FR-010f). El esquema no puede impedirlo solo, pero sí garantiza que el dato
-para detectarlo siempre está.
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `item_id` | UUID | No | **Identidad** | **PK compuesta**. FK → `items.id` ON DELETE CASCADE |
+| `vocab_version` | text | No | **Identidad + Integridad** | **PK compuesta.** FK → `vocab_versions.version` **ON DELETE RESTRICT** (RD-23). Es la **unidad de medida** del vector |
+| `vector` | `vector` | No | **Funcional** | **Sin dimensionalidad declarada** (RD-21). La fija `vocab_versions.tag_count`. **L2-normalizado en escritura** (RD-26) |
+| `computed_at` | timestamptz | **No** | **Operativo** | Detecta recálculo parcialmente fallido (RD-25) |
+
+**Clave `(item_id, vocab_version)`** — permite que convivan la versión saliente y la entrante durante
+la transición. Es idéntico al criterio de `item_popularity` (RD-13), y acá es **más necesario**: sin
+convivencia, la transición de FR-010g —«recalcular todos los vectores antes de activar»— es
+irrealizable, porque el recálculo pisaría los vectores vigentes mientras el sistema los usa (RD-22).
+
+**Índices**:
+
+| Índice | Consulta que sirve |
+|---|---|
+| PK `(item_id, vocab_version)` | Vector de un ítem bajo la versión activa |
+| `idx_item_vectors_vocab (vocab_version)` | Progreso y purga de la transición (T030): cuántos vectores existen por versión |
+| Índice vectorial (ivfflat/hnsw), **parcial sobre la versión activa** | Búsqueda por similitud. **Diferido a Fase 3.** Debe ser parcial: un índice vectorial exige dimensionalidad fija, que solo es constante dentro de una versión (RD-21) |
+
+**Integridad**:
+- `vocab_version` **NOT NULL** y **FK real**: un vector que declare una versión inexistente es
+  irrepresentable. Es el mismo criterio que `users.age_config_version` (RD-5), que hasta esta
+  auditoría no tenía correlato acá pese a que el ERD dibujaba la relación (RD-23).
+- `ON DELETE RESTRICT` hacia `vocab_versions`: una versión con vectores no puede borrarse. La purga
+  exige eliminar primero sus vectores — operación explícita, nunca un efecto colateral.
+- **Dimensionalidad**: no la impone el tipo sino DI-17, verificable contra `vocab_versions.tag_count`.
+
+**Ítems sin tags — no tienen fila (RD-24)**. Un ítem sin tags produce el vector nulo, que **no es
+L2-normalizable**: la norma es cero y la división no está definida. Las opciones eran representarlo
+igual (con un vector nulo que hace la similitud coseno indefinida o arbitrariamente cero), o no
+representarlo. Se elige **no representarlo**: la cardinalidad es `1:0..1`, no `1:1`.
+
+**Consecuencia sobre la selección de candidatos**: un ítem sin vector **no participa de la señal
+content-based** (α) ni de la cross-module (γ), pero **sigue siendo candidato** por la señal
+colaborativa (β) y por popularidad. No se lo excluye del catálogo: se lo excluye de dos de los tres
+términos. La alternativa —excluirlo por completo— haría que un ítem recién ingresado y aún sin
+etiquetar fuera invisible, lo que confunde «sin metadatos» con «no recomendable». Ver **NC-9**: la
+métrica `catalog_unvectorized_ratio` observa cuánta cobertura se pierde por esta vía.
 
 ---
 
@@ -303,56 +378,99 @@ para detectarlo siempre está.
 
 **Propósito**: señal content-based por módulo y **señal cross-module** (FR-024).
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `user_id` | UUID | No | **PK compuesta**, FK → `users.id` ON DELETE CASCADE |
-| `scope` | enum(`peliculas`,`juegos`,`general`) | No | **PK compuesta** |
-| `vector` | vector(N) | No | L2-normalizado (FR-022c) |
-| `vocab_version` | text | No | |
-| `signal_count` | integer | No | Señales que lo formaron. Umbral de personalización (D6) |
-| `computed_at` | timestamptz | No | |
+**Zona**: **datos derivados durables**. Escritor único: el proceso de perfiles (T008).
 
-**Integridad**: hasta tres filas por usuario. El perfil `general` **no** es un cuarto vector
-independiente: agrega pesos por tag sobre ambos módulos y es lo que hace posible el cold start
-cruzado (SC-010).
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `user_id` | UUID | No | **Identidad** | **PK compuesta**, FK → `users.id` ON DELETE CASCADE |
+| `scope` | enum(`peliculas`,`juegos`,`general`) | No | **Identidad** | **PK compuesta** |
+| `vocab_version` | text | No | **Identidad + Integridad** | **PK compuesta.** FK → `vocab_versions.version` **ON DELETE RESTRICT** (RD-23) |
+| `vector` | `vector` | No | **Funcional** | **Sin dimensionalidad declarada** (RD-21). **L2-normalizado** (FR-022c) |
+| `signal_count` | integer | No | **Funcional** | Señales que lo formaron. Umbral de personalización (D6) |
+| `computed_at` | timestamptz | **No** | **Operativo** | Detecta recálculo parcialmente fallido (RD-25) |
+
+**Clave `(user_id, scope, vocab_version)`**: mismo fundamento que en `item_vectors`. Un perfil y un
+vector de ítem solo se comparan si coinciden en `vocab_version`, y con la versión en ambas claves
+esa condición se expresa como una **reunión natural**, no como una verificación que alguien puede
+olvidar.
+
+**Índices**:
+
+| Índice | Consulta que sirve |
+|---|---|
+| PK `(user_id, scope, vocab_version)` | Perfil de un usuario bajo la versión activa |
+| `idx_user_profiles_vocab (vocab_version)` | Progreso y purga de la transición (T030) |
+
+**Integridad**: hasta tres filas por usuario **y por versión de vocabulario**. El perfil `general`
+**no** es un cuarto vector independiente: agrega pesos por tag sobre ambos módulos y es lo que hace
+posible el cold start cruzado (SC-010).
 
 > **Decisión**: una sola tabla con `scope` discriminador, no tres tablas. El prototipo usa
 > `UserMovieProfile` / `UserGameProfile` / `UserGeneralTagProfile` como clases distintas; a nivel de
 > datos son la misma estructura y separarlas triplicaría las consultas del recálculo.
 
+**Consumidores de los atributos auditados**:
+
+| Atributo | Consumidores | Qué se rompe ante su ausencia |
+|---|---|---|
+| `vocab_version` (ambas tablas) | Reunión de comparación · transición de T030 · purga · DI-8, DI-17 | **La comparabilidad**, y con ella dos de los tres términos del score |
+| `computed_at` (ambas tablas) | `vector_recompute_lag_seconds` (§7.9) · detección de recálculo parcial | La única señal de que un job reportó éxito habiendo omitido filas (RD-25) |
+
+
 ---
 
 ### 2.6 `user_signals` — registro de interacción
 
+**Zona: Registro de hechos.** No reconstruible: es el historial. Ningún procedimiento de
+reconstrucción puede truncarla (§1.1, RD-27).
+
 **Propósito**: base de perfiles y exclusiones. Materializa DEP-1 y DEP-2.
 
-| Atributo | Tipo | Nulo | Notas |
-|---|---|---|---|
-| `id` | bigserial | No | **PK** |
-| `user_id` | UUID | No | FK → `users.id` ON DELETE CASCADE |
-| `item_id` | UUID | No | FK → `items.id` |
-| `signal_type` | enum(`like`,`dislike`,`consumo`) | **No** | **Sin default.** FR-064 prohíbe inferirlo |
-| `occurred_at` | timestamptz | **No** | Resuelve señales contradictorias (FR-029d) |
-| `source` | enum(`sync`,`feedback_api`) | No | Origen: Data Transformer o endpoint propio |
+| Atributo | Tipo | Nulo | Naturaleza | Notas |
+|---|---|---|---|---|
+| `id` | bigserial | No | Identidad | **PK subrogada** (RD-33) |
+| `user_id` | UUID | No | Integridad | FK → `users.id` **ON DELETE CASCADE** (RD-30) |
+| `item_id` | UUID | No | Integridad | FK → `items.id` **ON DELETE RESTRICT** (RD-31) |
+| `signal_type` | enum(`like`,`dislike`,`consumo`) | **No** | Funcional | **Sin default.** FR-064 prohíbe inferirlo |
+| `occurred_at` | timestamptz | **No** | Funcional | Momento de la interacción **en el origen** (CR-13). Resuelve señales contradictorias (FR-029d) |
+| `received_at` | timestamptz | No | Operativo | `default now()`. Momento de ingreso a este repositorio. Consumidor declarado: `signal_ingest_lag_seconds` (RD-32) |
+| `source` | enum(`sync`,`feedback_api`) | No | Operativo | Origen. Consumidor declarado: segmentación de `signal_ingest_lag_seconds` y de `signal_duplicate_rejections_total` (RD-32) |
 
-**Índices**: PK · `idx_signals_user_item_time (user_id, item_id, occurred_at DESC)` — soporta
-directamente «gana la más reciente» · `idx_signals_user_type (user_id, signal_type)`.
+**Unicidad**: `UNIQUE (user_id, item_id, signal_type, occurred_at)` — clave natural (RD-28).
+
+**Índices**: PK · UNIQUE (user_id, item_id, signal_type, occurred_at) — sirve además la consulta
+«gana la más reciente» de FR-029d, con prefijo `(user_id, item_id)` · **no hay más índices**
+(RD-33).
 
 **Integridad**: `signal_type` y `occurred_at` **NOT NULL sin default**. Un evento sin tipo de señal
 no es representable: va a DLQ (T023). El esquema hace cumplir FR-064.
+
+**Desempate determinista (FR-029d)**: la señal vigente para un par `(user_id, item_id)` se resuelve
+por `ORDER BY occurred_at DESC, id DESC`. La unicidad impide el empate exacto dentro de un mismo
+`signal_type`; el `id` desempata el caso residual de dos tipos distintos con idéntico `occurred_at`
+(§7.10, RD-34).
 
 **Regla de negocio (FR-022b, decisión Q3)**: `like` y `dislike` alimentan el perfil **y** excluyen;
 `consumo` **solo excluye**, no altera el vector. Corrige P1 del prototipo, que le daba peso 0.3.
 
 > ⚠️ **needs-clarification (NC-2)** — **Retención**. La spec no define cuánto se conservan las
-> señales. Afecta el tamaño de la tabla y, por FR-033a1, qué ventana de popularidad es computable.
-> No lo asumo: es decisión de producto con implicancias de privacidad.
+> señales. Además del tamaño de tabla y de la ventana de FR-033a1, **compromete un invariante**:
+> purgar una señal de `consumo` vuelve no reconstruible la exclusión permanente que originó
+> (RD-29). Ver NC-2 ampliado en §12.
+
+> ⚠️ **needs-clarification (NC-10)** — el `CASCADE` desde `users` destruye el historial completo de
+> un usuario. Es coherente solo si responde a una obligación de supresión (RD-30).
 
 ---
 
 ### 2.7 `user_exclusions` — conjunto de exclusión resuelto
 
+**Zona: mixta.** Las filas con `is_permanent = false` son **proyección local** (recomputables desde
+`user_signals`). Las filas con `is_permanent = true` son **registro de hechos**: su origen puede
+haber sido purgado y entonces no son reconstruibles (RD-29, DI-20).
+
 **Propósito**: aplicar el filtro de exclusión en tiempo acotado, sin recorrer el histórico de señales.
+
 
 | Atributo | Tipo | Nulo | Notas |
 |---|---|---|---|
@@ -367,6 +485,11 @@ necesita (FR-033d).
 
 **Integridad**: vista materializada de `user_signals` bajo «gana la más reciente». Su regeneración
 es determinista y auditable: dadas las mismas señales, produce el mismo conjunto.
+
+> ⚠️ **La regeneración es aditiva, no destructiva (DI-20, RD-29)**. Un procedimiento de
+> reconstrucción **no puede truncar** esta tabla: las filas con `is_permanent = true` cuya señal de
+> origen fue purgada no volverían a producirse, y un ítem ya consumido reaparecería como
+> recomendable. Es el mismo fallo que se invocó en RD-7 para rechazar el borrado físico de ítems.
 
 **Por qué es tabla y no cálculo al vuelo**: FR-050 exige rechazar la solicitud si el conjunto no está
 disponible. Un conjunto que se calcula recorriendo señales sería cómputo en el request path (FR-003);
@@ -489,6 +612,120 @@ asume.
 > **No se denormaliza `module` en esta tabla.** Sería duplicar un dato cuya autoridad es del origen,
 > exactamente lo que las restricciones prohíben, y reintroduciría un estado inconsistente posible.
 > El precio es la reunión; el beneficio es que la frontera de zonas queda limpia.
+
+---
+
+### 2.12 `tag_modules` — pertenencia de tag a módulo
+
+**Zona**: **datos derivados durables**. Escritor único: el proceso de vocabulario (T030).
+
+**Propósito**: sostener la propagación cross-module de FR-010a — el término γ del score.
+
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `tag_name` | text | No | **Identidad** | **PK compuesta**. FK → `tags.name` ON DELETE CASCADE |
+| `module` | enum(`peliculas`,`juegos`) | No | **Identidad** | **PK compuesta** |
+| `computed_at` | timestamptz | **No** | **Operativo** | Cuándo se determinó esta pertenencia |
+
+**Relación conjuntista, no escalar (RD-15).** Un tag puede pertenecer a uno o a varios módulos. Es
+exactamente la razón por la que se rechazó modelar la disponibilidad regional de ítems como escalar
+(§2.2, NC-6): un conjunto no se representa con un enumerado.
+
+**`is_shared` es un caso particular, no un atributo**:
+
+```sql
+-- Un tag es compartido si y solo si pertenece a más de un módulo.
+SELECT tag_name FROM tag_modules GROUP BY tag_name HAVING count(*) > 1
+```
+
+Por eso los hallazgos 1 y 2 se resuelven **juntos**: reubicar `is_shared` a su zona correcta produce
+la pertenencia por módulo **sin costo adicional** —es la misma tabla—, y guardar además un booleano
+sería duplicar un hecho derivable, el defecto que RD-2 ya corrigió en `users`.
+
+**Índices**:
+
+| Índice | Consulta que sirve |
+|---|---|
+| PK `(tag_name, module)` | Pertenencia puntual; `GROUP BY` de compartidos |
+| `idx_tag_modules_module (module, tag_name)` | Vocabulario de un módulo: recálculo incremental ante retiro de ítems de ese módulo (§2.12 ciclo de vida) |
+
+**Integridad**: `ON DELETE CASCADE` desde `tags` — es derivado descartable, recomputable desde
+`item_tags × items`. No protege ningún historial.
+
+**Ciclo de vida — y su interacción con el retiro (RD-20)**: se recalcula **solo sobre ítems
+vigentes**:
+
+```sql
+-- Fuente de verdad de la pertenencia
+SELECT DISTINCT it.tag_name, i.module
+FROM item_tags it JOIN items i ON i.id = it.item_id
+WHERE i.status = 'available'
+```
+
+Un tag cuyos únicos ítems en un módulo fueron retirados **deja de pertenecer a ese módulo** y, si
+era compartido, deja de serlo. La consecuencia es real y deseada: la propagación cross-module dejaría
+de sugerir juegos a partir de un tag cuyas películas ya no están disponibles — una recomendación
+cruzada sostenida por contenido inexistente es exactamente lo que RD-7 buscó impedir.
+
+**Momento del recálculo**: tras cada sincronización de catálogo, en el mismo job que vectoriza
+(T030), **después** de aplicar retiros. No es incremental por retiro individual: la ventana de
+desfasaje es la del sync, coherente con el resto de derivados.
+
+---
+
+### 2.13 `vocab_versions` y `vocab_version_tags` — composición del vocabulario
+
+**Zona**: **datos derivados durables**. Escritor único: el proceso de vocabulario (T030).
+
+**Propósito**: dar sustento verificable a FR-010f, que prohíbe comparar vectores de versiones
+distintas pero hoy no permite saber **qué tags** integraban una versión (RD-17).
+
+**`vocab_versions`**
+
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `version` | text | No | **Identidad** | **PK**. **Hash del conjunto ordenado de tags** que la compone. Determinista |
+| `tag_count` | integer | **No** | **Integridad** | Dimensionalidad del espacio vectorial bajo esta versión |
+| `created_at` | timestamptz | No | **Operativo** | |
+| `activated_at` / `deactivated_at` | timestamptz | Sí | **Operativo** | Índice parcial único sobre `deactivated_at IS NULL`: a lo sumo una activa |
+
+**`vocab_version_tags`**
+
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `version` | text | No | **Identidad** | **PK compuesta**. FK → `vocab_versions.version` |
+| `tag_name` | text | No | **Identidad** | **PK compuesta**. **Sin FK a `tags`** (RD-18) |
+| `dimension` | integer | **No** | **Funcional** | Posición en el vector. **UNIQUE por versión** |
+
+**Composición de una versión = su contenido, no su nombre.** `version` es el hash del conjunto
+ordenado de tags. Dos vocabularios con los mismos tags producen el mismo identificador; **cualquier**
+alta, baja o reordenamiento produce uno distinto. Es el mismo mecanismo que `config_version` (§4), y
+resuelve el hallazgo 3: una renumeración por reconstrucción **no puede pasar inadvertida**, porque
+el identificador deja de coincidir y los vectores viejos se vuelven no comparables por construcción.
+
+**`vocab_version_tags` no tiene FK a `tags` — deliberado (RD-18)**: es un **registro histórico
+inmutable**. Debe seguir describiendo la composición de una versión aunque el tag haya desaparecido
+del vocabulario vigente; con FK, borrar un tag corrompería la historia o quedaría bloqueado.
+
+**Comportamiento ante desaparición o cambio de un tag**:
+
+| Evento | Efecto |
+|---|---|
+| Un tag desaparece del origen | El vocabulario vigente cambia ⟹ **nueva versión**. Las anteriores conservan su composición. Los vectores viejos siguen siendo interpretables y **siguen sin ser comparables** con los nuevos (FR-010f) |
+| Se agrega un tag | Ídem: nueva versión, nueva dimensionalidad |
+| Se renombra un tag | Es una baja más un alta: el nombre **es** la identidad (RD-16) |
+| Se intenta borrar un tag con asignaciones | **Bloqueado** por `ON DELETE RESTRICT` (RD-19). La retirada es explícita |
+
+**Verificación de FR-010f / DI-8, hoy sin sustento**: con estas tablas el invariante pasa de
+declarativo a verificable — `vocab_versions.tag_count` debe igualar la dimensionalidad de todo vector
+que declare esa versión, y la comparación entre dos vectores exige igualdad de `version`. Antes no
+había con qué contrastarlo.
+
+**Ciclo de vida**: T030 calcula el vocabulario vigente, computa su hash, y **si difiere del activo**
+crea la versión nueva, asigna dimensiones en orden determinista (lexicográfico por `name`) y
+recalcula todos los vectores **antes** de activarla (FR-010g). Las versiones sin vectores asociados
+se purgan.
+
 
 
 
@@ -749,11 +986,14 @@ erDiagram
     users ||--o{ user_signals    : emite
     users ||--o{ user_exclusions : acumula
     items ||--o{ item_tags       : etiquetado
-    items ||--|| item_vectors    : "1:1"
+    items ||--o| item_vectors    : "1:0..1 por version (RD-24)"
     items ||--o{ user_signals    : recibe
     items ||--o{ user_exclusions : excluido
     tags  ||--o{ item_tags       : asignado
-    engine_config_versions ||--o{ user_profiles : "genera (config_version)"
+    tags  ||--o{ tag_modules     : "pertenece a (1..2)"
+    vocab_versions ||--o{ vocab_version_tags : compone
+    vocab_versions ||--o{ item_vectors : "FK RESTRICT, fija dimensionalidad"
+    vocab_versions ||--o{ user_profiles : "FK RESTRICT, fija dimensionalidad"
     engine_config_versions ||--o{ users : "deriva ordinal etario"
     engine_config_versions ||--o{ items : "deriva ordinal etario"
     items ||--o{ item_popularity : "recuento por ventana"
@@ -786,34 +1026,52 @@ erDiagram
         timestamptz computed_at "NOT NULL"
     }
     tags {
-        int id PK
-        text name UK
-        bool is_shared
+        text name PK "clave natural, sin normalizar"
+        timestamptz synced_at
     }
     item_tags {
-        UUID item_id PK,FK
-        int tag_id PK,FK
-        real weight
+        UUID item_id PK,FK "CASCADE"
+        text tag_name PK,FK "RESTRICT"
+        real weight "nullable, CHECK 0..1"
+    }
+    tag_modules {
+        text tag_name PK,FK "CASCADE"
+        enum module PK "peliculas|juegos"
+        timestamptz computed_at
+    }
+    vocab_versions {
+        text version PK "hash del conjunto de tags"
+        int tag_count "dimensionalidad"
+        timestamptz activated_at
+        timestamptz deactivated_at
+    }
+    vocab_version_tags {
+        text version PK,FK
+        text tag_name PK "sin FK: registro historico"
+        int dimension "UNIQUE por version"
     }
     item_vectors {
-        UUID item_id PK,FK
-        vector vector
-        text vocab_version "NOT NULL"
+        UUID item_id PK,FK "CASCADE"
+        text vocab_version PK,FK "RESTRICT, unidad de medida"
+        vector vector "sin dim declarada, L2-normalizado"
+        timestamptz computed_at "NOT NULL"
     }
     user_profiles {
-        UUID user_id PK,FK
+        UUID user_id PK,FK "CASCADE"
         enum scope PK "peliculas|juegos|general"
-        vector vector "L2-normalizado"
-        text vocab_version
+        text vocab_version PK,FK "RESTRICT"
+        vector vector "sin dim declarada, L2-normalizado"
         int signal_count
+        timestamptz computed_at "NOT NULL"
     }
     user_signals {
-        bigint id PK
-        UUID user_id FK
-        UUID item_id FK
-        enum signal_type "NOT NULL, sin default"
-        timestamptz occurred_at "NOT NULL"
-        enum source
+        bigint id PK "subrogada estable: tabla no reconstruible (RD-33)"
+        UUID user_id FK "CASCADE - privacidad (RD-30)"
+        UUID item_id FK "RESTRICT - protege historial (RD-31)"
+        enum signal_type "NOT NULL, sin default - UK"
+        timestamptz occurred_at "NOT NULL, del origen (CR-12) - UK"
+        timestamptz received_at "local - metrica de lag (RD-32)"
+        enum source "solo observabilidad (RD-32)"
     }
     user_exclusions {
         UUID user_id PK,FK
@@ -839,15 +1097,23 @@ erDiagram
     }
 ```
 
-**Fronteras**:
+**Fronteras** — **reconciliadas con §1.1, que es la tabla normativa** (RD-27):
 
 | Zona | Entidades | Naturaleza |
 |---|---|---|
 | **Ajena** (`api-general`) | identidad, catálogo, actividad | Consumida vía REST. Nunca duplicada como verdad |
-| **Proyección local** | `users`, `items`, `tags`, `item_tags`, `user_signals` | Materialización desechable de datos ajenos |
-| **Derivada durable** | `item_vectors`, `user_profiles`, `user_exclusions` | Propia. Recomputable, pero persistida por costo |
-| **Operativa** | `engine_config_versions`, `sync_runs`, `processed_events` | Propia. `processed_events` **no** es recomputable — es memoria de hechos |
+| **Proyección local** | `users`, `items`, `tags`, `item_tags` | Materialización desechable de datos ajenos |
+| **Derivada durable** | `item_vectors`, `user_profiles`, `user_exclusions` ⁽¹⁾, `item_popularity`, `tag_modules`, `vocab_versions`, `vocab_version_tags` | Propia. Recomputable, pero persistida por costo |
+| **Registro de hechos** | `user_signals`, `user_exclusions` ⁽¹⁾, `sync_runs`, `processed_events` | Propia. **No recomputable** — es memoria de hechos |
+| **Configuración** | `engine_config_versions` | Versionada en el repo, registrada acá |
 | **Caché** | Todo Redis | Descartable |
+
+> ⚠️ **Corrección (RD-27)**: esta tabla ubicaba `user_signals` en proyección local, contradiciendo a
+> §1.1. La correcta es **registro de hechos**: las señales no se materializan desde `api-general`
+> —el endpoint propio de feedback también las produce (`source = 'feedback_api'`)— y **no son
+> reconstruibles resincronizando**. Tratarlas como proyección desechable habría autorizado a
+> truncarlas en una reconstrucción, destruyendo el historial que DI-11 protege. La contradicción era
+> peligrosa, no cosmética.
 
 > `sync_runs` y `processed_events` no tienen FK: son bitácoras, no participan del grafo relacional.
 
@@ -870,12 +1136,24 @@ erDiagram
 | **DI-5** | La clave de recomendación distingue siempre el módulo | Test unitario del constructor de claves: no existe forma de generar una sin `module` | §3.1 |
 | **DI-6** | El mismo `event_id` no se procesa dos veces | PK sobre `processed_events.event_id`. Test: 10 inserciones → 1 fila, 1 recálculo | FR-011 |
 | **DI-7** | A lo sumo una configuración activa | Índice parcial único sobre `deactivated_at IS NULL` | FR-025 |
-| **DI-8** | Ningún vector se compara con otro de distinta `vocab_version` | `vocab_version NOT NULL` + error explícito al comparar | FR-010f |
+| **DI-8** | Ningún vector se compara con otro de distinta `vocab_version` | `vocab_version NOT NULL` + error explícito al comparar. **Verificable desde RD-17**: `vocab_versions.tag_count` debe igualar la dimensionalidad de todo vector que declare esa versión | FR-010f |
+
 | **DI-9** | Edad y exclusión se resuelven **solo con datos locales** | Test: el request path no emite ninguna llamada a `api-general` | FR-003, INV-1 |
 | **DI-10** | Ningún ítem `retired` se selecciona, rankea ni sirve | Test de invariante (T017): retirar un ítem presente en `reco:*` y en `fallback:*` → la lectura siguiente no lo contiene. Cubre los tres puntos de §4.4 | RD-7, FR nuevo |
 | **DI-11** | El retiro de un ítem **no destruye** señales históricas | Test: retirar un ítem con señales → `user_signals` conserva las filas y los perfiles no cambian. El retiro es lógico | RD-7 |
 | **DI-12** | El respaldo **nunca mezcla** recuentos de ventanas distintas | Test: poblar `item_popularity` con dos `config_version` → el batch usa solo la activa. La PK compuesta hace la mezcla detectable, y el `WHERE config_version = :activa` la hace imposible | RD-13 |
-| **DI-13** | Cada fila tiene un **único proceso escritor**, determinado por su zona (§1.1) | Revisión + test: el Data Transformer no escribe `item_popularity`; el batch de popularidad no escribe `items`. Verificable por los módulos que importan cada repositorio | RD-12 |
+| **DI-13** | Cada fila tiene un **único proceso escritor**, determinado por su zona (§1.1) | Revisión + test: el Data Transformer no escribe `item_popularity`, `tag_modules` ni `vocab_*`; los procesos derivados no escriben `items` ni `tags`. Verificable por los módulos que importa cada repositorio | RD-12, RD-14 |
+| **DI-14** | `vocab_version` es **función del contenido** del vocabulario | Test: reconstruir la proyección desde cero con los mismos tags → mismo identificador. Alterar un tag → identificador distinto. Es lo que impide la corrupción silenciosa por renumeración (RD-16, RD-17) | FR-010f |
+| **DI-15** | `tag_modules` refleja **solo ítems vigentes** | Test: retirar el último ítem de un módulo para un tag → el tag deja de pertenecer a ese módulo tras el recálculo, y deja de propagar cross-module | RD-20 |
+| **DI-16** | Un tag con asignaciones **no puede borrarse** | `ON DELETE RESTRICT`. Test: intentar borrar → la base rechaza. Impide vaciar asignaciones y alterar vectores en silencio | RD-19 |
+| **DI-17** | La dimensionalidad de todo vector **iguala** el `tag_count` de la versión que declara | Test de propiedad sobre ambas tablas vectoriales. Es lo que hace verificable a DI-8: sin él, la dimensionalidad no estaba garantizada por nada tras eliminar `vector(N)` | RD-21 |
+| **DI-18** | Todo vector referencia una versión de vocabulario **existente** | FK real con RESTRICT. Test: insertar con versión inexistente → la base rechaza. Antes era representable (RD-23) | FR-010f |
+| **DI-19** | Todo vector persistido está **L2-normalizado** | Test de propiedad: norma euclídea = 1 ± ε, en ambas tablas. Sin esto, la similitud coseno exigiría normalizar al comparar (RD-26) | FR-022c |
+| **DI-20** | Una exclusión permanente **nunca desaparece** por purga de señales ni por reconstrucción | Test: crear exclusión por `consumo` → purgar la señal → reconstruir derivados → la exclusión sigue presente. La reconstrucción es aditiva sobre `user_exclusions` (RD-29) | FR-029c |
+| **DI-21** | Una señal idéntica reentregada **no produce una segunda fila** | UNIQUE `(user_id, item_id, signal_type, occurred_at)`. Test: insertar 10 veces la misma señal → 1 fila, y `item_popularity` no varía (RD-28) | FR-011 |
+| **DI-22** | La resolución de la señal vigente es **determinista** ante empate temporal | Test: dos señales de tipos distintos con idéntico `occurred_at` → la resolución elige siempre la misma, en 100 ejecuciones. `ORDER BY occurred_at DESC, id DESC` (RD-34) | FR-029d |
+
+
 
 **DI-1, DI-2 y DI-7 se cumplen en el esquema**, no en el código. Es la diferencia entre un invariante
 que se puede violar por olvido y uno que la base rechaza.
@@ -1104,6 +1382,8 @@ cuesta credibilidad y puede tener consecuencias contractuales del lado del catá
 | `catalog_popularity_last_success_timestamp` | **> 26 h** | **Alerta.** El respaldo sirve un ranking congelado (RD-11). Degradación silenciosa de la calidad del `fallback` | Guardia de plataforma |
 | `catalog_unrated_ratio` = `age_rating_source='unknown_defaulted'` / total vigentes | **> 5 %** | **Alerta.** Esa fracción del catálogo es **inalcanzable para todo usuario** por el fail-closed etario. Escalar al proveedor del catálogo para que declare las clasificaciones faltantes (RD-9) | Dueño de producto |
 | `catalog_retired_total` | Sin umbral | **Ninguna.** Panel: dimensiona el catálogo vigente vs. histórico | — |
+| `projection_field_anomalies_total{field="tag_name", reason="collision"\|"empty"\|"weight_out_of_range"}` | **> 0** | **Alerta.** El origen emite tags que colisionan o valores fuera de dominio. Escalar al proveedor (RD-16) | Guardia de plataforma |
+
 
 **`catalog_unrated_ratio` es la única métrica de auditoría accionable del modelo**, y por eso
 `age_rating_source` es la única excepción a la prohibición forense. La diferencia con
@@ -1111,6 +1391,112 @@ cuesta credibilidad y puede tener consecuencias contractuales del lado del catá
 operativa; acá permite formular «¿qué porcentaje de mi catálogo nadie puede ver?», cuya respuesta
 tiene un dueño y una acción. La degradación que mide es **silenciosa por naturaleza**: un ítem sin
 clasificar no produce error, simplemente nunca aparece.
+
+### 7.8 Ingesta de tags
+
+**No se normaliza (RD-16).** El nombre se persiste **tal cual llega del origen**. Normalizar sería
+una transformación local sobre dato ajeno, prohibida por §1, y genera un modo de falla concreto:
+dos valores distintos en origen que colapsen al mismo valor local producen una violación de unicidad
+durante el sync. La única validación es **estructural**, no semántica: `btrim` no vacío, verificado
+por `CHECK`. Rechazar un valor mal formado no es editarlo.
+
+**Política ante colisión de unicidad**:
+
+| Situación | Comportamiento |
+|---|---|
+| Dos tags del origen con el mismo `name` | **Se unifican** en una sola fila. No es una colisión real: el origen emitió el mismo nombre dos veces, y el nombre es la identidad (RD-16) |
+| Tag con nombre vacío o solo espacios | **Se descarta la asignación**, se registra en `projection_field_anomalies_total{reason="empty"}`. **No aborta el sync**: un tag inválido degrada la vectorización de un ítem, no compromete un invariante |
+| `weight` fuera de `[0,1]` | **Se persiste la asignación con `weight = NULL`**, se registra `reason="weight_out_of_range"`. El vectorizador trata `NULL` como ausencia de ponderación declarada |
+
+**Por qué no aborta**: contrasta deliberadamente con CR-9 (§7.7), donde un listado incompleto **sí**
+aborta el sync. La diferencia es la consecuencia: allí una respuesta parcial retiraría masivamente
+ítems vigentes —daño amplio e irreversible en el ciclo—; acá un tag inválido degrada la calidad
+vectorial de un ítem. Abortar el sync completo por un tag mal formado sería desproporcionado.
+
+**Métrica**: `projection_field_anomalies_total{field="tag_name"}` — misma familia que la de `region`
+(§7.6), **no** `contract_violations_total`. Coherente con la distinción ya establecida: son anomalías
+de calidad de proyección, no incumplimientos que dejen usuarios fuera del servicio. Umbral > 0 con
+alerta, porque a diferencia de `region` acá sí hay consumo: los tags alimentan el espacio vectorial.
+
+### 7.9 Vectores: retiro, transición y observabilidad
+
+**Un ítem retirado conserva su vector (RD-25).** No se borra:
+
+- **Reingreso barato**: si el ítem vuelve al catálogo, su vector ya está — sin recálculo, y con la
+  misma versión de vocabulario si esta no cambió.
+- El costo es almacenamiento de vectores que no se consultan. Los ítems retirados no se seleccionan
+  como candidatos (§4.4), así que su vector simplemente no participa.
+- **`ON DELETE CASCADE` hacia `items` conserva efecto**: el retiro lógico eliminó el borrado *por
+  lógica de negocio*, no el borrado físico en general. Truncar y resincronizar la proyección
+  —operación que §1 declara segura— sigue disparando el cascade, y es correcto que lo haga: los
+  vectores son derivados recomputables.
+
+**Los ítems retirados NO participan del cálculo de la ponderación global (RD-25).** La ponderación
+inversa de frecuencia documental es **propiedad del corpus**: incluir o excluir a los retirados
+produce ponderaciones distintas **para los ítems vigentes**. Se calcula solo sobre vigentes, por
+coherencia con RD-20 —que ya excluyó a los retirados de `tag_modules`— y porque el corpus relevante
+es el recomendable.
+
+> **Consecuencia declarada**: retirar un ítem cambia la ponderación y por tanto **los vectores de
+> todos los demás**. No se recalcula por cada retiro: se recalcula en la ventana de vocabulario
+> (T030), junto con `tag_modules`. Entre un retiro y el siguiente recálculo, los vectores vigentes
+> reflejan un corpus levemente desactualizado. Es degradación de calidad, no de seguridad, y la
+> ventana es la del sync — el mismo criterio que RD-20.
+
+**Métricas**:
+
+| Métrica | Umbral | Acción que dispara | Responsable |
+|---|---|---|---|
+| `vector_recompute_lag_seconds` = `now() − min(computed_at)` **sobre la versión activa** | **> 26 h** | **Alerta.** Hay vectores de la versión activa sin recalcular: el job reportó éxito habiendo omitido filas. Re-ejecutar e investigar | Guardia de plataforma |
+| `vocab_transition_progress` = vectores en versión entrante / total esperado | **Estancado > 2 h** | **Alerta.** Transición de vocabulario detenida a mitad de camino (RD-22) | Guardia de plataforma |
+| `catalog_unvectorized_ratio` = ítems vigentes sin vector / vigentes | **> 10 %** | **Alerta.** Esa fracción no participa de las señales α ni γ (RD-24). Escalar al proveedor: son ítems sin tags | Dueño de producto |
+
+**Sobre `vector_recompute_lag_seconds`** — es la métrica que justifica conservar `computed_at`, y su
+definición evita el error que RD-6 encontró en la métrica etaria: se calcula **solo sobre la versión
+activa**, no sobre toda la tabla. Los vectores de versiones anteriores tienen `computed_at` antiguo
+por definición y no indican falla alguna; incluirlos la dejaría en rojo permanente. Es exactamente el
+defecto que ya corregí una vez, y acá está explícitamente evitado.
+
+### 7.10 Señales: ingesta, desempate y purga
+
+**Ingesta idempotente en dos niveles**. Son mecanismos distintos y ninguno sustituye al otro:
+
+| Nivel | Mecanismo | Qué protege | Qué **no** protege |
+|---|---|---|---|
+| Evento | PK de `processed_events` | Que un evento reentregado no **recompute** dos veces | Que la señal no se **inserte** dos veces si llega por otro camino |
+| Señal | UNIQUE `(user_id, item_id, signal_type, occurred_at)` | Que la señal no se duplique, venga de donde venga | Duplicados con `occurred_at` distinto (ver CR-13) |
+
+La inserción usa `ON CONFLICT DO NOTHING` e incrementa
+`signal_duplicate_rejections_total{source}` cuando hay conflicto. Un rechazo **no es un error**: es
+la reentrega funcionando.
+
+**Por qué la clave natural admite la repetición legítima**: un usuario puede consumir el mismo ítem
+dos veces, y esas son dos señales reales. La clave las distingue por `occurred_at`. Lo que hace
+irrepresentable es la **misma** señal registrada dos veces, que es el caso que contaminaba
+`item_popularity`.
+
+**Desempate (FR-029d)**: `ORDER BY occurred_at DESC, id DESC`. El `id` es estable porque esta tabla
+**no se reconstruye** (§1.1) — por eso el fundamento de RD-16, que rechazó la clave subrogada en
+`tags` por inestabilidad ante resincronización, **no aplica acá** (RD-33).
+
+**Purga por retención (NC-2)** — procedimiento obligado por DI-20:
+
+1. Antes de purgar, verificar que toda señal de `consumo` a purgar **ya tenga** su fila en
+   `user_exclusions` con `is_permanent = true`.
+2. Purgar las señales.
+3. **Nunca** truncar `user_exclusions`. La reconstrucción de derivados es aditiva sobre ella.
+
+**Métricas**:
+
+| Métrica | Umbral | Acción que dispara | Responsable |
+|---|---|---|---|
+| `signal_ingest_lag_seconds{source}` = `received_at − occurred_at`, p95 | **> 1 h** en `feedback_api` | **Alerta.** El endpoint propio no tiene sync de por medio: un desfasaje alto es reloj del origen desviado o cola acumulada. Segmentar por `source` es lo que permite distinguir uno de otro | Guardia de plataforma |
+| `signal_duplicate_rejections_total{source}` | Salto sostenido | **Panel, sin alerta.** Los rechazos son normales; un salto brusco indica reentrega masiva o bucle del productor | Guardia de plataforma |
+| `exclusions_orphaned_permanent_total` = exclusiones permanentes sin señal de origen viva | — | **Panel.** No es falla: es la medida de cuánto de `user_exclusions` ya **no** es reconstruible. Si crece, DI-20 pasó de precaución a dependencia real | Guardia de plataforma |
+
+> `signal_ingest_lag_seconds` se define sobre la **ventana reciente de ingesta**, no sobre toda la
+> tabla, por el mismo motivo que RD-6 y RD-25: una métrica calculada sobre el histórico completo
+> estaría en rojo por construcción.
 
 ---
 
@@ -1270,6 +1656,59 @@ la descripción de componentes.
 | Sin cómputo en el request path | ✅ | La reunión ocurre en el batch (T038) |
 | Desempate determinista | ✅ | RD-10 intacto, con la referencia actualizada |
 
+---
+
+### Impacto de la auditoría de vocabulario (RD-14..RD-20, NC-8)
+
+| Tarea | Acción | Detalle |
+|---|---|---|
+| **T003** | ⚠️ **Modificar** | `tags` con PK natural (`name`), sin `id` ni `is_shared`. `item_tags` con `tag_name` y **ambas políticas de FK declaradas**. **Tres tablas nuevas**: `tag_modules`, `vocab_versions`, `vocab_version_tags`. Pasa a **15 tablas** |
+| **T007** | ⚠️ Modificar | Asignación determinista de dimensiones (orden lexicográfico); `weight` nulable (NC-8) |
+| **T030** | ⚠️ **Modificar** | El job de vocabulario pasa a: calcular `tag_modules` **solo sobre vigentes** (RD-20), computar el hash del vocabulario, crear versión si difiere, recalcular vectores **antes** de activar |
+| **T012** | ⚠️ Modificar | La propagación cross-module consulta `tag_modules`, no `tags.is_shared` |
+| **T017** | ⚠️ Modificar | Añadir DI-14, DI-15, DI-16; DI-8 pasa a ser **verificable** |
+| **T029** | ⚠️ Modificar | Tags sin normalizar; política de anomalías (§7.8); no escribe `tag_modules` ni `vocab_*` (DI-13) |
+| **T031** | ✏️ Precisar | `projection_field_anomalies_total{field="tag_name"}` |
+| **T042** | ✏️ Precisar | Alerta sobre esa métrica, umbral > 0 |
+| **T047** | ⚠️ Modificar | Documentar CR-10 y CR-11 |
+| **T022** | ⚠️ **Modificar** | El runbook de reconstrucción debe reflejar que truncar y resincronizar `tags` **cambia el `vocab_version`** y obliga a recalcular vectores. Antes el procedimiento era silenciosamente incorrecto |
+
+**Sobre `spec.md`**:
+
+| FR | Acción | Detalle |
+|---|---|---|
+| **FR-010a** | ⚠️ **Modificar** | La propagación cross-module opera sobre tags compartidos **entre ítems vigentes**. Es cambio de comportamiento observable (RD-20) |
+| **FR-010f** | ✏️ Precisar | `vocab_version` es función del contenido del vocabulario (DI-14) |
+| **FR-010g** | ✏️ Precisar | Los vectores se recalculan antes de activar una versión nueva; el disparador es el cambio de hash |
+| **DEP** | ➕ Crear | **DEP-8**: estabilidad y unicidad de nombres de tag (CR-10, CR-11) |
+
+> **FR-010a requiere aprobación**: que un tag deje de propagar cuando sus ítems se retiran es una
+> decisión de producto defendible pero no obvia. Mismo tratamiento que FR-072..FR-075.
+
+**Sobre `plan.md`**: la tabla `shared_tags` de §2 queda definitivamente resuelta — **no** como
+`tags.is_shared` (consolidación que RD-14 revierte) sino como `tag_modules`, que es la forma correcta
+de aquella intuición original. §2 pasa a 15 tablas.
+
+**Issues**: **#3, #7, #12, #17, #22, #29, #30, #31, #42, #47** a modificar. Ninguno nuevo; ninguno se
+cierra.
+
+---
+
+### Verificación de coherencia de la auditoría de vocabulario
+
+| Criterio | ¿Se respeta? | Cómo |
+|---|---|---|
+| RD-12 (reubicación de derivado) | ✅ Sin divergencia | RD-14 aplica idéntico diagnóstico, criterio y razonamiento |
+| «Nada sin consumo» | ✅ | RD-15 no agrega atributo: la tabla existe por RD-14, y la pertenencia por módulo sale **sin costo adicional**. Se aplica la cláusula de excepción prevista |
+| Rechazo de modelización escalar de un conjunto (NC-6) | ✅ | `tag_modules` es relación, no enumerado |
+| RD-5/RD-13 (versión como unidad de medida) | ✅ | RD-17 aplica el mismo argumento a `vocab_version` |
+| RD-2 (no duplicar hechos derivables) | ✅ | No se conserva `is_shared` junto a `tag_modules` |
+| Zonas verdaderas para toda entidad | ✅ | §1.1 revisada; las tres tablas nuevas son derivados durables |
+| Sin cómputo en el request path | ✅ | Todo ocurre en T030, batch de vocabulario |
+| Ningún índice sin consulta declarada | ✅ | Los dos de `tag_modules` y el de `item_tags` declaran la suya. `tags` **no** tiene índices más allá de la PK |
+| No debilitar invariantes | ✅ | DI-8 se **fortalece**: pasa de declarativo a verificable |
+
+
 **Impacto de `region` (RD-4) sobre el backlog: mínimo y sin funcionalidad.**
 
 | Tarea | Acción | Detalle |
@@ -1301,6 +1740,111 @@ ni criterio de aceptación funcional. Es una columna, un mapeo y una métrica.
 > ⚠️ La numeración issue↔tarea (`TXXX`→`#XXX`) se rompe con T051, porque #51–#60 ya son épicas. El
 > issue nuevo tomará #61. Conviene anotarlo en `tasks.md` para no reintroducir la suposición.
 
+### 9.5 Impactos de la auditoría de entidades vectoriales (RD-21..RD-27)
+
+**`spec.md`** — dos precisiones y un comportamiento nuevo:
+
+| FR | Acción | Detalle |
+|---|---|---|
+| **FR-010f** | ✏️ Precisar | Debe decir que los vectores de una versión **conviven** con los de la anterior hasta la activación, y que la activación es un `UPDATE` atómico sobre `vocab_versions`. Hoy la redacción es compatible con recálculo destructivo |
+| **FR-010g** | ✏️ Precisar | «Recalcular todos antes de activar» era irrealizable bajo el esquema anterior (RD-21, RD-22). Con la convivencia pasa a ser verificable: agregar el criterio de que la versión entrante debe estar **completa** antes de activarse |
+| **FR-072** (nuevo) | ➕ Crear | Un ítem sin tags **no tiene vector** y por lo tanto no participa de las dimensiones de contenido ni cruzada, pero **permanece como candidato** por señal colaborativa y popularidad. Es comportamiento observable —cambia qué se recomienda— y hoy no está especificado. Sujeto a NC-9 |
+
+> FR-072 requiere aprobación por `/speckit.clarify` junto con las FR de ciclo de vida ya propuestas.
+> No lo incorporo por decisión propia.
+
+**`plan.md`** — D-nuevo: la dimensionalidad no se declara en el esquema; el índice vectorial de Fase
+3 es **parcial sobre la versión activa** y se recrea en cada transición. Es una restricción de diseño
+con costo operativo, no un detalle de implementación.
+
+**`tasks.md`**:
+
+| Tarea | Acción | Detalle |
+|---|---|---|
+| **T003** | ✏️ Precisar | PK compuestas; `vector` sin dimensionalidad; FK `RESTRICT` hacia `vocab_versions` en ambas tablas |
+| **T007** | ✏️ Precisar | Normalizar L2 al escribir; **omitir** ítems sin tags (no escribir fila nula); excluir retirados de la ponderación del corpus |
+| **T008** | ✏️ Precisar | Normalizar L2; escribir con la versión de vocabulario en la clave |
+| **T017** | ✏️ Precisar | Cubrir DI-17, DI-18 y DI-19 |
+| **T030** | ✏️ Precisar | Transición con convivencia: escribir versión entrante completa → activar → purgar saliente en ese orden |
+| **T031** | ✏️ Precisar | Exponer `vector_recompute_lag_seconds` (**solo versión activa**), `vocab_transition_progress` y `catalog_unvectorized_ratio` |
+| **T039** | ✏️ Precisar | Índice vectorial **parcial** sobre la versión activa; procedimiento de recreación en transición |
+| **T042** | ✏️ Precisar | Alertas y umbrales de las tres métricas (§7.9) |
+| **T022** | ✏️ Precisar | Runbook: recuperación de transición fallida a mitad |
+
+**Ninguna tarea nueva por el modelo de datos.** Si FR-072 se aprueba, sí habrá test de comportamiento
+nuevo asociado a T007.
+
+**Issues**: modificar **#3, #7, #8, #17, #30, #39** (criterios de aceptación afectados); precisar
+**#22, #31, #42**. Ninguno se cierra.
+
+---
+
+### 9.6 Verificación de coherencia solicitada
+
+| Verificación | Resultado |
+|---|---|
+| ¿La clave es coherente con RD-13 (popularidad)? | **Ahora sí.** Antes divergía sin justificación. Criterio unificado en RD-22 |
+| ¿La integridad referencial es coherente con RD-5? | **Sí.** Mismo defecto (referencia huérfana), misma solución. RD-23 |
+| ¿La decisión sobre `computed_at` es coherente con los criterios de atributos sin consumo? | **Sí**, y se explicita el contraste con RD-6 y RD-11 en la tabla de RD-25. El precedente aplicable es RD-13 |
+| ¿La clasificación por zonas es verdadera para todas las entidades? | **Sí**, tras RD-27. Se revisaron las 15 tablas; se corrigió `user_signals` y se eliminó una relación espuria del ERD |
+| ¿Se introdujo cómputo en el camino de la solicitud? | **No.** Todo lo agregado ocurre en escritura (normalización) o en batch (recálculo, transición) |
+| ¿Se declaró algún índice sin consulta que lo justifique? | **No.** El único índice discutido —el vectorial de Fase 3— ya tenía consulta declarada; lo que cambió es que debe ser parcial |
+
+---
+
+### 9.7 Impactos de la auditoría de `user_signals` (RD-28..RD-34)
+
+**`spec.md`**:
+
+| FR | Acción | Detalle |
+|---|---|---|
+| **FR-011** | ✏️ Precisar | Distinguir los **dos** niveles de idempotencia (evento y señal). Hoy la redacción cubre solo el primero, y eso ocultaba el hallazgo 1 |
+| **FR-029d** | ✏️ Precisar | Declarar el criterio de desempate ante `occurred_at` idéntico |
+| **FR-029c** | ✏️ Precisar | La permanencia de una exclusión de `consumo` es **independiente de la retención de la señal** |
+| **FR-068** | ⚠️ Modificar | La purga debe verificar exclusiones permanentes materializadas antes de borrar señales (§7.10) |
+| **FR-073** (nuevo) | ➕ Crear | Una reconstrucción de derivados **no puede truncar** `user_exclusions`. Es comportamiento observable y hoy no está especificado |
+
+> FR-073 y la modificación de FR-068 requieren aprobación por `/speckit.clarify`. No las incorporo
+> por decisión propia.
+
+**`plan.md`** — actualizar la tabla de zonas de §2 con la zona mixta de `user_exclusions` y la
+propiedad de reconstrucción aditiva. La afirmación actual de que los derivados durables son
+recomputables **es falsa** tal como está escrita.
+
+**`tasks.md`**:
+
+| Tarea | Acción | Detalle |
+|---|---|---|
+| **T003** | ⚠️ Modificar | UNIQUE `(user_id, item_id, signal_type, occurred_at)`; `received_at`; FK `RESTRICT` a `items` y `CASCADE` a `users` explícitos; **eliminar** `idx_signals_user_type` |
+| **T024** | ⚠️ Modificar | Inserción con `ON CONFLICT DO NOTHING` + contador de rechazos por `source` |
+| **T029** | ✏️ Precisar | Mapear `occurred_at` **del origen**; rechazar a DLQ si no viene (CR-12) |
+| **T009** | ⚠️ Modificar | Resolutor de exclusiones: escritura **aditiva**, nunca `TRUNCATE`; desempate `occurred_at DESC, id DESC` |
+| **T017** | ✏️ Precisar | Cubrir DI-20, DI-21 y DI-22 |
+| **T031** | ✏️ Precisar | Exponer `signal_ingest_lag_seconds{source}`, `signal_duplicate_rejections_total{source}`, `exclusions_orphaned_permanent_total` |
+| **T042** | ✏️ Precisar | Umbral y alerta de `signal_ingest_lag_seconds` |
+| **T022** | ⚠️ Modificar | Runbook: el procedimiento de reconstrucción debe **prohibir explícitamente** truncar `user_exclusions`. Es el punto donde el fallo de RD-29 se materializaría |
+| **T047** | ✏️ Precisar | Documentar CR-12, CR-13 y CR-14 |
+| **DEP** | ➕ Crear | **DEP-9**: procedencia y estabilidad de `occurred_at` |
+
+**Ninguna tarea nueva.** Todas las resoluciones son restricciones de esquema, cambios en el modo de
+escritura de tareas existentes, o métricas sobre tareas de observabilidad ya previstas.
+
+**Issues**: modificar **#3, #9, #22, #24, #68-equivalente**; precisar **#17, #29, #31, #42, #47**.
+Ninguno se cierra.
+
+### 9.8 Verificación de coherencia — auditoría de señales
+
+| Verificación | Resultado |
+|---|---|
+| ¿Coherente con el criterio de atributos sin consumo? | **Sí.** `source` se conserva por RD-9 (métrica accionable, segmentación por origen), no por RD-6. `received_at` **entra con su consumidor**, no por anticipación. Y hereda de RD-6 la prohibición de sostener lógica |
+| ¿Coherente con las políticas de integridad ya auditadas? | **Sí.** RD-31 aplica literalmente el tratamiento de RD-19: una omisión equivalente ya se había determinado que era olvido, no decisión tácita. La asimetría `RESTRICT`/`CASCADE` es deliberada y está fundada en la distinta naturaleza de cada referencia |
+| ¿La clasificación por zonas y su reconstruibilidad siguen siendo verdaderas? | **Ahora sí.** Antes eran **falsas**: §1.1 afirmaba que los derivados durables son recomputables desde señales, y eso no vale para las exclusiones permanentes bajo retención. Corregido con zona mixta y DI-20 |
+| ¿Se introdujo cómputo en el camino de la petición? | **No.** La unicidad actúa en escritura; las métricas son agregados de observabilidad; el filtro de exclusión sigue siendo una consulta de pertenencia sobre la PK compuesta. **Se descartó explícitamente** la alternativa de tabla separada por exigir una segunda consulta ahí (RD-29) |
+| ¿Algún índice sin consulta declarada? | **No**, y se **eliminó uno** que la tenía ausente (`idx_signals_user_type`, RD-33). El índice restante es la propia restricción UNIQUE, que sirve «gana la más reciente» por prefijo `(user_id, item_id)` |
+| ¿Se debilitó DI-11? | **No.** DI-11 protege el historial frente al **retiro de ítems**; RD-31 lo refuerza haciendo explícito el `RESTRICT` del que dependía sin declararlo |
+
+
+
 ---
 
 ## 10. Contrato requerido a `api-general`
@@ -1318,6 +1862,18 @@ Este repositorio tiene **prioridad de definición** sobre el modelo de datos; `a
 | **CR-7** | El catálogo expone el **estado de disponibilidad** del ítem, y comunica el retiro de forma explícita | Sin él, el retiro solo se detecta por desaparición (CR-8), con el rezago del sync completo |
 | **CR-8** | Un ítem que **desaparece** del catálogo se interpreta como retirado | Si la desaparición fuera un defecto de paginación o un error transitorio del origen, se retirarían ítems vigentes. Mitigación: CR-9 |
 | **CR-9** | La respuesta del catálogo permite distinguir un **listado completo** de uno parcial o fallido | **Crítico.** Sin esto, una respuesta truncada retiraría masivamente ítems vigentes. La sincronización **MUST** abortar sin marcar retiros si no puede confirmar completitud |
+| **CR-10** | Los nombres de tag son **estables e idénticos entre sincronizaciones**: un mismo concepto conserva su nombre exacto | El nombre **es** la identidad (RD-16). Un cambio de nombre es una baja más un alta ⟹ nueva versión de vocabulario ⟹ recálculo completo de vectores. No es un error, pero es caro |
+| **CR-11** | El origen **no** emite tags que difieran solo en espacios, mayúsculas o acentos cuando designan el mismo concepto | Se persisten como tags **distintos**: no se normaliza (RD-16). El espacio vectorial se fragmenta y la señal content-based se degrada silenciosamente |
+| **CR-12** | Cada señal de actividad incluye `occurred_at`, **provisto por el origen**, no asignado en la recepción | Si se asignara localmente, una reentrega recibiría marca nueva y la clave natural **no detectaría el duplicado** (RD-28). La popularidad se inflaría en silencio |
+| **CR-13** | `occurred_at` es **estable ante reentrega**: la misma interacción reentregada trae la misma marca | Sin esto, CR-12 no alcanza: la unicidad se vuelve inefectiva y DI-21 no se sostiene. Es el requisito del que depende toda la resolución del hallazgo 1 |
+| **CR-14** | El origen **no** emite dos señales de tipo distinto para el mismo `(usuario, ítem)` con `occurred_at` idéntico | Es físicamente imposible que un usuario dé like y dislike en el mismo instante. Si ocurre, el origen está fabricando la marca. El modelo lo tolera con desempate determinista (DI-22), pero el resultado **no tiene significado** |
+
+> **CR-12 y CR-13 son la resolución real del hallazgo 1.** La restricción de unicidad es
+> condición necesaria pero no suficiente: sin una marca de ocurrencia provista y estable, una
+> reentrega genera una fila nueva que la clave natural considera legítima. Si el origen **no** puede
+> garantizarlas, la alternativa es exigir un identificador propio de la interacción y usarlo como
+> clave natural. Ver NC-11.
+
 
 **Sobre el nivel de garantía de CR-5**: es el único requisito de la serie que **no** es exigible. Se
 pide el estándar de codificación, no la presencia del dato. Exigir presencia sería incoherente:
@@ -1773,17 +2329,575 @@ convivencia no aporte, simplificar a columna + recálculo en bloque.
 
 ---
 
+### RD-14 — `is_shared` reubicado a `tag_modules`
+
+**Hallazgo**: idéntico a RD-12 y de mayor gravedad. `is_shared` vivía en `tags` (proyección local)
+pero era un agregado sobre `item_tags × items.module`, determinable solo con el catálogo local
+completo. Dos escritores sobre la misma fila; desechabilidad falsa. Y sostiene el **término γ del
+score**, no el conjunto de respaldo.
+
+**Decisión**: reubicar a `tag_modules` (§2.12), zona de derivados durables. **Coherente con RD-12
+sin divergencia alguna**: mismo diagnóstico, mismo criterio de zona, misma regla de escritor único.
+
+**Alternativa descartada — conservar en `tags` y corregir §1**: idéntica a la de RD-12 y se descarta
+por lo mismo, agravado porque acá lo que se corrompe es el motor, no el respaldo.
+
+**Condición de revisión**: ninguna prevista. Volver a alojar un derivado en la proyección
+reintroduciría el defecto.
+
+---
+
+### RD-15 — Pertenencia por módulo: relación, no atributo
+
+**Hallazgo**: la pertenencia de un tag a módulos **no es escalar** —un tag puede estar en varios—, y
+`is_shared` solo distinguía «ambos», dejando indeterminado a cuál pertenece un tag no compartido.
+
+**Decisión**: modelar como **relación** `tag_modules (tag_name, module)`. `is_shared` pasa a ser una
+consulta (`HAVING count(*) > 1`), no un atributo.
+
+**Coherencia con «nada sin consumo»**: la regla **no se viola**, y la cláusula de excepción que el
+propio encuadre previó es la que aplica. Reubicar `is_shared` a su zona correcta —exigido por RD-14
+con independencia del hallazgo 2— **produce la pertenencia por módulo sin costo adicional**: es la
+misma tabla. No se agrega un atributo sin consumo; se deja de agregar uno **redundante**, porque
+guardar además el booleano duplicaría un hecho derivable — el defecto que RD-2 corrigió en `users`.
+
+**Coherencia con el rechazo de la modelización escalar regional** (NC-6): mismo criterio, aplicado
+con el mismo resultado. Un conjunto no se representa con un enumerado.
+
+**Alternativa descartada — `tags.modules` como arreglo o enumerado**: más compacto, sin reunión. Se
+descarta porque un arreglo no es indexable con la misma economía, no admite FK, y reintroduce en la
+proyección local un dato derivado — exactamente lo que RD-14 corrige.
+
+**Condición de revisión**: si apareciera un requisito que consuma la pertenencia por módulo más allá
+del caso compartido, esta estructura ya lo soporta sin cambios. Si nunca aparece, tampoco hay costo:
+la tabla existe por RD-14 de todos modos.
+
+---
+
+### RD-16 — Clave natural y no normalización
+
+**Hallazgo 3**: `tags.id` era `serial`, único identificador local del modelo. Al truncar y
+resincronizar —operación que §1 declara segura y que RD-12 defendió como garantía operativa— los
+tags se renumerarían. Las dimensiones de `item_vectors` dejarían de corresponder a los mismos tags:
+**corrupción silenciosa**. Y `vocab_version` no podía detectarlo, porque el vocabulario no había
+cambiado, solo su numeración.
+
+**Hallazgo 5**: `name` se declaraba «normalizado» sin definir la regla. Normalizar es una
+transformación local sobre dato ajeno, prohibida por §1, y produce un modo de falla no contemplado:
+dos valores distintos en origen que colapsen al mismo valor violan la unicidad durante el sync.
+
+**Decisión — ambos se resuelven juntos**: `name` es la **clave primaria**, persistido **tal cual
+llega del origen**. Sin `id` serial, sin normalización semántica. La única validación es estructural
+(`btrim` no vacío), que es rechazo, no edición.
+
+**Fundamento**: el nombre **es** la identidad del tag. Un surrogate key aporta estabilidad frente a
+renombres, pero acá eso es indeseable: un renombre en el origen **debe** ser una baja más un alta,
+porque cambia el vocabulario y por tanto el espacio vectorial. Ocultarlo tras un `id` estable haría
+que un cambio de vocabulario pasara inadvertido — el defecto opuesto.
+
+**Restricción operativa asumida, declarada**: el sistema **no** deduplica variantes ortográficas.
+Dos tags que el origen emita como `"Sci-Fi"` y `"sci-fi"` son tags distintos, fragmentan el espacio
+vectorial y degradan la señal content-based sin error visible. Se traslada al origen como CR-11 y se
+observa con `projection_field_anomalies_total`. **Es una degradación real y aceptada**, no un
+problema resuelto.
+
+**Alternativa descartada — normalizar (casefold + trim + sin acentos)**: resolvería la fragmentación
+y es lo que haría cualquier buscador. Se descarta porque introduce la colisión de unicidad sin
+política posible que no sea arbitraria —¿cuál de los dos nombres originales se conserva?— y viola la
+frontera de §1. **Reconsiderar si** la fragmentación medida por CR-11 resulta alta y el origen no
+puede corregirla: sería preferible normalizar con una regla explícita, versionada junto al
+vocabulario, antes que tolerar un espacio vectorial degradado.
+
+---
+
+### RD-17 — `vocab_versions`: composición verificable del vocabulario
+
+**Hallazgo 4**: `item_vectors` y `user_profiles` registran `vocab_version`, y DI-8 prohíbe comparar
+versiones distintas — pero **nada registraba qué tags componían una versión**. El invariante era
+declarativo: no había con qué verificarlo.
+
+**Decisión**: `vocab_versions` + `vocab_version_tags`, con `version` = **hash del conjunto ordenado
+de tags**.
+
+**Fundamento — mismo criterio que RD-5 y RD-13**: la derivabilidad futura no rescata al valor ya
+almacenado. Recomputar el vocabulario hoy dice qué tags hay hoy, no cuáles había cuando se generó un
+vector. La referencia de versión aporta la **unidad de medida** del vector: sin ella, un vector de
+N dimensiones es una lista de números sin correspondencia conocida.
+
+**Que el identificador sea función del contenido resuelve además el hallazgo 3**: una renumeración
+por reconstrucción cambia el hash, los vectores viejos dejan de coincidir y se vuelven no comparables
+**por construcción** (DI-14). Antes, una reconstrucción podía dejar vectores corruptos con la misma
+`vocab_version` y nada lo detectaba.
+
+**Alternativa descartada — versión secuencial o marca temporal**: más simple, pero no detecta la
+renumeración, que es justamente el fallo del hallazgo 3. Se descarta por no resolver el problema.
+
+---
+
+### RD-18 — `vocab_version_tags` sin FK: registro histórico inmutable
+
+**Decisión**: sin FK hacia `tags`.
+
+**Fundamento**: debe describir la composición de una versión **aunque el tag ya no exista**. Con FK,
+borrar un tag corrompería la historia (CASCADE) o quedaría bloqueado (RESTRICT), y la historia de
+una versión pasada no debe depender del vocabulario vigente. Es el mismo razonamiento por el que
+`engine_config_versions` conserva versiones desactivadas: un artefacto viejo debe seguir siendo
+interpretable.
+
+**Alternativa descartada — FK con RESTRICT**: garantizaría integridad referencial, al precio de
+impedir para siempre la baja de cualquier tag que haya estado en alguna versión. Se descarta.
+
+---
+
+### RD-19 — Políticas de integridad referencial de `item_tags`
+
+**Hallazgo 6**: se declaraba CASCADE hacia `items` y **nada** hacia `tags`.
+
+**Decisión**: **CASCADE** hacia `items`, **RESTRICT** hacia `tags`. Ambas explícitas.
+
+**Fundamento de la asimetría**: la asignación es un hecho *sobre el ítem* —sin ítem no significa
+nada, y es reconstruible resincronizando—. Pero un tag con asignaciones no puede borrarse: CASCADE
+ahí vaciaría asignaciones en silencio, cambiando los vectores de ítems que nadie tocó. RESTRICT
+convierte la retirada de un tag en una operación **explícita**, que debe pasar por el recálculo de
+vocabulario (RD-17).
+
+**Era un olvido, no una decisión tácita.** A diferencia de `user_signals` —donde la ausencia de
+cascade sí era deliberada y RD-7 la hizo explícita—, acá simplemente no se había declarado. La
+auditoría lo corrige.
+
+---
+
+### RD-20 — `tag_modules` se calcula solo sobre ítems vigentes
+
+**Hallazgo 8**: la incorporación del retiro lógico (RD-7) no se evaluó contra `is_shared`.
+
+**Decisión**: la pertenencia se determina **únicamente sobre `items.status = 'available'`». Un tag
+cuyos únicos ítems en un módulo fueron retirados deja de pertenecer a ese módulo, y si era
+compartido deja de serlo.
+
+**Consecuencia sobre la propagación cruzada, deliberada**: el término γ deja de propagar a través de
+ese tag. Es correcto — sostener una recomendación cruzada sobre contenido que ya no existe es
+exactamente el defecto que RD-7 corrigió, y excluirlo del filtro pero mantenerlo en la propagación
+sería incoherente.
+
+**Momento del recálculo**: tras cada sync de catálogo, en el job de vocabulario (T030), **después**
+de aplicar retiros. No es incremental por retiro individual: la ventana de desfasaje es la del sync,
+coherente con el resto de derivados y sin cómputo en el request path.
+
+**Alternativa descartada — recálculo inmediato por retiro**: menor desfasaje, al costo de un
+disparador por cada retiro y de recomputar vectores fuera de la ventana de vocabulario. Se descarta
+por desproporción: un tag que sigue propagando unas horas de más degrada calidad, no seguridad.
+
+---
+
+### RD-21 — Dimensionalidad gobernada por la versión, no por el tipo
+
+**Hallazgo 1**: `vector(N)` fija **una** dimensionalidad en el esquema, pero RD-17 estableció que
+**cada versión tiene la suya** y que toda alta o baja de tag produce versión nueva. Tres
+consecuencias, las tres reales:
+
+1. Cada cambio de vocabulario exigiría una **migración de esquema** — es decir, un despliegue.
+2. La transición de FR-010g («recalcular todos los vectores antes de activar») era **irrealizable**:
+   los vectores nuevos tienen otra dimensionalidad y no entran en la columna.
+3. DI-17 era trivialmente cierto para una versión e **imposible** para el resto.
+
+**Es una contradicción que introduje en RD-17** y que no detecté entonces: definí versiones de
+dimensionalidad variable sin revisar que la columna la fijaba.
+
+**Decisión**: columna `vector` **sin dimensionalidad declarada**. La gobierna
+`vocab_versions.tag_count`, verificada por **DI-17**.
+
+**Costo asumido, concreto**: un índice vectorial (ivfflat/hnsw) **exige** dimensionalidad fija. Con
+la columna sin declarar, el índice debe crearse **parcial sobre la versión activa**, y recrearse en
+cada transición. Queda documentado en §2.4 y afecta a T039 (Fase 3). No es gratis y no lo presento
+como tal.
+
+**Alternativa descartada — una tabla por versión de vocabulario**: permitiría `vector(N)` con N fijo
+e índices normales. Se descarta porque exige DDL en cada transición —el problema que se busca
+eliminar— y porque el esquema pasaría a depender de datos, haciendo que las consultas requieran SQL
+dinámico. **Reconsiderar si** el rendimiento del índice parcial resultara inaceptable en Fase 3 y las
+transiciones de vocabulario fueran muy infrecuentes.
+
+---
+
+### RD-22 — `vocab_version` en la clave primaria de ambas tablas vectoriales
+
+**Hallazgo 2**: la PK era `item_id` a secas, de modo que el recálculo era **destructivo in situ** y
+dos versiones no podían coexistir. Es el mismo problema que RD-13 resolvió para popularidad, **con
+la resolución opuesta y sin justificación registrada**. La observación es correcta: era una
+incoherencia, no una decisión.
+
+**Decisión**: `(item_id, vocab_version)` y `(user_id, scope, vocab_version)`.
+
+**Fundamento — idéntico a RD-13, y acá más fuerte**:
+
+| Pregunta | Bajo la PK anterior |
+|---|---|
+| ¿Qué pasa si el recálculo falla a mitad? | Catálogo con vectores **mezclados** de dos versiones, indistinguibles entre sí. Estado no recuperable salvo recalculando todo |
+| ¿La activación puede ser atómica? | **No.** El recálculo *era* la activación: cada fila escrita cambiaba el estado visible |
+| Costo de almacenamiento | Duplicar vectores durante la transición. Acotado y transitorio |
+| Costo de no aislar | Corrupción del espacio vectorial, que sostiene **α y γ** — dos de los tres términos |
+
+Con la versión en la clave, la transición es **aditiva**: se escriben los vectores nuevos junto a los
+vigentes, y la activación es un único `UPDATE` sobre `vocab_versions` — **atómica**. Un fallo
+parcial deja filas incompletas en la versión entrante, detectables por `vocab_transition_progress`
+(§7.9), sin haber tocado la versión activa.
+
+**Divergencia con RD-13 — ninguna.** El criterio se unifica: *toda entidad cuyo valor dependa de una
+versión de referencia lleva esa versión en la clave si debe soportar transición*. Difiere solo en la
+purga: las filas de popularidad viejas se descartan sin más; las de vocabulario requieren
+`RESTRICT` (RD-23) porque la versión no puede borrarse mientras tenga vectores.
+
+---
+
+### RD-23 — Integridad referencial hacia `vocab_versions`
+
+**Hallazgo 3**: ambas tablas registraban `vocab_version` y el ERD **dibujaba la relación**, pero no
+había FK. Era representable un vector que declarara una versión inexistente — exactamente el estado
+que `users.age_config_version` impide (RD-5). Tras crear `vocab_versions` en RD-17, la omisión dejó
+al invariante DI-8 otra vez sin sustento.
+
+**Decisión**: FK real con **ON DELETE RESTRICT** en ambas.
+
+**Coherencia con RD-5**: total. Allí el argumento fue que la FK impide el «ordinal huérfano de
+escala»; acá impide el «vector huérfano de vocabulario». Mismo defecto, misma solución.
+
+**Por qué RESTRICT y no CASCADE**: CASCADE borraría todos los vectores de una versión al purgarla —
+un `DELETE` accidental sobre `vocab_versions` vaciaría el espacio vectorial en silencio. RESTRICT
+obliga a que la purga sea explícita y ordenada: primero los vectores, después la versión. Es el
+mismo razonamiento que RD-19 aplicó a `item_tags → tags`.
+
+---
+
+### RD-24 — Cardinalidad `1:0..1`: ítems sin tags no tienen vector
+
+**Hallazgo 6**: el ERD declaraba `1:1`, pero un ítem sin tags produce el **vector nulo**, que no es
+L2-normalizable — la norma es cero y la división no está definida. El caso degenerado no estaba
+contemplado.
+
+**Decisión**: **no se crea fila**. Cardinalidad `1:0..1`.
+
+**Consecuencia sobre la selección de candidatos, explícita**: el ítem no participa de α (content) ni
+de γ (cross-module), pero **sigue siendo candidato** vía β (colaborativa) y vía popularidad. No se
+lo excluye del catálogo.
+
+**Alternativa descartada — persistir el vector nulo**: uniformaría el esquema y evitaría el caso
+`NULL` en las consultas. Se descarta porque la similitud coseno con el vector nulo es **indefinida**,
+y el resultado habitual de las bibliotecas —devolver cero— es un valor plausible que oculta el
+problema. Un vector ausente es un caso que el código debe tratar; un vector nulo es una trampa.
+
+**Alternativa descartada — excluir del catálogo a los ítems sin tags**: más simple. Se descarta
+porque confunde «sin metadatos» con «no recomendable»: un ítem recién ingresado y aún sin etiquetar
+sería invisible incluso para la señal colaborativa. Se observa con `catalog_unvectorized_ratio`.
+
+---
+
+### RD-25 — `computed_at` conservado; retirados fuera de la ponderación
+
+**Hallazgo 5**: `computed_at` no declaraba consumidor. El precedente es RD-13, que conservó un
+atributo equivalente en `item_popularity` por su capacidad de detectar un batch **parcialmente**
+fallido.
+
+**Decisión**: conservar. **Concurre la misma justificación**: un job de vectorización que reporta
+éxito habiendo omitido un subconjunto es un modo de falla real, y la telemetría del job no lo detecta
+—reportó éxito—. El consumidor declarado es `vector_recompute_lag_seconds` (§7.9).
+
+**Coherencia con los criterios previos sobre atributos sin consumo**:
+
+| Precedente | Resultado | ¿Por qué difiere de este caso? |
+|---|---|---|
+| RD-6 (`age_derived_at`) | Conservado, **solo forense** | Su métrica era incorrecta y ninguna consulta lo usaba. Acá hay métrica accionable |
+| RD-11 (`popularity_computed_at` en `items`) | **Rechazado** | Habría replicado un valor idéntico en filas ajenas al batch. Acá la tabla **es** el resultado del job |
+| RD-13 (`computed_at` en `item_popularity`) | Conservado, con consumidor | **Precedente directo. Mismo caso** |
+
+**Definición de la métrica — evitando el error de RD-6**: se calcula **solo sobre la versión activa**.
+Incluir versiones anteriores la dejaría en rojo permanente, porque su `computed_at` es antiguo por
+definición. Es el mismo defecto que ya corregí una vez y acá está explícitamente evitado.
+
+**Hallazgo 8 — retiro y vectores**:
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿El retirado conserva su vector? | **Sí.** Reingreso sin recálculo. Costo: almacenamiento de vectores no consultados |
+| ¿Participa de la ponderación global? | **No.** La ponderación es propiedad del corpus; el corpus relevante es el recomendable. Coherente con RD-20 |
+| ¿El CASCADE conserva efecto? | **Sí.** El retiro lógico eliminó el borrado *por lógica de negocio*, no el físico. Truncar y resincronizar sigue disparándolo, correctamente |
+
+**Consecuencia declarada**: retirar un ítem **cambia los vectores de todos los demás**. Se recalcula
+en la ventana de vocabulario (T030), no por retiro. Degradación de calidad acotada, no de seguridad.
+
+---
+
+### RD-26 — Normalización declarada en ambas entidades
+
+**Hallazgo 7**: `user_profiles` declaraba L2-normalizado; `item_vectors` no declaraba nada. La
+omisión **no era deliberada**.
+
+**Decisión**: **ambos** se persisten L2-normalizados. DI-19 lo verifica.
+
+**Consecuencia de no haberlo declarado**: si los vectores de ítem no estuvieran normalizados, la
+similitud coseno exigiría dividir por la norma **en cada comparación** — cómputo por candidato,
+dentro del recálculo. Normalizar una vez en escritura lo elimina, y además hace que el producto
+punto **sea** la similitud coseno, simplificando el motor y habilitando el uso de operadores de
+producto interno del índice vectorial en Fase 3.
+
+---
+
+### RD-27 — Reconciliación de la tabla de fronteras
+
+**Hallazgo 9**: la tabla de §5 no reflejaba las entidades incorporadas por RD-12/RD-14/RD-17, ubicaba
+`user_signals` en **proyección local** contradiciendo a §1.1, y el ERD declaraba una relación
+`engine_config_versions → user_profiles` que **ninguna columna sostiene**.
+
+**Decisiones**:
+
+1. **§1.1 es normativa.** La tabla de §5 se reconcilia contra ella, no al revés.
+2. **`user_signals` es registro de hechos**, no proyección local. Las señales también las produce el
+   endpoint propio de feedback (`source = 'feedback_api'`) y **no son reconstruibles
+   resincronizando**. La contradicción era peligrosa: clasificarlas como proyección desechable
+   habría autorizado truncarlas en una reconstrucción, destruyendo el historial que DI-11 protege.
+3. **La relación con `user_profiles` era espuria.** Se elimina del ERD. Los perfiles dependen del
+   **vocabulario**, no de la configuración del motor: los pesos α/β/γ se aplican al combinar señales,
+   no al construir el perfil. La relación correcta —`vocab_versions → user_profiles`— es la que
+   faltaba, y RD-23 la incorpora con FK real.
+
+**Verificación**: se revisó entidad por entidad. Las 15 tablas aparecen ahora en ambas tablas de
+zonas con la misma clasificación.
+
+---
+
+### RD-28 — Clave natural sobre las señales: la duplicación deja de ser representable
+
+**Hallazgo 1**: `bigserial` sin unicidad. La idempotencia de `processed_events` protege el
+**recálculo**, no la **ingesta**: una reentrega del sync o una doble invocación del endpoint propio
+insertaban dos filas indistinguibles.
+
+**Por qué importa, concretamente**: `item_popularity` agrega sobre estas filas. Una duplicación
+**infla la popularidad sin que nada lo señale** — exactamente la contaminación silenciosa de un
+derivado que motivó RD-12. Y bajo NC-7, si la definición de popularidad terminara siendo una
+proporción, un duplicado sesgaría también el orden relativo, no solo la magnitud.
+
+**Clave natural evaluada**: `(user_id, item_id, signal_type, occurred_at)`. Identifica unívocamente
+una señal **si y solo si** `occurred_at` viene del origen y es estable ante reentrega.
+
+**Decisión**: declarar `UNIQUE (user_id, item_id, signal_type, occurred_at)`, en línea con el
+criterio de RD-23 y de `processed_events`: hacer el estado inválido **irrepresentable en el
+esquema**, no dependiente de una comprobación previa que puede tener carrera.
+
+**No admito la duplicación deliberada**: sería aceptable solo si algún componente la neutralizara al
+agregar, y ninguno lo hace — el batch de popularidad cuenta filas.
+
+**La restricción no alcanza sola.** Depende de CR-12 y CR-13. Si el origen fabrica `occurred_at` en
+cada entrega, la clave la considera señal nueva. Lo declaro como dependencia contractual en lugar de
+presentarlo como resuelto.
+
+**Alternativa descartada — identificador de interacción provisto por el origen** como clave natural:
+es estrictamente superior, porque no depende de la calidad de una marca temporal. Se descarta **por
+ahora** porque no puedo asumir que el origen lo provea (restricción explícita). Queda como NC-11.
+**Reconsiderar si** `signal_duplicate_rejections_total` resulta anómalamente bajo frente al volumen
+de reentregas observado — indicaría que los duplicados están pasando.
+
+---
+
+### RD-29 — Zona mixta de `user_exclusions`: la retención compromete un invariante
+
+**Hallazgo 2**: §1.1 afirma que los derivados durables son recomputables desde las señales. Con una
+política de retención que purgue, **esa afirmación es falsa para un subconjunto**.
+
+**El caso grave, en secuencia**:
+
+1. Un usuario consume un ítem → señal de `consumo` → exclusión con `is_permanent = true` (FR-029c).
+2. La retención purga la señal por antigüedad.
+3. Alguien reconstruye los derivados truncando y recomputando —operación que §1 declaraba segura—.
+4. La exclusión permanente **no se regenera**: su origen ya no existe.
+5. El ítem ya consumido **vuelve a ser recomendable**.
+
+Es el mismo fallo que RD-7 invocó para rechazar el borrado físico de ítems. Estaba habilitado acá
+por una vía distinta y no señalado.
+
+**Decisiones**:
+
+1. **`user_exclusions` pasa a zona mixta.** Las filas revertibles son proyección; las permanentes
+   son registro de hechos.
+2. **La reconstrucción sobre ella es aditiva, nunca destructiva** (DI-20). Esto responde a la
+   pregunta de si el efecto de una señal purgada debe conservarse con independencia de la señal: **sí**,
+   y el mecanismo es que la fila de exclusión ya **es** ese efecto, persistido. Lo que faltaba no era
+   una entidad nueva sino la prohibición de truncarla.
+3. **La purga verifica antes de borrar** (§7.10): ninguna señal de `consumo` se purga sin que su
+   exclusión esté materializada.
+4. **NC-2 se amplía**: hoy solo mencionaba tamaño de tabla y ventana de popularidad. Ahora declara
+   que compromete un invariante.
+
+**Alternativa descartada — tabla separada de «efectos permanentes»**: más explícita sobre qué
+sobrevive a la purga. Se descarta porque duplicaría la información que `is_permanent` ya expresa y
+obligaría a consultar dos tablas en el filtro de exclusión, que está en el camino de la petición
+(FR-033d). El costo es una zona mixta, que es una imprecisión conceptual aceptable frente a cómputo
+en la ruta caliente.
+
+**Alternativa descartada — declarar `user_exclusions` no reconstruible por completo**: más simple de
+enunciar. Se descarta porque sería falso para las filas revertibles y perdería la posibilidad de
+recomputarlas ante un error del resolutor.
+
+---
+
+### RD-30 — El `CASCADE` desde `users` es decisión de privacidad, no del esquema
+
+**Hallazgo 3**: la entidad está clasificada como registro de hechos y DI-11 protege su historial
+frente al retiro de ítems, pero el borrado de un usuario lo destruye **completo y sin señal**.
+
+**Decisión**: se **conserva** el `CASCADE`, pero deja de ser comportamiento implícito: se declara
+como decisión de privacidad y queda **condicionado a NC-10**.
+
+**Fundamento**: es la única política compatible con una obligación de supresión de datos personales.
+`user_signals` es el registro más sensible del modelo —qué consumió cada persona—, y una supresión
+que dejara el historial huérfano de usuario sería supresión solo aparente. Que el borrado
+desaparezca también las exclusiones permanentes de esa persona es **coherente**, no un efecto
+colateral: sin usuario no hay a quién excluir.
+
+**No resuelvo si la supresión es obligatoria**: es decisión de privacidad, no técnica. Si resultara
+que no hay tal obligación, la política correcta sería `RESTRICT` —coherente con RD-31 y con la
+clasificación de la entidad—, y el borrado de usuarios requeriría un procedimiento explícito. Lo
+registro en NC-10 en lugar de asumirlo.
+
+**No debilita DI-11**: aquel invariante protege el historial frente al **retiro de ítems**, que es
+una operación de catálogo. La supresión de un usuario es una operación de otra naturaleza y otro
+fundamento.
+
+---
+
+### RD-31 — `ON DELETE RESTRICT` explícito hacia `items`
+
+**Hallazgo 4**: la FK no declaraba política. §7 argumentaba que la ausencia era deliberada y
+protegía el historial, pero la entidad no lo expresaba: dependía del comportamiento por defecto y de
+un párrafo a quinientas líneas de distancia.
+
+**Precedente directo**: RD-19 determinó que una omisión equivalente en `item_tags` **era un olvido y
+no una decisión tácita**, y la corrigió declarando ambas políticas. Aplico el mismo tratamiento.
+
+**Decisión**: `ON DELETE RESTRICT` explícito.
+
+**Coherencia con RD-30 — una relación protege el historial y la otra lo destruye. Es deliberado**:
+
+| Relación | Política | Fundamento |
+|---|---|---|
+| `user_signals → items` | **RESTRICT** | El ítem es dato ajeno proyectado. Su desaparición no debe borrar el hecho de que alguien lo consumió. RD-7 ya estableció que el retiro es lógico |
+| `user_signals → users` | **CASCADE** | Supresión de datos personales: el sujeto del dato pide que deje de existir (NC-10) |
+
+La asimetría no es incoherencia: las dos referencias tienen **naturaleza distinta**. Una apunta a un
+objeto del catálogo, la otra al sujeto titular del dato. Lo que sí era incoherente es que solo una
+estuviera declarada.
+
+---
+
+### RD-32 — `source` y `received_at`: procedencia accionable
+
+**Hallazgo 5**: `source` no declaraba consumidor. Los precedentes eran RD-6 (conservado, solo
+forense, prohibido sostener lógica) y RD-9 (conservado por habilitar métrica accionable).
+
+**Decisión**: aplica **RD-9**. `source` habilita una distinción accionable y se conserva con
+consumidor declarado.
+
+**Por qué es accionable**: las dos vías de ingreso tienen modos de falla distintos y **respuestas
+operativas distintas**. Un desfasaje alto en `sync` es cola del Data Transformer: se escala al
+proceso de sincronización. El mismo desfasaje en `feedback_api` no puede ser eso —no hay sync de por
+medio—: es reloj del origen desviado o cola propia. Sin segmentar por `source`, la métrica agregada
+mezcla dos poblaciones con causas distintas y no orienta la respuesta. Ese es exactamente el
+criterio de RD-9.
+
+**`received_at` se incorpora** porque sin él no existe la métrica: `occurred_at` solo no dice nada
+sobre latencia de ingesta. No es un atributo por anticipación; llega **con** su consumidor, que es
+la condición que exige el criterio de «nada sin consumo».
+
+**Prohibición explícita, heredada de RD-6**: `source` y `received_at` **no sostienen lógica de
+negocio**. Ninguna decisión del motor —perfil, exclusión, popularidad, desempate— puede leerlos. Una
+señal de `feedback_api` vale exactamente lo mismo que una de `sync`. Si en algún momento se
+quisiera ponderarlas distinto, sería una decisión de producto y un FR nuevo, no una lectura
+oportunista de una columna operativa.
+
+---
+
+### RD-33 — La clave subrogada se conserva; el precedente de RD-16 no aplica
+
+**Hallazgo 6**: RD-16 rechazó una clave subrogada en `tags` por **inestabilidad ante
+reconstrucción**: al resincronizar la proyección, los identificadores se reasignan y toda referencia
+externa apunta a otra cosa.
+
+**Decisión**: se conserva `bigserial` como PK.
+
+**Por qué el fundamento no aplica**: `tags` es **proyección local** y se reconstruye resincronizando.
+`user_signals` es **registro de hechos** y §1.1 prohíbe reconstruirla. Sus identificadores **no se
+reasignan nunca**. El defecto que RD-16 evitó no puede ocurrir acá.
+
+**Y además el `id` cumple una función**: es el desempate determinista de DI-22. Es precisamente su
+estabilidad —imposible en `tags`— la que lo habilita.
+
+**Por qué no se promueve la clave natural a PK**: cuatro columnas, una de ellas `timestamptz`, en
+una tabla que será de las más grandes. Se conserva como restricción UNIQUE, que hace cumplir el
+invariante sin engrosar cada referencia.
+
+**Índice eliminado — `idx_signals_user_type (user_id, signal_type)`**: no declaraba consulta y no
+encontré ninguna que lo justifique. El batch de popularidad agrega **por ítem**, no por usuario; el
+perfil lee las señales del usuario sin filtrar por tipo; la exclusión consulta `user_exclusions`. Se
+elimina por el criterio establecido.
+
+**No se agrega índice para el batch de popularidad**: agrega sobre una ventana que abarca una
+fracción alta de la tabla, y el planificador elegiría recorrido secuencial de todos modos. Un índice
+ahí sería costo de escritura en la ruta de ingesta a cambio de nada. **Reconsiderar si** la ventana
+resultara ser una fracción pequeña tras cerrar NC-7.
+
+---
+
+### RD-34 — Marca de ocurrencia: procedencia declarada y desempate determinista
+
+**Hallazgo 7**: FR-029d resuelve señales contradictorias por `occurred_at`, pero el modelo no
+declaraba de dónde viene esa marca ni qué pasa ante empate.
+
+**Decisiones**:
+
+| Pregunta | Resolución |
+|---|---|
+| ¿Origen o local? | **Del origen** (CR-12). Asignarla localmente rompería tanto la resolución temporal como la unicidad de RD-28 |
+| ¿Garantía de monotonía? | **Ninguna**, y no la asumo. Es un reloj ajeno. El modelo tolera desorden: la resolución es por máximo, no por secuencia de llegada |
+| ¿Empate? | `ORDER BY occurred_at DESC, id DESC` (DI-22) |
+| ¿Registrar recepción? | **Sí**, `received_at`, con consumidor declarado (RD-32) |
+
+**Sobre el empate**: RD-28 lo hace imposible dentro de un mismo `signal_type`. Queda el caso de dos
+tipos distintos con marca idéntica —un like y un dislike en el mismo instante—, que es
+**físicamente imposible** y por tanto indica un origen que fabrica marcas (CR-14). El desempate por
+`id` da un resultado **determinista pero arbitrario**: elijo determinismo sobre corrección porque no
+hay respuesta correcta disponible, y un resultado que varía entre ejecuciones sería peor —
+imposibilitaría reproducir un incidente.
+
+**Coherencia con el desempate ya exigido en el modelo**: RD-10 eliminó `tiebreak_criteria` de
+`item_popularity` porque solo admitía un valor posible, pero mantuvo la **exigencia** de desempate
+determinista. Acá se aplica el mismo principio: el criterio es fijo, documentado, y no configurable.
+
+**Alternativa descartada — precedencia por tipo de señal** (p. ej. `dislike` gana a `like` ante
+empate): daría un resultado con significado en vez de arbitrario. Se descarta porque **es decisión
+de producto** —equivale a elegir si el sistema peca de conservador o de permisivo ante un dato
+corrupto— y la restricción es explícita al respecto. **Reconsiderar si** CR-14 se viola con
+frecuencia medible; en ese caso deja de ser un caso teórico y merece decisión explícita.
+
+
+
+
+---
+
 ## 12. Pendientes de clarificación
 
 | ID | Ambigüedad | Por qué no lo asumo | Bloquea |
 |---|---|---|---|
 | **NC-1** | «Módulo de interés» del usuario | Ningún FR lo requiere; las recomendaciones se piden por módulo en el request (FR-006). Agregarlo sería alcance nuevo | No. `users` está completa sin él |
-| **NC-2** | Retención de `user_signals` | Decisión de producto con implicancias de privacidad. Afecta el tamaño de la tabla y la ventana de FR-033a1 | No a Fase 1. Sí antes de producción |
+| **NC-2** | Retención de `user_signals` | Decisión de producto con implicancias de privacidad. Afecta el tamaño de la tabla, la ventana de FR-033a1 y —esto es lo que faltaba— **la reconstruibilidad de `user_exclusions`**: purgar una señal de `consumo` vuelve no reconstruible la exclusión permanente que originó (RD-29). Ya no es solo dimensionamiento: compromete un invariante | No a Fase 1 (DI-20 lo contiene). **Sí antes de producción** |
 | **NC-3** | ~~Formato de la edad~~ | ✅ **Cerrado por RD-1**: `birth_date` obligatoria, único formato admitido (CR-1, CR-3) | — |
 | **NC-4** | Umbrales del `age_rating_catalog` (¿ATP/13/16/18?) | El esquema es agnóstico, pero los valores concretos son decisión de producto/legal | No a T003. Sí a T004 |
 | **NC-5** | ¿`region` es dato personal sujeto a minimización? | Misma familia que NC-2. Un dato de ubicación **persistido sin consumo** es el caso más difícil de justificar ante un principio de minimización: no hay finalidad que invocar. No decido esto solo | No a T003. **Sí antes de producción**, y condiciona RD-4 |
 | **NC-6** | Disponibilidad regional de ítems | Fuera de alcance por RD-4 (§2.2): es dato de licenciamiento, conjunto no escalar, con autoridad fuera de este repositorio | No. Entra por `/speckit.clarify` si aparece segmentación regional |
 | **NC-7** | **¿Qué constituye «popularidad»?** | Decisión de producto, no técnica. Ver abajo | No a T003. **Sí a T038** |
+| **NC-8** | ¿El origen provee `item_tags.weight`? | Si lo provee, es dato ajeno con dominio `[0,1]` y la columna se conserva. Si **no** lo provee, no tiene productor ni consumidor —los pesos TF-IDF viven en `item_vectors`— y debe **eliminarse** por la regla de «nada sin consumo». No lo asumo: es una pregunta de contrato, verificable consultando a `api-general` | No a T003 (la columna es nulable). **Sí a T007**: el vectorizador necesita saber si hay ponderación declarada |
+| **NC-9** | ¿Un ítem que permanece sin tags debe seguir siendo candidato? | RD-24 decidió que **sí** (participa por β y popularidad, no por α ni γ), porque «sin metadatos» no equivale a «no recomendable». Pero es una decisión de producto: puede preferirse ocultarlo hasta que tenga metadatos, para no mostrar ítems cuya pertinencia no puede justificarse. Lo dejo observable con `catalog_unvectorized_ratio` (§7.9) y no lo resuelvo solo | No a Fase 1 (RD-24 da un comportamiento definido). Revisable cuando la métrica supere el umbral |
+| **NC-10** | ¿El borrado de un usuario debe suprimir su historial de señales? | El `CASCADE` actual lo supone, y es la única política compatible con una obligación de supresión. Pero si tal obligación no existe, la política correcta sería `RESTRICT` —coherente con la clasificación de la entidad y con RD-31— y el borrado requeriría procedimiento explícito. Es decisión de privacidad, no técnica (RD-30). Misma familia que NC-2 y NC-5 | No a Fase 1. **Sí antes de producción** |
+| **NC-11** | ¿El origen provee un identificador propio de cada interacción? | Si lo provee, es **clave natural estrictamente superior** a `(user_id, item_id, signal_type, occurred_at)`: no depende de la calidad de una marca temporal ajena, y hace innecesarios CR-13 y CR-14. Si no lo provee, la unicidad de RD-28 queda condicionada a que el origen garantice CR-12 y CR-13. Es pregunta de contrato, verificable consultando a `api-general` — la misma forma que NC-8 | No a T003 (la unicidad actual es aplicable). **Sí antes de Fase 2** |
+
 
 #### NC-7 — Definición de popularidad
 
