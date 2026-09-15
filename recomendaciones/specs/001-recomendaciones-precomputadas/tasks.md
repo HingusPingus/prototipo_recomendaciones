@@ -406,7 +406,6 @@ directamente P2 del prototipo, donde un rating desconocido se trataba como apto 
 
 **Criterios de aceptación**:
 - [ ] `age_rating` ausente, nulo, vacío o **fuera del catálogo** → ítem **no apto** (FR-051)
-- [ ] Edad del usuario indeterminable → solo contenido apto para todo público (FR-052)
 - [ ] El catálogo de ratings viene de configuración versionada (FR-053) — sin `dict` hardcodeado
 - [ ] **No existe** parámetro, flag ni rama que desactive el filtro (FR-054)
 - [ ] Un rating desconocido nuevo (p. ej. `"NC-17"` sin declarar) se filtra, no se admite
@@ -792,7 +791,6 @@ re-ejecutar sobre los mismos datos no duplica ni altera el resultado.
 **Criterios de aceptación**:
 - [ ] Re-ejecutar la sincronización dos veces produce estado idéntico (idempotencia)
 - [ ] Un ítem sin `age_rating` se materializa con el valor **más restrictivo** (FR-051)
-- [ ] Un usuario sin edad determinable se materializa con la restricción máxima (FR-052)
 - [ ] La actividad conserva `signal_type` y `occurred_at` (FR-062, DEP-1, DEP-2)
 - [ ] Interrupción a mitad de camino deja estado consistente, no parcial e indistinguible
 - [ ] La popularidad se calcula por volumen de likes sobre la ventana configurada (FR-033a1)

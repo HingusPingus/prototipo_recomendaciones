@@ -24,6 +24,29 @@
 - **Q**: ¿Participan las señales de consumo del cálculo de popularidad? → **A**: **Sí, en el denominador y no en el numerador**. El puntaje mide *«de quienes interactuaron con el ítem, qué proporción lo likeó»*. No contradice FR-022b: el consumo sigue sin expresar preferencia, pero sí constituye la oportunidad de expresarla. **El denominador cuenta usuarios distintos, no señales**: sumar los recuentos por tipo contaría dos veces a quien consumió y además likeó —un ítem unánimemente likeado puntuaría como si la mitad lo hubiera rechazado, y el sesgo castigaría más a los ítems mejores—. Se persisten numerador y denominador; **no** se persiste un recuento de dislikes ni de consumos por separado, porque ninguna consulta los necesita. Costo aceptado: esta definición penaliza a los ítems recién ingresados, que acumulan consumos antes que likes; queda registrado como pendiente de revisión con una métrica asociada, sin corregirlo por anticipación.
 - **Q**: ¿Cuál es la política de retención de las señales de actividad (NC-2)? → **A**: **Purga por antigüedad con horizonte largo**, declarado como parámetro de configuración. Se descarta la retención indefinida —que deja al sistema sin mecanismo de supresión y resuelve la primera obligación legal de borrado con una operación manual en producción— y se descarta la purga de horizonte corto, que erosiona la evidencia del filtrado colaborativo, única dimensión donde conservar historial mejora efectivamente el motor. La popularidad **no se ve afectada** mientras el horizonte supere su ventana, porque el puntaje solo considera señales dentro de ella. Lo que se pierde es la **verificabilidad** de las exclusiones permanentes, no las exclusiones mismas: ya están materializadas, y la reconstrucción sobre ellas es aditiva. **No se fija el número**: es empírico y depende del aporte del historial antiguo al filtrado colaborativo, que no es medible antes de tener tráfico. Se registra que el horizonte **puede acortarse más adelante pero no alargarse**, porque lo purgado no vuelve; por eso el valor inicial debe ser conservador.
 
+- **Q**: ¿De dónde proviene la escala de clasificación etaria (NC-4)? → **A**: **Catálogo propio de RecoMe**, de tres niveles (`ATP`, `+13`, `+18`), definido en este repositorio. Lo decide el dato: `api-general` ya emite un vocabulario propio y único para ambos módulos, y mapear a estándares externos exigiría **dos vocabularios** —cine y videojuegos usan sistemas distintos—, lo que rompe la escala ordinal única o convierte el permiso etario del usuario en un valor por módulo; ambas modifican el esquema. Se descartan también la edad mínima numérica —elimina la escala ordinal que evita aritmética en runtime— y la escala binaria —hace irrepresentable toda gradación futura sin migración—. **Costo aceptado**: los umbrales no tienen respaldo normativo externo que invocar. Revisable si surge una obligación legal o una expansión a jurisdicciones con normativa propia.
+- **Nota de autoridad**: `api-general` está incompleta y a la espera de este modelo. La prioridad de definición de este repositorio deja de ser una postura de diseño y pasa a ser la secuencia real de trabajo: los pendientes formulados como «¿el origen provee X?» son en realidad **decisiones de contrato**, no averiguaciones. Esto **no** invierte la dirección del dato: el catálogo y los usuarios siguen siendo proyección de dato ajeno.
+
+- **Q**: El catálogo de origen no tiene clasificación temática. ¿Cómo se resuelve el insumo del término content-based? → **A**: **Se especifica desde este repositorio** (CR-16, DEP-7): el catálogo debe exponer un conjunto no vacío de tags por ítem. Se descartan derivarlos localmente de la descripción —nos volvería productores de dato ajeno, con procesamiento de lenguaje fuera de alcance—, reponderar el motor a `α = 0` —elimina la recomendación por contenido y deja sin sustento a `γ` y al MMR— y curar tags propios. **`weight` se elimina**: exigir un peso por asignación obligaría al origen a inventar un número sin criterio editorial, y la ponderación real ya existe y es propia (TF-IDF). La pertenencia queda binaria.
+
+- **Q**: ¿Las interacciones son eventos inmutables o el estado vigente del vínculo usuario-ítem (NC-16), y se exige un identificador propio de interacción (NC-11)? → **A**: **Eventos inmutables con identificador propio del origen** (DEP-8, DEP-9). El identificador pasa a ser la **clave natural** —en restricción de unicidad, no en la clave primaria, que sigue siendo interna—. Sustituye a la combinación de cuatro atributos, que dependía de que la marca temporal fuera estable ante reentrega: esa garantía se **elimina del contrato** porque pedía al origen certeza sobre *cuándo ocurrió algo*, dato que una corrección o un ajuste de reloj alteran sin mala fe, y cuyo incumplimiento era **indetectable** desde este lado. El identificador es administrativo: el origen lo controla por completo. Se descartan espejar el estado —vacía de contenido a las decisiones de popularidad y retención— y derivar el historial comparando sincronizaciones, que volvería la marca temporal una hora de *detección*. **Costos aceptados**: aparece un índice que la clave anterior cubría de forma incidental; el empate temporal deja de ser anómalo y el desempate por identidad interna pasa a ser el mecanismo general; y el riesgo se traslada a la **reutilización** de identificadores, que se prohíbe explícitamente pero no es cero.
+
+- **Q**: ¿Existe obligación de supresión de datos personales, y sigue justificada `region` sin consumidor (NC-5, NC-10)? → **A**: **Sí, existe**: un usuario puede eliminar su cuenta. La eliminación en cascada desde el usuario **se confirma** —la alternativa exigiría un borrado manual ordenado, que falla en silencio y de forma parcial, el peor resultado en esta operación—. **No contradice la permanencia de las exclusiones**: ese invariante prohíbe vaciar y reconstruir el conjunto, no eliminar al sujeto entero; si no sobrevive el usuario, no hay sujeto sobre el cual el invariante pueda ser falso. **El hallazgo real es la caché**: cuatro claves de alcance de usuario no participan de la cascada y sobreviven hasta siete días, de modo que se exige invalidación explícita (FR-070a..d). En cuanto a `region`: **recibe consumidor** —segmentación geográfica del término colaborativo— y deja de ser una excepción por anticipación. La columna no cambia; cambia su naturaleza. La pregunta de minimización se reformula de «dato sin finalidad» a «finalidad proporcionada». Quedan abiertas tres consecuencias que antes no existían: refuerzo de burbuja geográfica, tratamiento de la región ausente —degradar a vecindario global, nunca excluir— y la forma de incorporarla al cálculo.
+
+- **Q**: ¿Cómo se trata la región ausente ahora que segmenta el vecindario colaborativo? → **A**: **No se trata: deja de ser representable.** La región pasa a obligatoria y se solicita al crear la cuenta. Admitir el valor ausente obligaría a **cada consulta** del término colaborativo a decidir qué hacer con él, que es la clase de fail-open silencioso ya eliminado para la edad y para la clasificación etaria. **Es la decisión opuesta a la registrada poco antes** —degradar a vecindario global—, y el cambio de premisa la justifica: degradar era correcto para un dato opcional. **Costo aceptado**: el rechazo es más severo de lo que el motor necesita, porque el conjunto de respaldo no depende de la región; y a diferencia de la edad, es un dato que la persona declara sobre sí misma, de modo que quien prefiera no informarlo queda fuera del producto. Se descarta un valor centinela por reintroducir el mismo problema con otro nombre, pero queda registrado como la primera corrección a evaluar si el rechazo resulta excesivo.
+- **Q**: ¿Cómo se aprueba el lote de requisitos pendientes? → **A**: **Separando por impacto, no por familia**: aprobación en bloque de los que solo precisan redacción, y revisión individual de los que cambian comportamiento observable. El corte temático mezclaría en un mismo lote precisiones inocuas con cambios en lo que el usuario ve. Se **elimina FR-052 en su forma anterior** —«si la edad no puede determinarse, aplicar restricción máxima»—, que perdió referente al volverse la fecha de nacimiento obligatoria y no nula: el caso es irrepresentable, y un requisito sobre un caso imposible es una instrucción que nadie puede cumplir ni verificar. El identificador **no se reutiliza**: FR-052 queda **retirado y libre**, y la obligatoriedad de la región toma un identificador nuevo (FR-079). Reasignarlo habría hecho que toda referencia previa —en tareas, incidencias o historial— apuntara en silencio a un requisito distinto, que es uno de los tres modos de falla recurrentes registrados.
+
+- **Q**: ¿Qué valores toman el nivel de confianza de la popularidad y el horizonte de retención de señales? → **A**: **1,96** (95 %, convención habitual) y **18–24 meses** respectivamente. El primero exige que un ítem acumule decenas de señales antes de competir con uno establecido; el costo declarado es que **agrava el sesgo contra ítems recién ingresados**, y bajarlo es la corrección más barata si eso resulta un problema. El segundo cubre más de un ciclo estacional completo, en línea con la instrucción de errar por exceso: lo purgado no vuelve. Se fija un **rango y no un valor exacto** porque la diferencia entre 18 y 24 meses no tiene consecuencia observable, y precisar más sería falsa exactitud. Queda abierto qué ceremonia debe requerir una **reducción** del horizonte, dado que subirlo es inocuo y bajarlo destruye datos de forma irreversible, y ambas operaciones son indistinguibles en un archivo de configuración.
+- **Q**: ¿Qué umbral debe abortar una sincronización por volumen anómalo? → **A**: **0,9** — una corrida cuyo conteo sea menor al 90 % de la última exitosa se descarta sin marcar retiros. **No está calibrado**, y se adopta igual: esperar datos reales dejaría sin guarda justamente el período de mayor riesgo, cuando el origen está recién construido. El umbral falla hacia el lado barato —entre congelar el catálogo y vaciarlo, elige congelarlo—, porque un ítem ausente del catálogo se interpreta como retirado y una respuesta parcial admitida provocaría el retiro masivo de ítems vigentes. Si aparecieran cargas masivas legítimas, el ratio **no es la guarda adecuada** y debería sustituirse por un tope absoluto de retiros por corrida.
+
+- **Q**: Revisión individual de los requisitos que cambian comportamiento observable (estrategia C de Q13). → **A**: **(1)** `region` y `birth_date` son ambas obligatorias y se recogen en el formulario de alta (FR-079a, RD-61). **(2)** Un ítem sin tags **se rechaza**: no es recomendable con este motor (FR-021b reescrito, RD-60; cierra NC-9). **(3)** La verificación de supresión pasa a requisito ejecutable y registrado (FR-070e, RD-59). **(4)** La exclusión **persiste aunque su señal de origen se haya purgado**; `user_exclusions` es derivado con vida propia y la reconstrucción deja de ser requisito (FR-068d reescrito, FR-068d1 informativa sin umbral, RD-58). **(5)** La inmutabilidad es obligación **local**: el origen puede guardar estado, este repositorio traduce a historial; sobrevive la exigencia de identificador **por emisión** (FR-029e reformulado, FR-029e1, DEP-9 y CR-18 reformulados, RD-55). **(6)** El sesgo del respaldo contra ítems nuevos se difiere a NC-13. **(7)** La caché se invalida en el mismo acto del recálculo, y el recálculo se dispara por conteo de interacciones configurable (FR-080, FR-080a, RD-57; abre NC-19 por el valor). **(8)** Se sirve respaldo **avisando** que hay un personalizado obsoleto consultable; la precedencia de FR-056 no cambia y la señal es distinta del estado (FR-056a, RD-56). **(9)** El vocabulario compartido derivado de datos materializados se acepta como está.
+
+- **Q**: Cierre de los cuatro pendientes restantes: protección de ítems nuevos (NC-13), región en el motor (NC-17 a+c), umbral de recálculo (NC-19) y disponibilidad regional de ítems (NC-6). → **A**: **NC-13**: **cuota reservada** en el respaldo (`fallback_new_item_share`, FR-033a6..a8), máximo y no mínimo, **sin alterar el puntaje** — se descartan ventana de gracia y piso artificial porque contaminan la medición (RD-65; abre NC-20 por el valor). **NC-17**: **ponderación blanda**, nunca filtro duro, con prohibición explícita del valor que lo emularía (FR-081, FR-081a, RD-64) — la burbuja geográfica no se elimina, se vuelve graduable. **NC-19**: **10 interacciones**, etiquetado como punto de partida y no como medición; admisible sin datos porque es configuración versionada y su error es reversible (RD-63). **NC-6**: **fuera de alcance por decisión explícita** — si entrara, entraría como restricción de cumplimiento con catálogo versionado propio, como el filtro etario, no como columna de `items` (RD-62).
+
+- **Q**: ¿Qué valor toma la cuota de novedades en el respaldo (NC-20, parte)? → **A**: **3 posiciones reservadas**. Expresada en **posiciones absolutas y no en proporción** (FR-033a6a): `top_n` es variable por solicitud, de modo que una fracción daría una cantidad distinta de novedades en cada respuesta y redondearía a cero en los `top_n` bajos, apagando la protección justo donde cada posición pesa más. Se valida al arrancar que `fallback_new_item_slots < top_n_default`, estricto (FR-033a6b). RD-66. **NC-20 permanece abierto solo por el umbral de evidencia**, sin el cual la cuota no es operable.
+
+- **Q**: ¿Cómo se determina qué ítems ocupan la cuota de novedades (NC-20)? → **A**: **Dos conjuntos disjuntos** (FR-033a6c): todo ítem entra al **emergente** y pasa al **general** al alcanzar el umbral de evidencia. El emergente se ordena por **criterio propio, no por Wilson** (FR-033a6d): entre ítems de poca evidencia, Wilson ordena por anchura del intervalo, es decir otra vez por evidencia. Dos reglas que la propuesta no contemplaba y que la ventana móvil de FR-033a1 hace necesarias: la promoción es **definitiva** (FR-033a6e) —la evidencia puede *bajar*, y sin esto un ítem viejo sin tracción competiría por las posiciones de novedad— y la salida del régimen de arranque es **monótona** (FR-033a6g). **Régimen de arranque**: con el conjunto general por debajo de `fallback_bootstrap_min_items` = **1000**, el respaldo se sirve íntegramente desde el emergente y la cuota no se aplica (FR-033a6f), con el régimen activo expuesto como observable. RD-67. **NC-20 queda abierto solo por el umbral y el criterio de orden**.
+
 ## Dependencias Externas Bloqueantes
 
 > Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature
@@ -34,9 +57,11 @@
 |---|---|---|---|
 | DEP-1 | Tipo de señal (like / dislike / consumo) por registro de actividad | FR-022a, FR-022b, FR-029a-d, FR-062 | El perfil de tags no puede construirse; la señal content-based queda sin insumo confiable |
 | DEP-2 | Marca temporal por señal de actividad | FR-029d, FR-062 | No puede resolverse el conflicto entre señales contradictorias |
-| DEP-3 | Identificador único de evento en `recomendacion.actualizar` | FR-011, FR-061 | El worker no puede garantizar idempotencia ante reentregas |
+| DEP-8 | **Identificador propio de cada interacción**, único y no reutilizado | FR-011, FR-069, DI-21 | **Sostiene la idempotencia de ingesta.** Sin él, una reentrega con marca temporal alterada entra como interacción nueva: no viola ninguna restricción y el síntoma aparece después como popularidad inflada sin causa aparente |
+| DEP-9 | **Notificación de cada transición de estado como emisión propia**, con identificador nuevo. El origen **puede** almacenar estado; lo que no puede es dejar una transición sin emitir o reemitirla bajo el identificador anterior | FR-029d, FR-029e, FR-068a, y toda la temporalidad del motor | Este repositorio recibiría estado y no historial. La ventana de popularidad pierde sentido, el filtrado colaborativo pierde temporalidad y la purga se deshace en cada sincronización |
 | DEP-4 | ~~Fuente de popularidad global por ítem~~ — **resuelto**: se deriva del volumen de likes propio (FR-033a). No es dependencia externa. | FR-033a | — |
-| DEP-5 | Edad o fecha de nacimiento del usuario | FR-030, FR-052 | Todos los usuarios caen en la restricción máxima (FR-052), degradando el producto |
+| DEP-7 | **Tags temáticos por ítem**, conjunto no vacío | FR-022a, FR-026, FR-032, y todo el término content-based | **El más grave de la tabla.** Sin tags el término `α = 0,5` no se degrada: no existe. También quedan sin sustento el cruce entre módulos (`γ`) y la diversificación MMR, que mide diversidad **sobre clusters de tags**. Faltaba en esta tabla: DEP-1 lo daba por supuesto |
+| DEP-5 | **Fecha de nacimiento** del usuario, obligatoria y no nula | FR-030, FR-051 | **El usuario se rechaza en la ingesta** y no recibe recomendaciones. Ya no existe el modo degradado de «restricción máxima»: la fecha es condición de admisión (CR-1) |
 | DEP-6 | Acuerdo sobre el conjunto de estados de respuesta | FR-006, FR-056, FR-057 | El contrato de lectura no puede cerrarse |
 
 ## User Scenarios & Testing *(mandatory)*
@@ -493,6 +518,59 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   el ítem permanece excluido si además fue consumido.
 - **FR-029d**: Ante señales contradictorias sobre un mismo ítem, MUST prevalecer la más reciente
   según su marca temporal; el criterio de desempate MUST ser determinístico y documentado.
+- **FR-011a**: La deduplicación de interacciones MUST apoyarse en el **identificador provisto por el
+  origen**, no en una combinación de atributos descriptivos. Una interacción reentregada MUST NOT
+  producir un segundo registro **aunque su marca temporal difiera**.
+- **FR-011b**: El identificador del origen MUST NOT usarse como clave primaria interna. La identidad
+  interna de un registro MUST permanecer bajo control de este servicio.
+- **FR-079**: La región del usuario MUST ser obligatoria y no nula, y MUST recogerse al crear la
+  cuenta. Un usuario sin región válida MUST rechazarse en la ingesta; MUST NOT persistirse con un
+  valor ausente ni con un centinela, porque ambos trasladarían la decisión a cada consulta que la
+  utilice.
+- **FR-079a**: La fecha de nacimiento y la región MUST recogerse **ambas en el formulario de alta**
+  de la aplicación web, y ambas MUST ser de respuesta obligatoria. Las dos condicionan el rechazo en
+  la ingesta (FR-079, CR-1), de modo que un alta que omita cualquiera de ellas produce un usuario que
+  el motor no puede atender. El formulario MUST NOT permitir completar el alta sin ambas.
+- **FR-070a**: La supresión de un usuario a pedido MUST eliminar **todos** los datos de su alcance,
+  incluidos los almacenados en caché. MUST NOT considerarse suprimido un dato cuya eliminación se
+  delegue en el vencimiento de su tiempo de vida.
+- **FR-070b**: La supresión MUST invalidar la caché **antes** de eliminar el dato de origen, y MUST
+  verificar que no haya un recálculo en curso para ese usuario. Un recálculo iniciado antes de la
+  supresión MUST NOT poder reescribir datos ya eliminados.
+- **FR-070c**: La supresión MUST alcanzar a **toda** versión de configuración y a todos los módulos,
+  no solo a los activos.
+- **FR-070d**: El sistema MUST verificar la ausencia efectiva de datos tras la supresión y MUST
+  señalar todo residuo. Una supresión parcial MUST tratarse como fallo, no como éxito degradado.
+- **FR-070e**: La verificación de FR-070d MUST ser una comprobación **ejecutable y registrada**: tras
+  cada supresión, el sistema MUST consultar cada almacén de su alcance —tablas normalizadas y claves
+  de caché de ámbito de usuario— y MUST dejar constancia del resultado, incluido el caso negativo.
+  Una supresión cuya verificación no se haya registrado MUST tratarse como **no completada** y MUST
+  reintentarse. La constancia MUST NOT contener datos del usuario suprimido más allá de su
+  identificador y la marca temporal.
+- **FR-029e**: Las señales MUST almacenarse **en este repositorio** como hechos inmutables. Una
+  transición de estado MUST registrarse como un hecho nuevo y MUST NOT modificar ni reemplazar el
+  registro anterior. La obligación recae sobre este servicio: el origen MAY almacenar estado, y la
+  traducción de estado a historial MUST ocurrir en la ingesta local.
+- **FR-029e1**: Cada **emisión** recibida MUST portar un identificador propio, distinto del de
+  emisiones anteriores sobre el mismo par usuario-ítem. Un identificador que identifique al *vínculo*
+  en lugar de al *hecho* MUST rechazarse como incumplimiento de contrato, no absorberse: bajo la
+  deduplicación de FR-011a, una transición reemitida con el identificador anterior se descartaría
+  como duplicado y la transición se perdería en silencio.
+- **FR-021a**: Cada ítem MUST tener asociado un conjunto **no vacío** de tags temáticos. La
+  pertenencia MUST ser binaria: no MUST exigirse al origen un peso de relevancia por asignación. La
+  ponderación relativa de cada tag MUST calcularse localmente al vectorizar.
+- **FR-021b**: Un ítem que llegue sin tags MUST **rechazarse en la ingesta** y registrarse como
+  **anomalía de contrato**. Un ítem sin tags no es recomendable por el término de contenido, que
+  aporta la mayor parte del puntaje; admitirlo produciría un candidato estructuralmente incapaz de
+  competir. El rechazo MUST NOT bloquear la ingesta del resto del catálogo ni ser silencioso: MUST
+  quedar constancia del ítem rechazado y del motivo.
+- **FR-030a**: La escala de clasificación etaria MUST ser **propia del sistema RecoMe**, definida
+  en una única fuente versionada, y MUST NOT derivarse en tiempo de ejecución de ningún otro
+  vocabulario. Las etiquetas que viajan por el contrato MUST coincidir **exactamente** con las
+  de esa fuente; una etiqueta ausente del catálogo MUST tratarse como no apta (FR-030).
+- **FR-030b**: La escala MUST ser única para todos los módulos. MUST NOT existir un vocabulario
+  etario por módulo, porque el permiso etario del usuario es un valor único e independiente del
+  módulo consultado.
 - **FR-030**: Un ítem cuyo `age_rating` sea desconocido o ausente MUST tratarse como no apto.
 - **FR-031**: La diversificación MMR MUST NOT reintroducir ningún ítem previamente filtrado.
 - **FR-032**: La diversificación MUST reducir la dominancia de un único cluster de tags en el top-N,
@@ -522,6 +600,55 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-033a4**: El puntaje de popularidad MUST estar **materializado** antes de servirse: MUST NOT
   calcularse durante la atención de una solicitud ni durante el ordenamiento del respaldo (FR-003).
   Un ítem sin señales en la ventana MUST tener puntaje cero y MUST seguir siendo representable.
+- **FR-033a6**: El respaldo global MUST reservar un **número fijo de posiciones**, declarado en
+  configuración versionada (`fallback_new_item_slots`), a ítems cuya evidencia acumulada no alcance un
+  umbral mínimo, ordenados entre sí por antigüedad de incorporación ascendente. El valor inicial es
+  **3 posiciones**. La cuota MUST ser un **máximo, no un mínimo**: si no hay suficientes ítems poco
+  evidenciados, las posiciones sobrantes MUST ocuparse por puntaje ordinario y MUST NOT quedar vacías.
+- **FR-033a6a**: La cuota MUST expresarse en **posiciones absolutas y no en proporción** del resultado.
+  Como `top_n` es variable por solicitud (FR-006, `top_n_default`/`top_n_max`), una proporción
+  produciría una cantidad distinta de novedades en cada respuesta y, en los valores bajos de `top_n`,
+  redondearía a cero — apagando la protección justo donde el resultado es más corto y cada posición
+  pesa más.
+- **FR-033a6b**: El sistema MUST validar al cargar la configuración que `fallback_new_item_slots` sea
+  estrictamente menor que `top_n_default`, y MUST impedir el arranque si no lo es. Una cuota que iguale
+  o supere el tamaño del resultado convertiría al respaldo en una lista de novedades ordenada por
+  antigüedad, que es un comportamiento distinto del especificado y no un caso extremo del mismo.
+- **FR-033a6c**: El catálogo de respaldo MUST particionarse en **dos conjuntos disjuntos y
+  exhaustivos**: el **conjunto emergente**, con los ítems cuya evidencia acumulada no alcanza el
+  umbral, y el **conjunto general**, con el resto. Todo ítem incorporado MUST entrar al conjunto
+  emergente. La pertenencia MUST derivarse del mismo par numerador/denominador que sostiene el puntaje
+  (FR-033a5) y MUST NOT almacenarse como estado independiente, para que no pueda divergir del dato que
+  la determina.
+- **FR-033a6d**: El conjunto emergente MUST ordenarse por un criterio **propio**, y ese criterio MUST
+  NOT ser el puntaje de FR-033a3. Ordenar por Wilson dentro del conjunto emergente reproduciría el
+  sesgo que la partición existe para neutralizar, porque todos sus miembros tienen poca evidencia por
+  definición y el estimador los ordenaría por la anchura de su intervalo antes que por su mérito.
+- **FR-033a6e**: Un ítem que alcance el umbral de evidencia MUST promoverse al conjunto general, y esa
+  promoción MUST ser **definitiva**. Un ítem promovido MUST NOT volver al conjunto emergente aunque su
+  evidencia caiga por debajo del umbral. La evidencia se mide sobre una ventana móvil (FR-033a1) y por
+  lo tanto puede decrecer; sin esta regla, un ítem antiguo que pierde tracción competiría por las
+  posiciones reservadas a novedades, que es lo contrario del propósito de la cuota.
+- **FR-033a6f**: Cuando el conjunto general contenga menos ítems que un mínimo declarado en
+  configuración versionada (`fallback_bootstrap_min_items`, valor inicial **1000**), el respaldo MUST
+  servirse **íntegramente desde el conjunto emergente**, y la cuota de FR-033a6 MUST NOT aplicarse por
+  carecer de sentido. El sistema MUST exponer en qué régimen está operando; un cambio de régimen que
+  no sea observable convierte cualquier diagnóstico del respaldo en una conjetura sobre cuál de los
+  dos comportamientos estaba activo.
+- **FR-033a6g**: La transición entre ambos regímenes MUST ser **monótona**: una vez que el conjunto
+  general supere el mínimo, el sistema MUST NOT volver al régimen de arranque aunque el conteo vuelva
+  a caer por debajo. Sin esta regla, un conteo que oscile alrededor del umbral alternaría el
+  comportamiento del respaldo entre dos modos distintos sin que nada visible lo explique.
+- **FR-033a7**: Los ítems admitidos por la cuota MUST NOT recibir un puntaje alterado. Su puntaje de
+  popularidad sigue siendo el de FR-033a3; lo que cambia es el **lugar donde se los ordena**, no el
+  valor que los mide. Un puntaje artificialmente elevado contaminaría toda comparación posterior y
+  dejaría de ser reconstruible a partir del numerador y el denominador (FR-033a5).
+- **FR-033a8**: El sistema MUST exponer qué proporción del respaldo servido provino de la cuota
+  (`fallback_new_item_share`, métrica observada — no confundir con el parámetro, que es un conteo de
+  posiciones). MUST distinguirse la cuota **disponible** de la **efectivamente ocupada**: si las
+  posiciones se llenan sistemáticamente por puntaje ordinario, el problema no es el tamaño de la cuota
+  sino el umbral de evidencia que define quién puede entrar en ella, y sin esa distinción ambos casos
+  se ven iguales.
 - **FR-033a5**: El numerador y el denominador MUST persistirse junto al puntaje, de modo que un
   cambio del nivel de confianza pueda recalcularse **sin recorrer el historial de señales**.
 - **FR-033a2**: Mientras no exista volumen de likes suficiente para poblar el respaldo, la respuesta
@@ -600,8 +727,6 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-051**: Un `age_rating` ausente, nulo, vacío o **no perteneciente al catálogo de valores
   válidos** MUST tratarse como no apto para todo público. La implementación MUST NOT usar un valor
   por defecto permisivo ante un rating desconocido.
-- **FR-052**: Si la edad del usuario no puede determinarse, MUST aplicarse la restricción máxima:
-  solo ítems aptos para todo público. La ausencia de edad MUST NOT omitir el filtro.
 - **FR-053**: El catálogo de valores válidos de `age_rating` y su equivalencia a edad mínima MUST
   estar definido explícitamente en la configuración versionada; incorporar un valor nuevo MUST
   requerir un cambio revisable.
@@ -620,6 +745,11 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   sirve el precomputado global; (4) obsoleto si el personalizado excedió su vigencia; (5) vigente.
   Un respaldo que queda vacío tras aplicar los filtros del usuario MUST reportarse como **sin
   candidatos**, no como respaldo.
+- **FR-056a**: Cuando se sirva respaldo existiendo además un resultado personalizado vencido, la
+  respuesta MUST señalar que ese personalizado obsoleto está **disponible y consultable**. El estado
+  sigue siendo *respaldo* —la precedencia de FR-056 no cambia—, pero la existencia del personalizado
+  vencido MUST NOT quedar oculta: el usuario MUST poder optar por verlo. Esa señal MUST distinguirse
+  del estado, para que un cliente que la ignore siga comportándose correctamente.
 - **FR-057**: El conjunto de estados de respuesta MUST tratarse como parte del contrato compartido:
   agregar, quitar o resignificar un estado MUST requerir coordinación y aprobación de `api-general`
   antes de mergear.
@@ -675,9 +805,28 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-068c**: Antes de purgar una señal de consumo, el procedimiento MUST verificar que la
   exclusión permanente correspondiente ya esté materializada. Una señal cuya exclusión no esté
   materializada MUST NOT purgarse.
-- **FR-068d**: El sistema MUST exponer una medida de cuántas exclusiones permanentes han perdido su
-  señal de origen. Sin ella no es observable cuánto del conjunto de exclusiones dejó de ser
-  verificable, que es el costo asumido por la política de retención.
+- **FR-068d**: La exclusión permanente MUST persistir **aunque su señal de origen haya sido purgada**.
+  `user_exclusions` es un derivado materializado de `user_signals` con vida propia: una vez escrita,
+  su permanencia no depende del hecho que la originó. La reconstrucción del conjunto de exclusiones
+  a partir del historial MUST NOT considerarse un requisito.
+- **FR-068d1**: El sistema MUST exponer, como medida **informativa y sin umbral de alerta**, cuántas
+  exclusiones han quedado huérfanas de señal. No sostiene ninguna decisión operativa —dado FR-068d,
+  la orfandad es el régimen normal, no una anomalía—, y MUST NOT usarse para disparar acciones.
+- **FR-081**: La segmentación regional del término colaborativo MUST implementarse como **ponderación**,
+  no como filtro: los usuarios de la misma región MUST pesar más, y los de otras regiones MUST seguir
+  contribuyendo con peso reducido. El factor MUST declararse en configuración versionada y MUST NOT
+  quedar implícito en el código.
+- **FR-081a**: La ponderación regional MUST degradar de forma continua: en una región con pocos
+  usuarios, el término colaborativo MUST seguir produciendo resultado a partir de las demás regiones,
+  en lugar de quedar sin insumo. No MUST existir un valor del factor que anule por completo el aporte
+  de las otras regiones; ese caso equivaldría al filtro duro que FR-081 descarta.
+- **FR-080**: La caché de recomendaciones de un usuario MUST invalidarse en el mismo acto en que se
+  actualiza su resultado precomputado. No MUST existir una vía por la que el resultado se actualice y
+  la caché sobreviva.
+- **FR-080a**: El recálculo del top-N de un usuario MUST dispararse al acumular un número de
+  interacciones nuevas declarado en **configuración versionada**, y ese umbral MUST NOT quedar
+  implícito en el código. El conteo MUST llevarse por usuario y MUST reiniciarse al recalcular. El
+  valor inicial de ese umbral es **10 interacciones**.
 - **FR-069**: Un evento duplicado que llegue **después** de expirar su marca de idempotencia MUST
   poder reprocesarse sin corromper el estado: el resultado MUST ser equivalente al ya existente.
 
