@@ -1,219 +1,223 @@
 # Implementation Plan: Servicio de Recomendaciones Híbridas Precomputadas (MVP)
 
-**Branch**: `001-recomendaciones-precomputadas` | **Date**: 2026-09-07 | **Spec**: [spec.md](./spec.md)
+**Branch**: `001-recomendaciones-precomputadas` | **Regenerado**: 2026-09-17 | **Spec**: [spec.md](./spec.md)
+**Modelo de datos**: [data-model.md](./data-model.md) | **Tareas**: [tasks.md](./tasks.md)
 
-**Input**: Feature specification from `/specs/001-recomendaciones-precomputadas/spec.md` (48+ FR, 27 SC, 5 clarificaciones)
+> **Nota de regeneración.** Este archivo se reescribió por completo el 2026-09-17 tras detectarse que el
+> plan resultante de la regeneración anterior había quedado **entrelazado línea a línea** con la versión
+> del 2026-09-07: cada línea contenía el texto nuevo concatenado con el viejo. El daño era mecánico, no
+> de contenido. La versión original del 2026-09-07 se conserva íntegra en `.plan-2026-09-07.bak`.
+>
+> **Ante discrepancia entre documentos, manda `data-model.md`.** Este plan es derivado; los recuentos de
+> abajo se verificaron contra los archivos fuente en el momento de escribirlo.
+
+---
+
+## Estado verificado de los insumos
+
+| Magnitud | Valor | Fuente |
+|---|---|---|
+| Requisitos funcionales | **152** identificadores `FR-` únicos | `spec.md` |
+| Criterios de éxito | **27** (`SC-1`…`SC-27`) | `spec.md` |
+| Entradas de clarificación | **29** (sesiones 2026-09-07 y 2026-09-14) | `spec.md` |
+| Dependencias externas | **10 declaradas**, de las cuales **8 vigentes**, 1 resuelta (DEP-4) y DEP-3 **vacante a propósito** | `spec.md` |
+| Registros de decisión | **RD-1 … RD-80** | `data-model.md` §11 |
+| Invariantes de datos | **32** (`DI-1`…`DI-28`, contando `DI-2a`…`DI-2e`) | `data-model.md` §6 |
+| Cláusulas de contrato a `api-general` | **CR-1 … CR-18** (CR-13 y CR-14 tachadas) | `data-model.md` §10 |
+| Tablas en PostgreSQL | **16**, agrupadas en 14 subsecciones | `data-model.md` §2 |
+| Familias de claves Redis | **7** | `data-model.md` §3 |
+| Historias de usuario | **7** (US1…US7) | `spec.md` |
+| Tareas | **50** (T001…T050) | `tasks.md` |
+| Checklist de calidad de requisitos | **30/30** | `checklists/` |
+
+---
 
 ## Summary
 
-Servicio de recomendaciones híbridas para RecoMe, alcanzable únicamente desde `api-general`. La API
-sirve top-N estrictamente desde caché; todo el cómputo (TF-IDF, coseno, colaborativo, cross-module
-boost, MMR) ocurre en un worker asíncrono disparado por `recomendacion.actualizar`. Un Data
-Transformer sincroniza unidireccionalmente desde `api-general` y materializa perfiles y vectores en
-la DB Recomendaciones. Los filtros de edad y exclusión son invariantes de seguridad aplicados tanto
-en el recálculo como en la salida.
+Servicio de recomendaciones **híbridas y precomputadas** para RecoMe. Expone una API de lectura que sirve
+top-N ya calculados; un worker asíncrono recalcula al recibir eventos de actividad; un Data Transformer
+sincroniza **unidireccionalmente** desde `api-general` y materializa perfiles, vectores y popularidad.
+
+El motor combina tres términos: `score = α·content + β·collaborative + γ·cross_module`, con
+`α = 0,5`, `β = 0,3`, `γ = 0,2`, `k = 20` vecinos y `λ_MMR = 0,7`.
+
+**Nada de eso se calcula durante una solicitud.** El request path solo lee, filtra por edad y exclusión,
+y recorta. Es el Principio III de la constitución y la restricción que más decisiones ha gobernado.
+
+**Posición en el sistema**: `api-general` (Java/Spring) está **incompleta y a la espera de este modelo**,
+de modo que la prioridad de definición de este repositorio (RD-47) no es una postura de diseño sino la
+secuencia real de trabajo. Los pendientes formulados como «¿el origen provee X?» son **decisiones de
+contrato**, no averiguaciones. Esto no invierte la dirección del dato: catálogo y usuarios siguen siendo
+proyección de dato ajeno.
+
+---
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+
+**Project Type**: servicio backend multiproceso — API + worker + job de sincronización.
 
-**Primary Dependencies**: FastAPI (API), pydantic v2 (validación/contratos), pandas + scikit-learn o
-numpy/scipy (TF-IDF, coseno, MMR), SQLAlchemy + Alembic (DB y migraciones), `redis-py` (caché),
-`pika`/`aio-pika` (RabbitMQ), `httpx` (REST saliente con timeouts)
+| Aspecto | Elección |
+|---|---|
+| Lenguaje | Python 3.11+ |
+| API | FastAPI |
+| Persistencia | PostgreSQL + **pgvector** |
+| Caché | Redis (**solo** caché; nada de verdad exclusiva) |
+| Mensajería | RabbitMQ |
+| ORM / migraciones | SQLAlchemy + Alembic |
+| Testing | pytest + **testcontainers** |
+| Referencia funcional | `Prototipo-Referencia/` (`vectorizer.py`, `domain.py`, `cli_preferencias.py`) |
 
-**Storage**: PostgreSQL + pgvector (fuente derivada, autoritativa dentro del repo), Redis (caché,
-no fuente de verdad)
+**Consumidor único de cara al producto**: `api-general`. El servicio **no** es alcanzable desde los
+frontends (FR-008).
 
-**Testing**: pytest, `testcontainers` (Postgres/Redis/RabbitMQ efímeros), `schemathesis` o validación
-directa contra OpenAPI/JSON Schema de `api-general` para contract testing
-
-**Target Platform**: Linux, contenedores; tres procesos desplegables independientes
-
-**Project Type**: Servicio backend multi-proceso (API + worker + job de sincronización)
-
-**Performance Goals**: lectura p95 constante e independiente del catálogo (objetivo inicial ≤ 50 ms
-p95 en API, excluida la red); recálculo de un usuario ≤ 2 s p95
-
-**Constraints**: cero cómputo pesado en request path; Redis reconstruible por completo; sin acceso a
-DB ajenas; no expuesto a frontends
-
-**Scale/Scope**: MVP de decenas de miles de usuarios y catálogo de orden 10⁴–10⁵ ítems por módulo
+---
 
 ## Constitution Check
 
-*GATE: verificado antes de Phase 0 y re-verificado tras el diseño de Phase 1.*
-
-| Principio | Cómo lo cumple el plan | Estado |
+| Principio | Cómo lo satisface este plan | Riesgo residual |
 |---|---|---|
-| I — Frontera de datos y ownership | Único cliente de Postgres/Redis propios; salida solo por HTTP a `api-general`; sin drivers de DB ajenas en dependencias; servicio en red interna, no publicado | ✅ |
-| II — Contratos externos | OpenAPI y JSON Schema se consumen desde `api-general`; se versionan como artefactos derivados en `contracts/`; contract tests bloqueantes en CI | ✅ (con 2 dependencias externas abiertas, ver §8) |
-| III — Cómputo fuera del request | API solo `GET` sobre Redis; el filtrado del respaldo es O(N) sobre lista corta ya ordenada; test de instrumentación que falla si se invoca el módulo de scoring desde el proceso API | ✅ |
-| IV — Sincronización unidireccional | Data Transformer con cliente HTTP de solo lectura; sin credenciales de escritura; API key interna por entorno | ✅ |
-| V — Motor gobernado | `engine_config/vN.yaml` versionado en repo, hash de contenido como `config_version`, validación al cargar, evaluación offline reproducible por PR | ✅ |
-| VI — Testing y contract testing | Unit determinista del motor, integración con contenedores, contract tests contra `api-general` como gate de deploy | ✅ |
-| VII — Observabilidad y resiliencia | Métricas Prometheus por componente, logging JSON con `correlation_id`, health/ready/live, DLQ y backoff | ✅ |
+| **I. Frontera de datos y ownership** (NN) | Catálogo y usuarios son proyección; se materializan, no se editan. Única excepción de autoría local: `user_declared_tags` (§2.14) | La excepción **debe seguir siendo una**: RD-75 fija que un segundo dato de autoría local exige componente propio |
+| **II. Contratos como verdad externa** (NN) | CR-1…CR-18 en `data-model.md` §10; contract testing como gate de deploy | `api-general` incompleta: los contratos se están **definiendo**, no consumiendo |
+| **III. Cómputo pesado fuera del request path** (NN) | Top-N materializado; popularidad materializada (FR-033a4); el endpoint de escritura tiene **prohibición explícita** de calcular (FR-089b) | Es el principio que más presión recibe; cada excepción se registró como tal |
+| **IV. Pipeline unidireccional** | Data Transformer solo lee de `api-general`; sin escritura de vuelta | — |
+| **V. Gobernanza del motor híbrido** | Configuración versionada, una sola versión activa por entorno, sin A/B en MVP | — |
+| **VI. Testing obligatorio y contract testing** (NN) | pytest + testcontainers; contract tests bloquean el deploy | — |
+| **VII. Observabilidad y resiliencia asíncrona** | Reintento con backoff exponencial (máx. 5) → DLQ; métricas de cuota, obsolescencia y sincronización | — |
 
-**Resultado**: sin violaciones. No se requiere Complexity Tracking.
+**Resultado**: sin violaciones. Las dos excepciones existentes (escritura de declaración, cómputo en
+carga de configuración) están **declaradas como excepciones**, con condición de revisión.
+
+---
 
 ## Project Structure
 
-### Documentation (this feature)
-
-```text
+```
 specs/001-recomendaciones-precomputadas/
-├── plan.md              # Este archivo
-├── spec.md              # Especificación clarificada
-├── data-model.md        # Refinamiento de §2: entidades, claves Redis, invariantes de datos
-├── checklists/          # Auditoría de calidad de requisitos (30/30)
-├── contracts/           # OpenAPI propio + JSON Schema del evento — producido por T049
-└── tasks.md             # Generado por /speckit.tasks
+├── spec.md              # 152 FR · 27 SC · 29 clarificaciones · DEP-1…DEP-10
+├── plan.md              # este archivo
+├── data-model.md        # AUTORITATIVO · 16 tablas · RD-1…RD-80 · DI-1…DI-28 · CR-1…CR-18
+├── tasks.md             # 50 tareas en 10 milestones
+└── checklists/          # auditoría de calidad de requisitos (30/30)
+
+src/
+├── api/                 # FastAPI — lectura + endpoint de declaración (excepción FR-089)
+├── engine/              # TF-IDF, coseno, k-vecinos, cross-boost, combinación lineal, MMR
+├── postprocess/         # edad → exclusión → MMR (orden obligatorio)
+├── worker/              # consumo de `recomendacion.actualizar`, idempotencia, recálculo
+├── sync/                # Data Transformer
+├── config/              # carga y validación estricta, cálculo de config_version
+└── db/                  # modelos SQLAlchemy + migraciones Alembic
 ```
-
-> **Nota (corrige el hallazgo F6)**: `research.md` y `quickstart.md` se **omiten deliberadamente**:
-> las decisiones técnicas y sus alternativas viven en §7 *Decisiones abiertas* (D1–D10) y en las
-> clarificaciones de `spec.md`, y duplicarlas crearía dos fuentes de verdad divergentes.
-> `data-model.md` **sí existe**: la §2 enumera las tablas pero no sus atributos, nulabilidad,
-> índices ni invariantes, y la DoD los exige. `contracts/` se produce en T049.
-
-### Source Code (repository root)
-
-```text
-src/recomendaciones/
-├── api/                     # FastAPI: routers, dependencias, esquemas de respuesta
-│   ├── routes/
-│   ├── deps.py              # auth por API key interna, cliente Redis
-│   └── schemas.py
-├── engine/                  # Motor puro, sin I/O — importable solo por worker/batch
-│   ├── content.py           # TF-IDF + coseno
-│   ├── collaborative.py     # k vecinos
-│   ├── cross_module.py      # cross-module boost
-│   ├── scoring.py           # combinación alpha/beta/gamma
-│   └── postprocess.py       # edad → exclusión → MMR
-├── config/
-│   ├── loader.py            # validación estricta, cálculo de config_version
-│   └── engine_config/       # v1.yaml, v2.yaml ... (versionado en repo)
-├── worker/                  # Consumidor de recomendacion.actualizar
-│   ├── consumer.py
-│   ├── handler.py           # idempotencia, propagación cross-module
-│   └── dlq.py
-├── transformer/             # Data Transformer
-│   ├── client.py            # httpx read-only hacia api-general
-│   └── pipeline.py          # materialización idempotente
-├── batch/
-│   └── fallback.py          # top-N de respaldo por módulo (populares + MMR)
-├── storage/
-│   ├── db/                  # SQLAlchemy models, repositorios
-│   └── cache/               # claves, serialización, TTL
-├── observability/           # logging JSON, métricas, health checks
-└── shared/                  # dominio, errores, tipos
-
-migrations/                  # Alembic
-tests/
-├── unit/                    # engine, config, claves de caché
-├── integration/             # Postgres, Redis, RabbitMQ (testcontainers)
-├── contract/                # OpenAPI propio + schema del evento
-└── invariants/              # edad y exclusión: batería exhaustiva
-```
-
-**Structure Decision**: monorepo de un solo paquete con tres entrypoints (`api`, `worker`,
-`transformer`) más un job batch. `engine/` es una librería pura sin I/O, lo que hace triviales los
-tests deterministas y permite una regla de arquitectura verificable: **el proceso API no importa
-`engine/`**.
 
 ---
 
 ## 1. Arquitectura por componentes
 
-| Componente | Responsabilidad | Prohibiciones explícitas |
+| Componente | Responsabilidad | Restricción dominante |
 |---|---|---|
-| **API de lectura** (FastAPI) | Autenticar API key interna, validar params, leer Redis, aplicar filtros de salida, marcar naturaleza de la respuesta | No importa `engine/`; no consulta Postgres en el camino normal; no publica eventos salvo la señal de recálculo |
-| **Worker de recálculo** | Consumir `recomendacion.actualizar`, validar schema, resolver idempotencia, ejecutar motor + post-proceso, escribir Redis, decidir propagación cross-module | No expone HTTP; no llama a `api-general`; no escribe fuera de su propia DB/caché |
-| **Data Transformer** | Leer usuarios/catálogo/actividad de `api-general`, materializar perfiles, vectores, exclusiones y vocabulario compartido | Cliente HTTP de solo lectura; sin verbos de mutación; sin acceso a DB ajenas |
-| **Batch de respaldo** | Precomputar top-N de populares por módulo, diversificado por MMR | No personaliza por usuario |
-| **Engine (librería)** | TF-IDF, coseno, k-vecinos, cross-boost, combinación lineal, post-proceso | Funciones puras: sin red, sin DB, sin reloj implícito |
+| **API de lectura** | Sirve top-N materializado; aplica filtros obligatorios; recorta a `top_n` | No calcula (Principio III) |
+| **API de escritura (declaración)** | **Única excepción**: persiste `user_declared_tags` | Valida y persiste; **no calcula** (FR-089b) |
+| **Engine (librería)** | TF-IDF, coseno, k-vecinos, cross-boost, combinación lineal, MMR | Sin estado propio; determinista dada la configuración |
+| **Worker** | Consume eventos, aplica idempotencia, dispara recálculo | Recálculo por umbral de interacciones (10) |
+| **Data Transformer** | Sincroniza desde `api-general`; materializa perfiles, vectores, popularidad | Unidireccional; proyecta, no crea |
+| **Procesos periódicos** | Purga de señales, recálculo de popularidad, recomposición de vocabulario | Operan sobre derivados; su error es reversible |
 
 ### Flujo de lectura (request path)
 
-```
-api-general --(API key)--> API
-                            ├─ HIT vigente        → top-N personalizado
-                            ├─ HIT vencido        → re-filtra edad/exclusión → "obsoleto" + señal recálculo
-                            ├─ MISS + sin perfil  → respaldo del módulo → re-filtra → "no personalizado"
-                            └─ MISS total         → vacío "pendiente" + señal recálculo (con supresión)
-```
-
-El re-filtrado de salida es una intersección de conjuntos sobre ≤ N ítems: no es scoring y por eso
-no vulnera FR-003. Los conjuntos de exclusión y la edad se leen de una clave Redis propia y liviana,
-no de Postgres.
+1. Autenticación por API key interna (FR-007).
+2. Validación de `top_n` contra `[top_n_min, top_n_max]` = **`[10, 50]`** (FR-006a) — rechazo explícito
+   fuera de rango, por **ambos** extremos.
+3. Verificación de declaración de gustos (FR-088); sin ella, rechazo.
+4. Lectura de caché Redis; ante miss, lectura de Postgres.
+5. Filtros obligatorios **en orden**: edad → exclusión → MMR.
+6. Recorte a `top_n` y marcado de naturaleza del resultado (FR-006).
 
 ### Flujo de recálculo (worker)
 
-```
-evento → validar schema → dedupe por event_id → cargar perfil/candidatos de Postgres
-       → scoring híbrido → edad → exclusión → MMR → escribir Redis (vigente + config_version)
-       → ¿algún tag ∈ vocabulario compartido? → sí: repetir para el módulo opuesto
-```
+Evento → idempotencia por `origin_interaction_id` → persistencia de señal → conteo → si alcanza
+`interaction_recalc_threshold` (**10**), recálculo del top-N → **invalidación de caché en el mismo acto**
+(FR-080).
 
 ---
 
 ## 2. Modelo de datos y almacenamiento
 
-> 📐 **Refinado en [data-model.md](./data-model.md)**: atributos, nulabilidad, índices, restricciones
-> de integridad, invariantes de datos (DI-1..DI-9) y ciclo de vida. Esta sección da la vista general;
-> aquel documento es la especificación. **Ante discrepancia, manda `data-model.md`.**
->
-> Cambios que introduce: `shared_tags` se consolida en `tags.is_shared`, y se agrega
-> `engine_config_versions` (11 tablas, no 10) — la trazabilidad de Q4 la exigía pero no estaba listada.
+### Vista de conjunto
 
-### PostgreSQL + pgvector (estado derivado y duradero)
+Las 16 tablas viven en `data-model.md` §2, que es la fuente autoritativa. Resumen de zonas:
 
-| Tabla | Contenido | Notas |
+| Zona | Tablas | Naturaleza |
 |---|---|---|
-| `users` | id, edad/`max_age_rating`, marca de sincronización | Proyección de `api-general` |
-| `items` | id, módulo, `age_rating`, popularidad (nº de likes) | `age_rating` NOT NULL con default no-apto |
-| `item_tags` | item_id, tag_id, peso | |
-| `item_vectors` | item_id, `vector` (pgvector), `vocab_version` | Recalculado al sincronizar catálogo |
-| `user_profiles` | user_id, módulo (`peliculas`/`juegos`/`general`), `vector` | Tres filas por usuario |
-| `user_signals` | user_id, item_id, tipo (like/dislike/consumo), `occurred_at` | Base de exclusión y de perfil |
-| `user_exclusions` | user_id, item_id, origen, `is_active` | Vista materializada de la resolución de señales |
-| `shared_tags` | tag_id | Vocabulario compartido; recalculado por sincronización |
-| `sync_runs` | id, inicio, fin, estado, volumen | Para métrica de *freshness* |
-| `processed_events` | `event_id`, procesado_en | Idempotencia del worker (TTL de retención) |
+| **Proyección** (dato ajeno) | `users`, `items`, `tags`, `item_tags`, `tag_modules`, `vocab_versions`, `vocab_version_tags` | Materializado desde `api-general`; **regenerable** |
+| **Derivada** (cómputo propio) | `item_vectors`, `user_profiles`, `item_popularity` | Recalculable desde lo anterior + señales |
+| **Autoría local** | `user_signals`, `user_exclusions`, `user_declared_tags` | **No regenerable desde ningún origen** |
+| **Operación** | `engine_config_versions`, `sync_runs`, `processed_events` | Metadatos |
 
-**Regla de exclusión**: `user_exclusions` se deriva de `user_signals` aplicando "gana la señal más
-reciente"; un consumo genera exclusión permanente, un dislike genera exclusión revertible por like
-posterior.
+### Lo no regenerable, y su consecuencia operativa
 
-### Redis (caché, nunca fuente de verdad)
+RD-71 obligó a corregir una afirmación que el plan anterior arrastraba: *«todo lo necesario para
+recalcular vive en Postgres»* es cierto para lo proyectado y **falso** para lo propio.
 
-| Clave | Valor | TTL |
+| Entidad | Si se pierde |
+|---|---|
+| `user_signals` | Se pierde el historial; el filtrado colaborativo arranca de cero |
+| `user_declared_tags` | **Hay que volver a preguntarle al usuario** |
+| `user_exclusions` | **Los ítems rechazados reaparecen** |
+
+El respaldo es responsabilidad **operativa**, no de diseño. Queda declarado, no resuelto (RD-71).
+
+### Redis — 7 familias de claves
+
+Caché exclusivamente. Dos familias principales:
+
+| Clave | Contenido | TTL |
 |---|---|---|
-| `reco:v{cfg}:{user_id}:{module}` | JSON: ítems + score + rank + `config_version` + `computed_at` | `TTL_FRESH` (ej. 24 h) |
-| `reco:stale:v{cfg}:{user_id}:{module}` | Copia del último resultado conocido | `TTL_STALE` (ej. 7 d) |
-| `filters:{user_id}` | `max_age_rating` + set de exclusiones | `TTL_FILTERS` (ej. 1 h) |
-| `fallback:{module}` | Top-N de respaldo diversificado | `TTL_FALLBACK` (ej. 6 h) |
-| `recompute:lock:{user_id}:{module}` | Marca de supresión de señales | `TTL_SUPPRESS` (ej. 5 min) |
-| `dedupe:event:{event_id}` | Marca de evento procesado | `TTL_DEDUPE` (ej. 24 h) |
+| `reco:v{cfg}:{user_id}:{module}` | JSON: ítems + score + rank + `config_version` + `computed_at` | `TTL_FRESH` |
+| `reco:stale:v{cfg}:{user_id}:{module}` | Marca de resultado personalizado obsoleto disponible | — |
 
-**Invalidación / regeneración**: no hay invalidación masiva. Al vencer `TTL_FRESH` la entrada pasa a
-servirse como obsoleta desde `reco:stale:v{cfg}` hasta `TTL_STALE`; superado ese límite se responde
-"pendiente". **Ambas familias (`reco:` y `reco:stale:`) incluyen `config_version` en la clave**: un
-resultado obsoleto generado con una configuración anterior nunca se sirve bajo la versión vigente,
-lo que preserva la trazabilidad exigida por la clarificación Q4 y la reproducibilidad de SC-021.
-La pérdida total de Redis es recuperable: todo lo necesario para recalcular vive en
-Postgres. La reconstrucción se hace por un job de *warm-up* que publica señales de recálculo con
-límite de tasa, no en línea.
+La segunda existe por FR-056a: ante un personalizado obsoleto se sirve el respaldo, **notificando** que
+existe un personalizado anterior.
 
-**Trazabilidad**: `config_version` es el hash del archivo de configuración activo y forma parte de
-la clave, lo que hace que resultados de versiones distintas convivan sin colisionar. El campo se
-propaga a la respuesta por ítem.
+### Configuración versionada — inventario verificado
 
-### Versionado de configuración
+**Parámetros del motor** (`data-model.md` §4, dentro del repositorio, versionados):
 
-`src/recomendaciones/config/engine_config/vN.yaml` contiene `alpha`, `beta`, `gamma`, `k`,
-`lambda_mmr`, `peso_like`, `peso_dislike`, `top_n_default`, `top_n_max`. El loader valida rangos y
-que `alpha+beta+gamma≈1`, rechaza la desactivación de filtros obligatorios y expone
-`config_version` por `/health` y como métrica.
+| Parámetro | Valor | Origen |
+|---|---|---|
+| `alpha` / `beta` / `gamma` | 0,5 / 0,3 / 0,2 | Diseño del motor |
+| `k` (vecinos) | 20 | Diseño del motor |
+| `lambda_mmr` | 0,7 | Diseño del motor |
+| `top_n_min` / `top_n_default` / `top_n_max` | **10 / 20 / 50** | RD-73, RD-78 |
+| `peso_like` / consumo / `peso_dislike` | **1,0 / 0,3 / −1,0** | RD-73 (adoptados del prototipo) |
+| `popularity_confidence_z` | **1,96** | RD-53 |
+| `popularity_window_days` | a calibrar | RD-53 |
+| `fallback_new_item_quota_ratio` | **0,20** | RD-77, RD-80 |
+| `declared_tags_min` | **5** | RD-68 |
+| `region_weight_factor` | **0,1** | RD-79 |
+| `diversity_max_cluster_share` | a calibrar | — |
+| Umbral de evidencia (promoción al conjunto general) | a calibrar | RD-67 |
+| `age_rating_catalog` | `ATP` / `+13` / `+18` | RD-53 |
+
+**Eliminados y por qué** — conviene tenerlos a la vista, porque su desaparición es tan informativa como
+su existencia:
+
+| Parámetro retirado | Motivo |
+|---|---|
+| ~~`fallback_new_item_slots`~~ | Reemplazado por el ratio (RD-77) |
+| ~~`fallback_new_item_quota_min`~~ | Con `top_n ≥ 10` nunca gobernaría: *un parámetro que nunca gobierna miente sobre lo que hace* (RD-80) |
+| ~~`fallback_bootstrap_min_items`~~ | Eliminado junto con el régimen de arranque (RD-70) |
+
+**Validación al cargar**: `0 < fallback_new_item_quota_ratio < 1`;
+`10 ≤ top_n_min ≤ top_n_default ≤ top_n_max`; `0 ≤ region_weight_factor < 1` — **inferior inclusivo**
+(es el neutro, RD-76) y **superior estricto** (equivale al filtro duro que FR-081a prohíbe).
+
+**Parámetros operativos** (fuera de `data-model.md`, RD-46): `signal_retention_days` = **18–24 meses**,
+`sync_volume_delta_ratio` = **0,9**, `interaction_recalc_threshold` = **10**, retención de la marca de
+idempotencia, TTLs de caché, umbrales de reintento.
+
+> La distinción no es estética: los del motor entran en el **cálculo** de un derivado versionado (RD-13);
+> los operativos no alteran ningún puntaje. `interaction_recalc_threshold` es el caso intermedio y va
+> con los operativos: no altera el valor del top-N, solo **cuándo** se lo recomputa.
 
 ---
 
@@ -221,167 +225,190 @@ que `alpha+beta+gamma≈1`, rechaza la desactivación de filtros obligatorios y 
 
 ### 3.1 Lectura (expuesto a `api-general`)
 
-```
-GET /internal/v1/recommendations/{user_id}?module=peliculas&limit=20&cursor=...
-Header: X-Internal-API-Key
-```
+`GET` de recomendaciones por usuario y módulo. Devuelve identificador, posición, score y
+`config_version` por ítem (FR-004), más la marca temporal y la **naturaleza** del resultado (FR-006):
+personalizada vigente · personalizada obsoleta · de respaldo no personalizada · vacía por falta de
+candidatos · vacía por recálculo pendiente.
 
-Respuesta:
+### 3.2 Escritura de declaración (excepción declarada)
 
-```jsonc
-{
-  "user_id": "...", "module": "peliculas",
-  "result_type": "personalized|personalized_stale|fallback|empty_no_candidates|empty_pending",
-  "computed_at": "2026-09-07T12:00:00Z",
-  "config_version": "sha256:ab12...",
-  "items": [{"item_id": "...", "rank": 1, "score": 0.87}],
-  "next_cursor": null
-}
-```
+`POST` de gustos declarados. **Confirmación síncrona** (FR-089a): asíncrona rechazaría al usuario por no
+haber declarado lo que acaba de declarar. Valida el mínimo (FR-083), resuelve la herencia por tag
+compartido (FR-085) y persiste. **Prohibido calcular** (FR-089b).
 
-`result_type` cubre los cinco estados de FR-006. Errores: `401` sin API key, `422` params inválidos,
-`503` con `Retry-After` si Redis está caído.
+### 3.3 Evento consumido
 
-### 3.2 Evento consumido
+`recomendacion.actualizar` desde RabbitMQ. Idempotencia por `origin_interaction_id`
+(`NOT NULL UNIQUE`, DEP-8).
 
-`recomendacion.actualizar` — schema propiedad de `api-general`. Campos mínimos requeridos:
-`event_id`, `user_id`, `module`, `item_id`, `signal_type`, `occurred_at`.
+### 3.4 Política de errores
 
-Política de errores:
+Rechazo explícito ante: `top_n` fuera de `[10, 50]` · ausencia de API key · falta de declaración de
+gustos (FR-088) · payload inválido. Fallo transitorio (DB/Redis): reintento con backoff exponencial,
+máx. 5 → DLQ.
 
-| Situación | Acción |
-|---|---|
-| Payload inválido | Rechazo inmediato → DLQ, sin reintento, log con causa |
-| Módulo desconocido | DLQ, no altera ningún top-N |
-| `event_id` ya procesado | ACK sin recomputar (idempotencia) |
-| Fallo transitorio (DB/Redis) | Reintento con backoff exponencial, máx. 5 → DLQ |
-| Fallo solo en módulo opuesto | Se conserva el resultado del módulo principal; se reencola solo el opuesto |
+### 3.5 Dependencias externas — **8 vigentes**
 
-### 3.3 Contratos internos
+| ID | Qué se requiere de `api-general` | Estado |
+|---|---|---|
+| DEP-1 | Tipo de señal (like / dislike / consumo) por registro de actividad | Vigente |
+| DEP-2 | Marca temporal por señal | Vigente |
+| ~~DEP-3~~ | — | **Vacante a propósito** (identificador retirado, no se reutiliza) |
+| DEP-4 | ~~Fuente de popularidad global por ítem~~ | **Resuelta**: se deriva localmente |
+| DEP-5 | Fecha de nacimiento del usuario, obligatoria y no nula | Vigente |
+| DEP-6 | Acuerdo sobre el conjunto de estados de respuesta | Vigente |
+| DEP-7 | Tags temáticos **por ítem**, conjunto no vacío | Vigente |
+| DEP-8 | Identificador propio de cada interacción, único y no reutilizado | Vigente |
+| DEP-9 | Notificación de cada transición de estado como emisión propia, con identificador | Vigente |
+| DEP-10 | **Vocabulario de tags normalizado del catálogo** | Vigente |
 
-`engine/` expone funciones puras con tipos explícitos (`score_candidates`, `apply_postprocess`);
-`storage/` expone repositorios; ninguna capa superior conoce el detalle de Redis o SQL. Regla
-verificada por test: `api/` no importa `engine/`.
+> **DEP-10 es la más severa del inventario.** Es la única dependencia cuyo incumplimiento deja al sistema
+> **sin ningún usuario atendible**: sin vocabulario no hay declaración posible, y FR-088 rechaza todo.
+> Se distingue de DEP-7, que es *por ítem*; DEP-10 es *sobre el conjunto*.
 
 ---
 
 ## 4. Plan de implementación por fases
 
-| Fase | Objetivo | Cambios principales | Riesgos | Criterios de aceptación |
-|---|---|---|---|---|
-| **1 — Vertical slice** | Servir top-N precomputado end-to-end **y cerrar el ciclo de recálculo** | Esquema DB + migraciones; `engine/` completo con post-proceso; worker consumiendo el evento **con idempotencia y propagación cross-module**; batch de respaldo; API de lectura cache-first **con registro de feedback que publica el evento**; config v1; unit tests del motor | Contrato del evento aún no cerrado con `api-general`; datos de actividad sin tipo de señal | US1 y US2 demostrables; SC-002/003 (0 % violaciones de filtros); SC-005 (idempotencia básica); SC-009 (sin cómputo en request). **Tareas: T001–T024, T027, T033–T038** |
-| **2 — Robustez operativa** | Que sobreviva a fallos reales | Data Transformer completo; DLQ + backoff + manejo de payload inválido; stale-while-revalidate con supresión; métricas, health checks, logging estructurado, alertas probadas y runbook; contract testing en CI | Avalancha de recálculos tras pérdida de caché; drift de contratos | US3/US4/US6/US7; SC-006/007/008/015; SC-013 (contract tests bloqueantes); SC-024/026/027. **Tareas: T025, T026, T028–T032, T039–T042, T046, T049** |
-| **3 — Optimización y endurecimiento** | Rendimiento y gobernanza | Índices pgvector y tuning de consultas; propagación cross-module afinada; consolidación de ráfagas; **pruebas de carga a 10× catálogo (T050)**; harness de evaluación offline reproducible | Regresión de calidad al tocar pesos; costo del recálculo doble | SC-001 (latencia estable a 10× catálogo, **verificado por T050**); SC-010/011 (cold start cruzado y diversidad); SC-016/017; SC-021 (reproducibilidad exacta). **Tareas: T043–T045, T047, T048, T050** |
+| Fase | Milestones de `tasks.md` | Contenido | Gate de salida |
+|---|---|---|---|
+| **1 — Fundaciones y camino crítico** | M1, M4, M5 (parcial), M6 | Esquema, migraciones, consumo de eventos, idempotencia, recálculo, Data Transformer | Un usuario con señales obtiene un top-N materializado |
+| **2 — Motor y post-procesamiento** | M2, M3 | TF-IDF, vecinos, cross-boost, combinación; edad → exclusión → MMR | Invariantes de seguridad verificados con tests |
+| **3 — API y respaldo** | M7 | Lectura, declaración, cuota de novedades, estados de respuesta | Contract tests en verde |
+| **4 — Observabilidad y cierre** | M8, M9, M10 | Métricas, salud, testing de integración, cierre | Definition of Done completa |
 
-> **Corrección aplicada (hallazgo F1)**: la Fase 1 promete US2 y SC-005, que dependen del worker.
-> Por eso T023, T024 y T027 (consumo, idempotencia y recálculo) pertenecen a Fase 1, junto con T036
-> (feedback que dispara el evento) y T038 (respaldo, sin el cual el estado `fallback` de FR-056 es
-> inalcanzable, hallazgo F2). En Fase 2 quedan T025 y T026, que son **robustez** ante fallos, no
-> funcionalidad del ciclo.
+### Consistencia interna — verificada
+
+- El orden edad → exclusión → MMR es **obligatorio** y está cubierto por M3.
+- La invalidación de caché ocurre en el mismo acto que la actualización (FR-080): no hay camino por el
+  que el resultado se actualice y la caché sobreviva.
+- `origin_interaction_id` sostiene la idempotencia y es dependencia externa (DEP-8), de modo que M5 no
+  puede cerrarse sin acuerdo de contrato.
+
+### Funcionalidad clarificada **sin tarea asignada** — inconsistencia pendiente
+
+**FR-088 rechaza toda solicitud de un usuario sin declaración de gustos, y la declaración no tiene tarea
+asignada en `tasks.md`.** Con el estado actual del plan de tareas, Fase 1 produce un sistema que rechaza
+al 100 % de sus usuarios. Requiere tarea nueva antes de que M7 se considere completable.
+
+Lo mismo, en menor grado: siembra de vectores, purga de señales, supresión verificada, disparador por
+conteo, ponderación regional y señal de obsoleto disponible carecen de tarea propia.
 
 ---
 
 ## 5. Plan de testing
 
-**Unit** (`tests/unit/`, sin I/O, semilla fija): TF-IDF y coseno; agregación de k vecinos; cross-module
-boost; combinación alpha/beta/gamma; desempate determinista; cada regla de post-proceso; loader de
-configuración (rechaza inválidas y config que desactive filtros); resolución de señales
-like/dislike/consumo y reversión por like posterior.
+| Nivel | Alcance | Herramienta |
+|---|---|---|
+| **Unitario** | Engine puro: TF-IDF, coseno, MMR, combinación lineal | pytest |
+| **Invariantes** | DI-1…DI-28: filtro etario, exclusión, disjunción de conjuntos | pytest + fixtures |
+| **Integración** | Postgres + Redis + RabbitMQ reales | testcontainers |
+| **Contract** (**gate de deploy**) | Validación del payload contra CR-1…CR-18 | pytest |
 
-**Integración** (`testcontainers`): repositorios contra Postgres real y migraciones aplicadas;
-serialización, TTL y transición vigente→obsoleto→pendiente en Redis; worker punta a punta contra
-RabbitMQ real, incluyendo DLQ y reintentos; Data Transformer contra un doble de `api-general`,
-verificando idempotencia y **cero escrituras externas**.
+**Casos que deben estar cubiertos explícitamente**: evento duplicado · payload inválido · `api-general`
+caída durante la sincronización · Redis caído · broker caído · `top_n` fuera de rango por **ambos**
+extremos · usuario sin declaración · cuota de novedades con conjunto emergente vacío.
 
-**Contract** (gate de deploy): validación del payload consumido contra el JSON Schema de
-`api-general`; validación de la respuesta de lectura contra el OpenAPI publicado; test de
-compatibilidad que falla si un campo requerido desaparece.
-
-**Invariantes** (`tests/invariants/`, batería exhaustiva y property-based): ningún ítem sobre
-`age_rating` en ninguna de las cinco `result_type`; ningún ítem excluido en ninguna respuesta; MMR
-nunca reintroduce un filtrado; `age_rating` nulo tratado como no apto; edad desconocida → política
-conservadora.
-
-**Casos críticos exigidos**: menor de edad; exclusión activa; cache miss con y sin histórico;
-evento duplicado; payload inválido; `api-general` caído durante sync; Redis caído; broker caído
-(la lectura debe seguir funcionando); catálogo sin candidatos válidos.
-
-**Arquitectura**: test que falla si `api/` importa `engine/` o si el proceso API abre conexión a una
-DB ajena.
+**TDD selectivo**: obligatorio en invariantes de seguridad (edad, exclusión) y en el contrato; opcional
+en el resto.
 
 ---
 
 ## 6. Observabilidad y operación
 
-**Métricas** (Prometheus): `reco_cache_hits_total{result_type}`, `reco_request_duration_seconds`
-(histograma por endpoint), `reco_recompute_total{status,module}`,
-`reco_recompute_duration_seconds`, `reco_dlq_messages_total{reason}`, `reco_queue_depth`,
-`reco_sync_last_success_timestamp` (para *freshness*), `reco_sync_duration_seconds`,
-`reco_cross_module_propagation_total{propagated}`, `reco_active_config_version` (gauge etiquetado).
+**Métricas mínimas**: proporción del respaldo servido que provino de la cuota (`fallback_new_item_share`,
+FR-033a8) — distinguiendo cuota **disponible** de **efectivamente ocupada** — · tasa de resultados
+obsoletos servidos · latencia del request path · profundidad de la cola y tamaño de la DLQ · resultado de
+cada corrida de sincronización (`sync_runs`).
 
-**Logging**: JSON estructurado con `timestamp`, `level`, `correlation_id` (propagado desde el header
-de `api-general` y desde `event_id` en el worker), `user_id`, `module`, `config_version`, `outcome`.
-Prohibido loguear API keys o payloads completos.
+**Trazabilidad**: identificador de origen (`origin_interaction_id` en el worker), `user_id`, `module`,
+`config_version`, `outcome`.
 
-**Health checks** por servicio: `/health/live` (proceso vivo), `/health/ready` (dependencias
-críticas: Redis para la API; Redis+DB+broker para el worker; DB para el transformer),
-`/health/info` (versión de config activa y de build).
-
-**Alertas iniciales sugeridas**:
-
-| Alerta | Umbral inicial | Severidad |
-|---|---|---|
-| Tasa de fallo de recálculo | > 5 % en 10 min | crítica |
-| Mensajes en DLQ | > 0 en 5 min | alta |
-| Freshness de sincronización | > 2× la periodicidad configurada | alta |
-| Cache hit ratio | < 80 % en 30 min | media |
-| Latencia p95 de lectura | > 100 ms en 10 min | media |
-| Profundidad de cola | creciente 15 min seguidos | media |
+**Salud**: endpoint de estado que distingue *degradado* (Redis caído, se sirve desde Postgres) de
+*caído* (Postgres inaccesible).
 
 ---
 
 ## 7. Riesgos y mitigaciones
 
-| Riesgo | Impacto | Probabilidad | Mitigación |
-|---|---|---|---|
-| **Drift de contratos** con `api-general` | Alto | Media | Contract tests bloqueantes en CI; copias derivadas versionadas en `contracts/`; alerta ante fallo de validación de evento |
-| **Inconsistencia temporal**: top-N obsoleto con exclusiones nuevas | Alto (seguridad) | Alta | Re-filtrado obligatorio de edad y exclusión en la salida (FR-036), no solo en el recálculo |
-| **Replay masivo de eventos** | Medio | Media | Dedupe por `event_id` en Redis + `processed_events`; operaciones de escritura idempotentes |
-| **Pérdida total de caché** → avalancha | Alto | Baja | Job de warm-up con límite de tasa; supresión de señales por ventana; degradación a respaldo mientras se reconstruye |
-| **Recálculo doble por cross-module** encarece el worker | Medio | Alta | Propagación condicional por vocabulario compartido; métrica de tasa de propagación; consolidación de ráfagas en Fase 3 |
-| **Actividad sin tipo de señal** en `api-general` | Alto (bloqueante) | Media | Escalar ya en Fase 1; plan B: derivar exclusión sin ajustar perfil, degradando calidad de forma explícita |
-| **Cold start del respaldo** en catálogo nuevo | Bajo | Media | Desempate documentado por criterio secundario; responder "pendiente" si aún no existe |
-| **Regresión de calidad** al mover pesos | Medio | Media | Evaluación offline reproducible obligatoria por PR (Principio V); `config_version` en cada resultado |
+| Riesgo | Mitigación |
+|---|---|
+| `api-general` incompleta bloquea la integración | Los contratos se **definen** acá (RD-47); el desarrollo local usa siembra sintética (patrón de `cli_preferencias.py`) |
+| DEP-10 incumplida | Sin vocabulario no hay usuarios atendibles. **No hay mitigación técnica**: es acuerdo previo |
+| La cuota de novedades nunca se llena | Métrica de FR-033a8 distingue cuota chica de umbral restrictivo |
+| `v1` no observa la línea de base sin segmentación regional | Aceptado en RD-79: medir exige poner `region_weight_factor = 0` deliberadamente |
+| Pérdida de Postgres | Tres entidades no regenerables (RD-71). Respaldo operativo, fuera del diseño |
+| Erosión del Principio III por excepciones sucesivas | Cada excepción lleva condición de revisión; RD-75 fija que la segunda exige componente propio |
+
+### Retirados por clarificación
+
+Cold start sin solución (resuelto por declaración de gustos, RD-68/70) · régimen de arranque del conjunto
+emergente (eliminado en RD-70) · popularidad como dependencia externa (DEP-4, resuelta).
 
 ---
 
 ## 8. Decisiones abiertas
 
-| # | Decisión | Opciones | Trade-off | **Recomendación** |
-|---|---|---|---|---|
-| D1 | Tipo de señal en el contrato de actividad de `api-general` | (a) exponerlo; (b) derivarlo localmente | (b) rompe el modelo de perfil acordado en clarify | **(a)**, escalar de inmediato: es bloqueante de Fase 1 |
-| D2 | `result_type` en el contrato de respuesta | (a) enum explícito; (b) flags booleanos | El enum es más claro y extensible | **(a)**, coordinar con `api-general` |
-| D3 | Cómputo de vecinos colaborativos | (a) online en cada recálculo; (b) matriz de similitud precalculada en batch | (a) es simple pero O(usuarios) por evento | **(b)** en Fase 3; (a) en Fase 1 con k y muestra acotados |
-| D4 | ✅ **CERRADA** — Valores iniciales | α=0.5, β=0.3, γ=0.2, k=20, λ_MMR=0.7 | Sin datos aún | **Adoptado** como `v1.yaml`. Prevalece sobre los valores del prototipo (α=0.5/β=0.4/γ=0.1); γ mayor porque el boost cruzado es la hipótesis diferencial a medir. Ajustar con evaluación offline en Fase 3 |
-| D5 | TTLs | `FRESH` 24 h, `STALE` 7 d, `FILTERS` 1 h, `FALLBACK` 6 h | Frescura vs. carga del worker | Adoptar como defaults configurables y revisar con datos reales |
-| D6 | Umbral de personalización | (a) ≥1 señal; (b) ≥3 señales | (a) personaliza antes pero con perfil pobre | **(b)**, mejor calidad percibida al salir del respaldo |
-| D7 | Publicación de la señal de recálculo desde la API | (a) publicar a RabbitMQ; (b) tabla outbox | (a) acopla la API al broker | **(a)** con *fire-and-forget* y fallo silencioso registrado; la lectura nunca debe fallar por el broker |
-| D8 | Almacenamiento del respaldo | (a) solo Redis; (b) Redis + tabla | (a) se pierde con la caché | **(b)**, permite rehidratar sin recomputar |
-| D9 | ✅ **CERRADA** — Espacio vectorial de tags | (a) único compartido; (b) independiente por módulo | (b) hace indefinida la similitud cruzada | **(a)** (FR-010d). Artefacto versionado propiedad de este repo, no contrato compartido (FR-010e) |
-| D10 | ✅ **CERRADA** — Fuente de popularidad del respaldo | (a) volumen de likes propio; (b) score externo del catálogo | (b) agregaría dependencia bloqueante de `api-general` | **(a)** (FR-033a), sobre ventana temporal acotada y configurable (FR-033a1) |
+**Ninguna bloqueante.** Los pendientes NC-1…NC-20 están **todos cerrados** (`data-model.md` §12).
+
+Quedan **valores a calibrar**, que no son decisiones sino mediciones pendientes:
+`popularity_window_days` · `diversity_max_cluster_share` · umbral de evidencia para la promoción al
+conjunto general · `signal_retention_days` dentro del rango 18–24 meses.
+
+> Los cuatro son configuración versionada y su error es **reversible**, salvo `signal_retention_days`,
+> que puede acortarse pero **no alargarse** porque lo purgado no vuelve. Por eso su valor inicial debe
+> ser conservador.
 
 ---
 
 ## Definition of Done (para pasar a `/speckit.tasks`)
 
-- [ ] D1 y D2 escalados al equipo de `api-general` y con respuesta registrada
-- [ ] `research.md` con las decisiones D3–D8 resueltas y justificadas
-- [x] `data-model.md` con tablas, índices, claves Redis y TTLs finales — **completo (2026-09-10)**
-- [ ] `contracts/` con el OpenAPI del endpoint de lectura y la copia derivada del JSON Schema del evento
-- [ ] `quickstart.md` con el stack local reproducible (Postgres+pgvector, Redis, RabbitMQ)
-- [ ] `engine_config/v1.yaml` con los valores de D4 y su validación
-- [ ] Estructura de directorios creada, con la regla "API no importa engine" verificable
-- [ ] Constitution Check re-verificado tras el diseño: sin violaciones
-- [ ] Cada FR de la spec mapeado a al menos una fase del plan
-- [ ] Cada SC de la spec mapeado a al menos un test planificado
-- [ ] Riesgos con dueño asignado
+- [x] Constitution Check sin violaciones no declaradas
+- [x] Modelo de datos completo y autoritativo (`data-model.md`)
+- [x] Contrato a `api-general` especificado (CR-1…CR-18)
+- [x] Dependencias externas inventariadas (8 vigentes)
+- [x] Pendientes de clarificación cerrados (NC-1…NC-20)
+- [x] Parámetros de configuración con valor o con criterio de calibración
+- [ ] **`tasks.md` actualizado**: encabezado desactualizado y funcionalidad sin tarea asignada
+- [ ] **Incidencias de GitHub propagadas**
+
+---
+
+## Anexo A — Desfasajes corregidos en esta regeneración
+
+| Afirmación del plan anterior | Estado real verificado |
+|---|---|
+| «FR-001→FR-071, 5 clarificaciones» | **152 FR, 29 clarificaciones** |
+| «todo lo necesario para recalcular vive en Postgres» | **Falso** para las tres entidades de autoría local (RD-71) |
+| 8 dependencias externas | **10 declaradas**, 8 vigentes, DEP-3 vacante |
+| Sin endpoint de escritura | Existe como **excepción declarada** (FR-089) |
+| `region_weight_factor` sin fijar | **0,1** en `v1` (RD-79) |
+| Cuota de novedades como conteo fijo | **Proporción del 20 %** sin piso ni clamp (RD-80) |
+| `top_n` sin cota inferior | Dominio **`[10, 50]`** (FR-006a, RD-78) |
+| RD-1…RD-70 | **RD-1…RD-80** |
+
+---
+
+## Anexo B — Cobertura declarada
+
+Las 7 historias de usuario están cubiertas por los 10 milestones de `tasks.md`. Los 27 criterios de éxito
+tienen requisito funcional asociado. Los 32 invariantes de datos tienen verificación prevista en el nivel
+correspondiente (esquema, carga de configuración o test).
+
+**Excepción declarada**: DI-28 (mínimo de tags declarados) **no es verificable por esquema** — es el único
+invariante que depende de validación en la capa de aplicación.
+
+---
+
+## Anexo C — Impacto sobre `tasks.md` e incidencias *(declarado, no ejecutado)*
+
+**Tareas a actualizar**: T003, T004, T007, T012, T017, T022, T029, T031, T036, T038, T047, T050.
+
+**Tareas nuevas requeridas**: endpoint y flujo de declaración de gustos · siembra de vectores · purga de
+señales · verificación de supresión · disparador de recálculo por conteo · ponderación regional · señal de
+resultado obsoleto disponible.
+
+**Incidencias**: #3, #4, #7, #12, #17, #22, #29, #31, #36, #38, #47 y #50 requieren actualización; las
+nuevas comienzan en **#61**.
+
+> Propagación **pendiente de comando expreso**. Este anexo enumera el alcance; no lo ejecuta.

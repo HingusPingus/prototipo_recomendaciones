@@ -864,6 +864,56 @@ Si aparece un requisito de segmentación regional, la disponibilidad de ítems e
 
 ---
 
+### 2.14 `user_declared_tags` — gustos declarados por módulo
+
+> 🆕 **Incorporada 2026-09-17 (RD-68, RD-69)**. Es el **único insumo del motor que no se deriva de
+> ninguna señal**: el usuario lo enuncia, no lo revela al usar el sistema.
+
+**Zona**: **datos de origen local**. No es proyección de `api-general` —ese repositorio no tiene este
+dato— ni derivado de `user_signals`. Es el primer atributo funcional cuya autoridad nace acá.
+
+**Propósito**: dar insumo al término de contenido **antes de la primera señal**, eliminando el arranque
+en frío del usuario (RD-68).
+
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `user_id` | UUID | No | **Identidad** | **PK compuesta**. FK → `users.id` **ON DELETE CASCADE** (RD-51: alcanza la supresión) |
+| `module` | enum(`peliculas`,`juegos`) | No | **Identidad** | **PK compuesta.** La declaración es **por módulo** (RD-69) |
+| `tag_name` | text | No | **Identidad** | **PK compuesta.** FK → `tags.name` **ON DELETE RESTRICT** |
+| `declared_at` | timestamptz | **No** | **Auditoría (forense)** | Cuándo se declaró. ⛔ No sostiene lógica: los gustos **no caducan** (RD-68) |
+
+**Por qué `ON DELETE RESTRICT` hacia `tags`** y no `CASCADE`: un tag declarado por un usuario no puede
+desaparecer en silencio. Si desapareciera, el perfil se recalcularía con menos insumo del declarado y
+el usuario vería cambiar sus recomendaciones sin haber hecho nada. La restricción obliga a que el
+retiro de un tag del vocabulario sea una operación consciente.
+
+**Índices**:
+
+| Índice | Consulta que sirve |
+|---|---|
+| PK `(user_id, module, tag_name)` | Declaración puntual |
+| `idx_declared_user_module (user_id, module)` | **Reconstrucción del perfil** (RD-68): los tags declarados de un usuario en un módulo, leídos en cada recálculo |
+| `idx_declared_tag (tag_name)` | Búsqueda inversa. Sostiene la guarda de `ON DELETE RESTRICT` y la medición de concentración de gustos (§7.13) |
+
+**Integridad**:
+- **Mínimo cinco filas por `(user_id, module)` declarado** (FR-083). El esquema **no** puede expresar
+  un mínimo de cardinalidad por grupo; lo verifica la transacción de declaración y lo audita DI-28.
+  Se declara acá explícitamente **porque es una restricción que el esquema no sostiene** — y este
+  documento viene sosteniendo que lo irrepresentable es mejor que lo verificado en código.
+- No hay máximo: el usuario puede declarar más de cinco (FR-083).
+- `(user_id, module)` **puede no existir**: un usuario que nunca entró al módulo de películas no tiene
+  filas de películas, y eso es un estado normal, no una carencia (RD-69).
+
+**Consumidores por atributo**:
+
+| Atributo | Consumidores | Qué se rompe ante su ausencia |
+|---|---|---|
+| `tag_name` | Construcción de `user_profiles.vector` (RD-68) · herencia entre módulos vía `tag_modules` (RD-69) | El usuario nuevo vuelve a no tener insumo de contenido: se restaura el arranque en frío que esta entidad existe para eliminar |
+| `module` | Alcance de la declaración · determinación de qué se hereda | La declaración se vuelve global y desaparece la pereza de RD-69 |
+| `declared_at` | **Ninguno.** Forense | Nada |
+
+---
+
 ## 3. Modelo de datos en Redis
 
 > **Redis es caché derivada y descartable.** Todo lo de esta sección es reconstruible desde §2.
@@ -1011,14 +1061,26 @@ avalancha auto-infligida: N lecturas en miss no deben producir N recálculos.
 ## 4. Versionado de configuración del motor
 
 **Contenido** (`engine_config/vN.yaml`): `alpha`, `beta`, `gamma` (pesos de señal, suma 1.0) ·
-`k` (vecinos) · `lambda_mmr` (diversificación) · `top_n_default`, `top_n_max` · `peso_like`,
-`peso_dislike` · `age_rating_catalog` (mapeo de clasificación etaria) ·
+`k` (vecinos) · `lambda_mmr` (diversificación) · **`top_n_default` = 20** (Q22/RD-73; es el valor
+que RD-66 ya suponía al fijar la cuota), `top_n_max` · **`peso_like` = 1,0**, **`peso_dislike` = −1,0**,
+peso de consumo = **0,3** (Q22/RD-73, adoptados del prototipo) · `age_rating_catalog` (mapeo de clasificación etaria) ·
 `popularity_window_days` · **`popularity_confidence_z` = 1,96** (nivel de confianza de Wilson, Q6; valor fijado en RD-53) ·
-`diversity_max_cluster_share` · **`fallback_new_item_slots` = 3** (posiciones del respaldo
-reservadas a novedades, Q19/RD-66) · **umbral de evidencia** de promoción al conjunto general y
-**criterio de orden del conjunto emergente** (Q20/RD-67; **ambos pendientes en NC-20**) ·
-**`fallback_bootstrap_min_items` = 1000** (Q20/RD-67) ·
-**`region_weight_factor`** (ponderación regional del término colaborativo, Q18/RD-64) ·
+`diversity_max_cluster_share` · ~~`fallback_new_item_slots`~~ **reemplazado por RD-77** ·
+**`fallback_new_item_quota_ratio` = 0,20** — cuota de novedades del respaldo, `floor(top_n × ratio)`
+sobre el `top_n` **de cada solicitud** (Q23/RD-77); con `top_n_default` = 20 son **4** posiciones, y en
+`top_n_min` = 10 son **2** · ~~`fallback_new_item_quota_min`~~ **eliminado por RD-80**: con `top_n ≥ 10`
+el ratio nunca baja de 2, de modo que ningún piso llegaría a gobernar · **`top_n_min` = 10**,
+**`top_n_default` = 20**, **`top_n_max` = 50**: dominio admisible de `top_n` = **`[10, 50]`** (Q24/RD-78) · **umbral de evidencia** de promoción al conjunto general (Q20/RD-67; valor inicial a calibrar,
+**su error dejó de ser irreversible** con RD-70) — el **criterio de orden del emergente** ya no es
+parámetro: es la afinidad con el perfil del usuario (FR-033a6f1, RD-70) ·
+~~`fallback_bootstrap_min_items`~~ **eliminado por RD-70** junto con el régimen de arranque ·
+**`declared_tags_min` = 5** (mínimo de tags declarados por módulo, Q21/RD-68) ·
+**`region_weight_factor` = 0,1** en `v1` (Q18/RD-64, Q23/RD-76, Q24/RD-79 — **revierte** el arranque
+en `0` que había fijado RD-74: la segmentación queda **activa** con intensidad mínima, el aporte
+extrarregional se reduce un 10 %) — mide la **intensidad de
+la segmentación**: una señal de la misma región pesa `1` y una de otra región pesa `1 − factor`, de
+modo que **`0` es el neutro** y deja el término colaborativo idéntico a como sería sin región
+(FR-090). Cuidado: **el nombre se lee al revés** de lo que el parámetro mide (RD-76) ·
 TTLs · umbrales de reintento.
 
 > **Por qué los tres nuevos son del motor y no operativos**: los tres entran en el **cálculo** de un
@@ -1028,13 +1090,19 @@ TTLs · umbrales de reintento.
 > historial existe. **`interaction_recalc_threshold` = 10** (Q18/RD-63) es el caso intermedio y va
 > aparte: no altera el valor del top-N, solo **cuándo** se lo recomputa; es operativo.
 
-> **Validación al cargar**: `0 <= fallback_new_item_slots < top_n_default` —entero, y el extremo
-> superior **estricto**: una cuota que iguale el tamaño del resultado lo convierte en una lista de
-> novedades, que es otro comportamiento y no un caso extremo de este (FR-033a6b)— y
-> `0 < region_weight_factor < 1` estricto en ambos extremos. El extremo superior de `region_weight_factor` **se rechaza
-> explícitamente** porque equivale al filtro duro que FR-081a prohíbe — la restricción vive en la
-> carga de configuración y no en una convención, precisamente porque una decisión descartada suele
-> volver por la puerta de la configuración.
+> **Validación al cargar**: `0 < fallback_new_item_quota_ratio < 1` y
+> `10 <= top_n_min <= top_n_default <= top_n_max`. Ese par **sostiene por sí solo** la garantía
+> `cuota < top_n` (FR-033a6b), que por eso deja de necesitar el clamp en la fórmula (RD-80); `0 <= region_weight_factor < 1`, con el límite **inferior
+> inclusivo** —es el neutro que `v1` adopta, y excluirlo hacía irrepresentable el arranque que RD-74
+> manda (RD-76)— y el **superior estricto**, porque equivale al filtro duro que FR-081a prohíbe. La
+> restricción vive en la carga de configuración y no en una convención, precisamente porque una
+> decisión descartada suele volver por la puerta de la configuración.
+>
+> **Recorrido de la cota de la cuota**: RD-77 la trasladó de la validación de arranque al cálculo por
+> solicitud, porque contra `top_n_default` dejaba sin verificar todo `top_n` pedido explícitamente.
+> RD-78 la volvió redundante al acotar `top_n` por abajo. **RD-80 la devuelve a la validación de
+> arranque** y quita el clamp: un término que nunca se activa no pertenece a una fórmula que se evalúa en
+> cada solicitud. La fórmula vigente es `cuota = floor(top_n × fallback_new_item_quota_ratio)`.
 
 > **Parámetros operativos (FR-068), fuera de este archivo**: `signal_retention_days` = **18–24 meses**
 > (RD-53) · `sync_volume_delta_ratio` = **0,9** (RD-53) · **`interaction_recalc_threshold` = 10**
@@ -1423,6 +1491,8 @@ DerDiagram
 | **DI-23** | Ningún resultado se sirve comparando ordinales de **escalas distintas** | Test: alterar `age_config_version` del usuario a una no activa → la lectura responde `503`, **nunca `200`**. Cierra el hueco de §3.1.1: DI-2e lo exigía en el recálculo, este lo exige **al servir** (RD-40) | §4.1, FR-065 |
 | **DI-24** | Una versión de configuración ya registrada **no se altera**, y una desactivada **no se reactiva** | Trigger `BEFORE UPDATE`. Test: intentar modificar `payload` → rechazo; intentar poner `deactivated_at = NULL` → rechazo. Antes dependía de disciplina (RD-37) | FR-025 |
 | **DI-25** | La ventana del set de retirados **cubre** la obsolescencia máxima servible | Test de propiedad: `ventana_retired ≥ TTL_STALE`. Si alguien sube `TTL_STALE` sin subir la ventana, un retirado servible queda fuera del set y la guarda lo deja pasar (RD-39) | RD-8, FR-036 |
+| **DI-27** | Los conjuntos **emergente** y **general** son **disjuntos y exhaustivos**, y la pertenencia se **deriva** de `like_count`/`engaged_user_count`; no se almacena | Consulta de verificación: ningún ítem clasificable en ambos, ninguno en ninguno. No hay columna que pueda divergir porque no hay columna (FR-033a6c, RD-67) |
+| **DI-28** | Un usuario con módulo declarado tiene **al menos `declared_tags_min` filas propias** en `user_declared_tags` para ese módulo — sin contar las heredadas del otro módulo | El esquema **no** puede expresar un mínimo de cardinalidad por grupo: lo garantiza la transacción de declaración y lo audita una consulta periódica. Se registra como excepción explícita al criterio de hacer irrepresentable lo inválido (FR-083, RD-68) |
 | **DI-26** | El numerador de la popularidad **nunca excede** al denominador | `CHECK (like_count <= engaged_user_count)`. Test: intentar insertar 10 likes con 5 usuarios comprometidos → la base rechaza. Garantiza $\hat{p} \in [0,1]$ **sin validación en código**, y hace irrepresentable el doble conteo que RD-45 describe | RD-45, FR-033a3 |
 
 
@@ -4447,6 +4517,667 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
+### RD-80 — El 20 % rige solo, y el piso de la cuota se elimina (Q25)
+
+**Verificación previa, que es lo que la decisión pedía**: se comprobó si una cuota proporcional pura
+—sin piso— entra en conflicto con algún requisito vigente. **No lo hace.** El único riesgo que el piso
+existía para cubrir era el redondeo a cero, y `top_n_min = 10` (RD-78) ya lo vuelve imposible:
+
+| Restricción vigente | Estado con 20 % puro sobre `top_n ∈ [10, 50]` |
+|---|---|
+| `cuota ≥ 1` — que la protección no se apague (RD-77) | `floor(10 × 0,20) = 2`. **El mínimo del dominio ya da 2.** |
+| `cuota < top_n` (FR-033a6b) | Máximo `10` sobre `top_n = 50`. Se cumple con margen de 40. |
+| La cuota es un **máximo, no un mínimo** (FR-033a6) | Sin cambios: nada obliga a llenarla. |
+| Algún requisito que exija exactamente 3 | **No existe.** El `3` de RD-66 fue revertido por RD-77; RD-78 lo reintrodujo como piso, no como obligación derivada de otro requisito. |
+
+**Decisión**: `fallback_new_item_quota_ratio = 0,20` rige en todo el dominio admisible.
+**`fallback_new_item_quota_min` se elimina** — no se baja a `1`, se quita — y el cálculo queda:
+
+```
+cuota = floor( top_n × fallback_new_item_quota_ratio )
+```
+
+**Por qué se elimina en lugar de conservarse en un valor inofensivo**: porque nunca gobernaría. Con
+`top_n ≥ 10` el ratio siempre entrega al menos 2, de modo que un piso de `1` —o de `0`— jamás decidiría
+nada. Es exactamente el criterio que RD-77 aplicó al descartar el redondeo hacia arriba: *«un parámetro
+que nunca gobierna es un parámetro que miente sobre lo que hace»*. Conservarlo dejaría en la
+configuración una perilla que aparenta proteger algo y no protege nada, y que el primer lector
+razonablemente creería operante.
+
+**El clamp `top_n − 1` también desaparece del enunciado.** RD-78 lo había conservado como «defensa ante
+un cambio futuro de los límites», lo cual es la misma clase de residuo: un término que no se activa nunca
+y que oculta, dentro de una fórmula, un invariante que corresponde declarar como validación de arranque.
+La garantía `cuota < top_n` pasa a sostenerse donde debe — en `0 < ratio < 1` junto con `top_n_min ≥ 1`,
+verificables al cargar — y no en una operación que se ejecuta en cada solicitud para no hacer nada.
+
+> Dos parámetros y un término de fórmula se agregaron para cubrir casos que después dejaron de existir.
+> Ninguno se retiró al desaparecer su motivo. Es el patrón inverso al de los identificadores reutilizados:
+> allá el riesgo es la colisión, acá es la **acumulación de defensas huérfanas**, que el documento venía
+> incorporando sin revisar si su causa seguía en pie.
+
+**Resultado numérico** — la cuota vuelve a ser exactamente el 20 % en todo el dominio:
+
+| `top_n` | Cuota | Porción |
+|---|---|---|
+| 10 | 2 | 20 % |
+| 14 | 2 | ~14 % (efecto del redondeo hacia abajo) |
+| 15 | 3 | 20 % |
+| 20 (defecto) | 4 | 20 % |
+| 50 (máximo) | 10 | 20 % |
+
+**Costo aceptado, explícito**: se pierde la garantía de «3 posiciones en todos los casos». En
+`top_n ∈ [10, 14]` la cuota es **2**, no 3. Esa garantía fue lo que se puso en la balanza contra el 20 %,
+y la instrucción resolvió a favor del 20 %. También queda a la vista que el redondeo hacia abajo hace que
+la porción real oscile por debajo del 20 % dentro de cada tramo —en `top_n = 14` es el 14 %—: es inherente
+a una cuota entera sobre un resultado entero, y no se corrige con un piso.
+
+**Lo que esta decisión NO toca**: `top_n_min = 10` permanece. Su fundamento en RD-78 era doble —habilitar
+un piso mayor y evitar que la cuota compitiera con el propósito del respaldo— y **el segundo sobrevive
+intacto**: sin cota inferior, `top_n = 1` volvería a dar cuota `0` por redondeo, reabriendo el apagado
+silencioso que RD-77 identificó. El límite sigue siendo necesario por su propia razón, no como andamio
+del piso eliminado.
+
+**Alternativa descartada**: conservar el piso en 3 y aceptar el 30 % en los `top_n` cortos (lo decidido en
+RD-78). Se descarta por instrucción expresa, verificada la ausencia de conflicto que la motivaba.
+
+**Condición de revisión**: si se midiera que en `top_n` cortos dos posiciones no alcanzan para que un ítem
+emergente logre exposición efectiva, la corrección es **elevar `top_n_min`** —que preserva la
+proporcionalidad— y no reintroducir un piso que la rompe en un tramo.
+
+---
+
+### RD-79 — `v1` arranca con segmentación regional mínima, no nula (Q24.1)
+
+**Decisión**: `region_weight_factor = 0,1` en `v1`. Una señal de la misma región pesa `1`; una de otra
+región pesa `0,9`. La segmentación queda **activa desde el primer despliegue**, con la intensidad más
+baja que sigue siendo una intensidad.
+
+**Esto revierte RD-74 y FR-090 en su parte prescriptiva.** RD-74 decidió que `v1` adoptara el factor
+**desactivado** (`0`). Ahora `v1` lo adopta activo. Lo que **no** cambia es la capacidad: el `0` sigue
+siendo representable y sigue siendo el neutro (RD-76, FR-081b), de modo que desactivar la segmentación
+sigue siendo un cambio ordinario de configuración. La corrección de RD-76 —volver el límite inferior
+inclusivo— **no queda sin uso**: FR-090 sigue exigiendo que la desactivación sea posible.
+
+**Fundamento**: la diferencia entre `0` y `0,1` no es de grado sino de **qué se despliega**. Con `0`, el
+código de la segmentación existe pero nunca se ejecuta en producción: su primer uso real ocurriría el día
+que alguien cambie el valor, sobre tráfico real y sin haber pasado nunca por un despliegue. Con `0,1` el
+camino se ejerce desde el principio, con un efecto acotado — el aporte extrarregional se reduce un 10 % —
+que no puede producir el modo de falla que RD-64 temía: en una región poco poblada, las señales ajenas
+siguen pesando `0,9` y el término colaborativo no se queda sin insumo ni remotamente.
+
+**Costo aceptado, y es real**: `v1` **nunca observa la línea de base sin segmentación**. La condición de
+revisión de RD-64 —«si se midiera que el aporte extrarregional degrada la relevancia»— pide comparar
+contra un sistema sin región, y ese sistema ya no se despliega. La comparación exige poner el factor en
+`0` deliberadamente para medir, en lugar de tenerlo gratis por ser el estado inicial. Se acepta porque la
+alternativa cambia el problema de lugar, no lo elimina: con `0` la incógnita sería el comportamiento
+*con* segmentación, que es la mitad que interesa.
+
+> Vale registrar que ninguno de los dos arranques es neutral respecto de lo que se puede aprender. Elegir
+> el valor inicial de un parámetro es elegir qué mitad de su dominio queda sin observar.
+
+**Efecto sobre el fundamento de `region NOT NULL`**: RD-74 defendía la obligatoriedad de `region` pese a
+que el dato no se usara, apoyándose en que es «fácil de pedir al alta e imposible de recuperar
+retroactivamente». Ese argumento **deja de ser necesario**: el dato ahora se usa desde `v1`. Se conserva
+escrito porque sigue siendo la razón por la que el campo debe pedirse aunque el factor vuelva a `0`.
+
+**Alternativa descartada**: mantener `0` y activar tras la primera medición. Es defendible, y fue la
+decisión de RD-74; se descarta porque pospone el primer ejercicio real del camino de segmentación hasta
+un momento en que ya hay usuarios dependiendo del resultado.
+
+**Condición de revisión**: la de RD-64, sin cambios. Si se midiera degradación, la corrección es la curva
+o el valor, no volver al filtro.
+
+---
+
+### RD-78 — Piso de `top_n` en 10 y cuota mínima de 3 posiciones (Q24.2)
+
+**Decisión**: dos cambios acoplados, y el acoplamiento es el punto.
+
+1. **`top_n_min` = 10**: toda solicitud con `top_n < 10` MUST rechazarse (FR-005, FR-006a). El tamaño
+   pedido deja de tener valores bajos admisibles.
+2. **`fallback_new_item_quota_min` = 3** (era `1`): la cuota de novedades nunca baja de 3 posiciones.
+
+**Por qué van juntos**: el piso de `1` que fijó RD-77 no era el valor deseable, era el único **seguro**.
+Con `top_n` admitiendo valores arbitrariamente bajos, cualquier piso mayor chocaba contra el tamaño del
+resultado —el clamp `top_n − 1` lo recortaba— y en `top_n = 1` la cuota se comía la respuesta entera.
+Acotar `top_n` por abajo **elimina esa colisión**: con `top_n ≥ 10`, un piso de 3 es siempre estrictamente
+menor que el resultado, por un margen de 7 posiciones. El clamp superior de FR-033a6a **deja de activarse
+en todo el dominio admisible** y pasa a ser defensa redundante, no mecanismo operante.
+
+> La restricción no estaba en el piso de la cuota: estaba en no haber acotado `top_n`. RD-77 resolvió el
+> caso degenerado `top_n = 1` con un clamp, aceptando el caso en lugar de preguntarse si debía existir.
+
+**Aritmética resultante, que conviene mirar porque no es «20 % siempre»**:
+
+| `top_n` | 20 % | Cuota efectiva | Gobierna | Porción real |
+|---|---|---|---|---|
+| 10 | 2 | **3** | piso | 30 % |
+| 15 | 3 | **3** | ambos | 20 % |
+| 20 (defecto) | 4 | **4** | ratio | 20 % |
+| 50 (`top_n_max`) | 10 | **10** | ratio | 20 % |
+
+El piso gobierna en `top_n` de 10 a 14, donde la cuota **excede** la proporción configurada: 3 de 10 es
+30 %. Es la consecuencia directa de pedir «3 en todos los casos» junto con «20 %», y no hay forma de
+satisfacer ambas a la vez en los resultados cortos. Se resuelve a favor del piso, que es lo que la
+decisión pide explícitamente. El ratio del 20 % describe el comportamiento **desde `top_n = 15` en
+adelante**, que incluye el valor por defecto y todo lo que está por encima.
+
+**Sobre el valor 10**: es el menor `top_n` para el cual 3 posiciones reservadas siguen siendo minoría
+holgada del resultado. Por debajo, la cuota empieza a competir con el propósito del respaldo — en
+`top_n = 5` serían el 60 % —. Que coincida con un tamaño de página convencional es conveniente, no el
+criterio.
+
+**Lo que esta decisión NO hace**: no toca `fallback_new_item_quota_ratio`, que sigue en 0,20, ni
+`top_n_default` = 20 ni `top_n_max` = 50. El dominio admisible de `top_n` pasa a ser `[10, 50]`.
+
+**Efecto sobre el contrato de lectura**: FR-005 ya exigía límites validados y rechazo explícito fuera de
+ellos, pero solo tenía **máximo**. El mínimo es una restricción nueva sobre el consumidor —`api-general`
+no puede pedir top-3— y por eso se enuncia como requisito propio (FR-006a) en lugar de quedar escondido en
+un valor de configuración.
+
+**Alternativa descartada**: subir el piso a 3 sin acotar `top_n`. Deja el piso inoperante justo donde se
+lo invocó: en `top_n = 3` la cuota se recortaría a 2 por el clamp, y la garantía de «3 en todos los casos»
+sería falsa precisamente en los casos que la motivan.
+
+**Condición de revisión**: si apareciera un consumidor con necesidad legítima de resultados cortos —un
+widget, una respuesta embebida—, la corrección es hacer la cuota dependiente del contexto de consumo, no
+bajar `top_n_min` y dejar que el clamp vuelva a operar en silencio.
+
+---
+
+### RD-77 — La cuota de novedades vuelve a ser proporcional, con piso de una posición (Q23.2)
+
+**Decisión**: la cuota se expresa como **proporción del resultado con un mínimo absoluto**, no como un
+conteo fijo. Dos parámetros reemplazan a `fallback_new_item_slots`:
+**`fallback_new_item_quota_ratio` = 0,20** y **`fallback_new_item_quota_min` = 1**. La cuota efectiva de
+cada respuesta se calcula sobre el `top_n` **de esa solicitud** (FR-033a6, FR-033a6a):
+
+```
+cuota = min( max( fallback_new_item_quota_min, floor(top_n × fallback_new_item_quota_ratio) ), top_n − 1 )
+```
+
+**Esta decisión revierte RD-66 y reinstala la alternativa que RD-66 había descartado.** Corresponde
+decirlo con todas las letras: RD-66 descartó «mantener la fracción y compensar con un mínimo de una
+posición» por dos razones, y **solo una de las dos sigue en pie**.
+
+| Objeción de RD-66 | Estado |
+|---|---|
+| «Acumula dos parámetros donde uno alcanza» | **Sigue siendo cierta.** Se acepta el costo. |
+| «El mínimo sería el valor efectivo en todos los `top_n` pequeños — un número absoluto disfrazado de fracción» | **Sigue siendo cierta, pero es inofensiva.** Con ratio 0,20 el piso gobierna solo para `top_n ≤ 7`. En ese rango, *cualquier* forma de la cuota entrega una o ninguna posición: no hay comportamiento que la fracción pudiera expresar y el piso esté ocultando. |
+
+**Lo que RD-66 no vio, y es el fundamento de la reversión**: RD-66 examinó el modo de falla de la
+fracción en los `top_n` **bajos** y lo corrigió pasando a un absoluto — sin examinar el modo de falla
+del absoluto en los `top_n` **altos**. Son simétricos. Con `fallback_new_item_slots = 3`, un `top_n` de
+50 reserva el **6 %**: la protección no se apaga como en el caso que RD-66 temía, pero **se diluye**
+justo donde hay espacio de sobra para conceder exposición sin costo. El absoluto no escala; la fracción
+sí. La fracción con piso cubre **ambos extremos**, que es algo que ninguna de las dos formas puras hace.
+
+> Es la tercera vez que el documento fija una magnitud mirando un solo extremo de su dominio. RD-66
+> incluso lo anotó de sí mismo —«fijar una magnitud sin mirar de qué depende»— y aun así dejó sin mirar
+> el extremo opuesto del mismo parámetro que estaba corrigiendo.
+
+**Consecuencia sobre el valor**: con `top_n_default = 20` (RD-73), la cuota pasa de **3 a 4 posiciones**.
+No es un efecto colateral a tolerar sino el valor pedido: 20 % de 20. Queda invalidada la aritmética de
+RD-66 («tres posiciones son el ~15 %») y, con ella, la única justificación numérica que aquel valor tenía.
+
+**Sobre el redondeo, y por qué es hacia abajo**: `floor` y no `ceil`. Con `ceil`, todo `top_n ≥ 2`
+produciría cuota ≥ 1 por la vía del redondeo y el piso no tendría ningún caso propio — un parámetro que
+nunca gobierna es un parámetro que miente sobre lo que hace. Con `floor`, el piso es el único mecanismo
+que garantiza la posición reservada en resultados cortos, que es exactamente lo que se le pidió.
+
+**El caso degenerado `top_n = 1` se resuelve a favor del respaldo, no de la cuota.** El clamp superior
+`top_n − 1` lo obliga: con `top_n = 1` la cuota es **0**, no 1. Sin el clamp, una solicitud de un solo
+ítem devolvería siempre una novedad y **nunca** la mejor recomendación disponible — la protección se
+habría comido el resultado entero. La garantía del piso cede ante la garantía de que el respaldo siga
+siendo un respaldo.
+
+**Cambio de forma en la validación, no solo de valor**: FR-033a6b validaba
+`fallback_new_item_slots < top_n_default` **al arrancar**. Eso solo cubría el tamaño por defecto y dejaba
+sin verificar todo `top_n` pedido explícitamente. El clamp traslada la restricción al **cálculo por
+solicitud**, donde el invariante es inviolable por construcción en lugar de estar comprobado una sola vez
+contra un único valor. La validación de arranque se conserva reducida a lo que sí es de arranque:
+`0 < ratio < 1` y `fallback_new_item_quota_min ≥ 0` entero.
+
+**Los nombres NO reutilizan `fallback_new_item_share`.** Ese identificador sigue designando la **métrica
+observada** (proporción del respaldo servido que provino de la cuota, FR-033a8), y ahora que el parámetro
+volvió a ser una proporción la colisión sería inevitable: «la proporción configurada» y «la proporción
+observada» son precisamente las dos cosas que FR-033a8 existe para distinguir. El documento ya arrastra
+tres incidentes de identificador reutilizado —y una dependencia vacante a propósito por eso mismo—, de
+modo que los parámetros llevan nombres nuevos.
+
+**Alternativa descartada**: conservar el conteo absoluto y elevarlo a 4. Iguala el resultado en
+`top_n = 20` y en ningún otro punto; deja intacta la dilución en los `top_n` altos, que es el defecto que
+motivó la revisión.
+
+**Condición de revisión**: la misma que RD-66 dejó anotada y que sigue vigente — en cuanto
+`fallback_new_item_share` sea observable. Si la cuota se llena siempre por puntaje ordinario, lo que hay
+que mover es el umbral de evidencia, no la proporción.
+
+---
+
+### RD-76 — El valor neutro de la ponderación regional es representable y es `0` (Q23.1)
+
+**Decisión**: `region_weight_factor` queda definido como la **intensidad de la segmentación**, no como el
+peso de un grupo. El término colaborativo pondera cada señal ajena así:
+
+| Procedencia de la señal | Peso |
+|---|---|
+| Misma región que el usuario | `1` |
+| Otra región | `1 − region_weight_factor` |
+
+De ahí que **`region_weight_factor = 0` sea el valor neutro**: todas las señales pesan `1` y el término
+colaborativo produce **exactamente** el mismo resultado que si la región no existiera (FR-090). `v1`
+arranca ahí (RD-74). El extremo opuesto, `1`, anula el aporte extrarregional y equivale al filtro duro
+que FR-081a prohíbe.
+
+**Esto corrige un defecto real, no aclara una redacción.** RD-74 declaró que `v1` adopta «el valor
+neutro» y §4 validaba `0 < region_weight_factor < 1`, **estricto en ambos extremos**. Los dos enunciados
+son incompatibles: la validación excluía todos los valores candidatos a neutro, de modo que el arranque
+que RD-74 mandaba era **irrepresentable**. La configuración de `v1` no habría podido cargarse.
+
+**Causa**: el parámetro se especificó por sus bordes —«no puede anular el aporte ajeno»— sin fijar nunca
+qué mide ni en qué dirección crece. Mientras nadie tuvo que escribir un valor concreto, la omisión no se
+manifestó. Se manifestó en cuanto RD-74 pidió uno.
+
+**Validación corregida**: `0 <= region_weight_factor < 1`. El límite inferior pasa a ser **inclusivo** —es
+el neutro, y negarlo era el defecto— y el superior sigue siendo **estricto**, por la razón que RD-64 ya
+había dado: el valor que emula al filtro duro tiene que ser irrepresentable, no desaconsejado.
+
+**Sobre la orientación elegida**: se conserva la que el documento ya tenía escrita —extremo superior =
+filtro duro— en lugar de invertirla. La inversión (definir el factor como el peso extrarregional, neutro
+en `1`) es igual de válida en abstracto y obligaría a reescribir RD-64 y FR-081a, que hoy son correctos.
+Se elige no tocar lo que funciona.
+
+**Costo aceptado, y conviene tenerlo a la vista**: con esta semántica el nombre **se lee al revés**.
+`region_weight_factor` sugiere «el peso de la región», y quien lo lea sin el contexto esperará que `0`
+apague el término colaborativo y no que lo deje intacto. Se conserva el nombre porque ya está citado en
+RD-64, RD-74, FR-081, FR-090 y en el plan, y el documento tiene peor historial con los identificadores
+cambiados que con los identificadores mal elegidos. La defensa es que el neutro esté escrito
+explícitamente donde el parámetro se declara, no inferible de su nombre.
+
+**Alternativa descartada**: dejar el neutro sin fijar y resolverlo en implementación. Es exactamente la
+vía por la que la decisión descartada de RD-64 —el filtro duro— volvería sin discusión: un neutro no
+especificado se elige por conveniencia de quien escribe el código.
+
+**Condición de revisión**: si la segmentación se activa y se midiera que la degradación lineal `1 − f` es
+demasiado abrupta en regiones de baja densidad. La corrección sería la curva, no el neutro.
+
+---
+
+### RD-75 — Endpoint de escritura para la declaración: excepción declarada (Q22.1)
+
+**Decisión**: este servicio expone un **endpoint de escritura** para la declaración de gustos
+(FR-089), con respuesta **síncrona** que confirma la persistencia (FR-089a) y **prohibición explícita
+de cómputo** dentro de él (FR-089b).
+
+**Fundamento**: `user_declared_tags` vive acá y su autoridad nace acá (RD-68), pero **ningún
+componente descrito podía escribirla**. La API era de lectura; el Data Transformer proyecta lo que
+`api-general` tiene, y `api-general` no tiene este dato; el worker consume eventos de actividad, y una
+declaración no es actividad. El hueco no era de redacción: era una entidad sin escritor.
+
+**Por qué síncrono**: la declaración y la primera solicitud de recomendaciones son **consecutivas en
+la experiencia del usuario**. Bajo FR-088, una solicitud a un módulo sin declaración se rechaza; si la
+declaración se procesara de forma asíncrona, el usuario que acaba de elegir cinco tags recibiría un
+rechazo por un dato que **ya proporcionó**. La confirmación asíncrona no es un detalle de latencia
+acá: produce un estado en que el sistema niega tener algo que el usuario le entregó.
+
+**La excepción alcanza a la escritura, no al cómputo** (FR-089b). Es la distinción que evita que esto
+se convierta en una grieta del Principio III: el endpoint valida el mínimo, resuelve la herencia
+compartida y persiste — tres operaciones acotadas, ninguna proporcional al catálogo. El cálculo del
+perfil queda donde siempre estuvo, en el recálculo asíncrono. Sin esta separación explícita, «la API
+ya escribe» se vuelve con el tiempo «la API ya computa».
+
+**Alternativas descartadas**:
+- **Evento por RabbitMQ**: preserva la arquitectura sin excepciones, pero no puede confirmar, y el
+  costo recae exactamente en el momento en que el usuario está esperando. Se descarta por FR-088.
+- **Data Transformer**: contradice RD-68 — proyectaría un dato que el origen no tiene.
+- **Que `api-general` la almacene y este repositorio la proyecte**: contradice RD-47, devuelve la
+  autoridad afuera y agrega una dependencia bloqueante sobre un repositorio incompleto.
+
+**Costo asumido**: el Principio I decía que la frontera era de acceso; ahora también es de origen, y
+este endpoint es el punto donde el dato entra. Es superficie de escritura nueva, con su propia
+validación y su propio riesgo de abuso.
+
+**Condición de revisión**: si apareciera un segundo dato de autoridad local, conviene revisar si
+corresponde un componente de escritura propio en lugar de ampliar la excepción sobre la API de
+lectura. Una excepción con dos casos deja de ser excepción.
+
+---
+
+### RD-74 — `v1` adopta la segmentación regional desactivada (Q22.3)
+
+**Decisión**: `region_weight_factor` arranca en su **valor neutro** en `v1` (FR-090). Con el factor
+neutro, el término colaborativo se comporta **exactamente** como si la región no existiera. La
+incorporación posterior no requiere cambio de esquema.
+
+**Fundamento**: el plan ubica la ponderación regional en **Fase 3**, y fijar un valor activo en `v1`
+pondría en producción, desde el primer día, un comportamiento cuya tarea no existe y cuyo efecto no se
+puede medir todavía. Un parámetro activo sin implementación observable es peor que uno apagado: no se
+sabe si hace algo.
+
+**Lo que se conserva y por qué no es contradictorio**: `region` sigue siendo **NOT NULL** (RD-52) y se
+sigue pidiendo en el alta (RD-61). Podría objetarse que se cobra un dato obligatorio para una
+funcionalidad apagada. La objeción es válida como costo y se acepta con fundamento: el dato es **fácil
+de pedir al alta e imposible de recuperar retroactivamente**. Activar la segmentación en Fase 3 sin
+haber recogido región desde el principio dejaría a toda la base histórica fuera, o exigiría una
+campaña de recolección. Se paga la fricción una vez, temprano.
+
+**Neutro, no ausente**: el parámetro existe en `v1` con valor neutro en lugar de omitirse. Un
+parámetro ausente que aparece después es un cambio de forma de la configuración; uno presente que
+cambia de valor es un cambio de configuración ordinario. La validación de RD-64 —que rechaza el
+extremo equivalente al filtro duro— debe admitir el neutro explícitamente.
+
+**Alternativa descartada**: fijar un valor activo ahora y calibrarlo después. Se descarta porque no
+hay forma de calibrar lo que no está implementado, y porque un valor inventado en `v1` se volvería
+«el valor de siempre» sin que nadie lo haya elegido.
+
+**Condición de revisión**: al implementar la ponderación en Fase 3. Ahí el valor se elige con la
+distribución real de usuarios por región a la vista, que es el único insumo que lo hace decidible.
+
+---
+
+### RD-73 — Valores de ponderación de señales y tamaño del resultado (Q22.5)
+
+**Decisión**: se adoptan los pesos del prototipo de referencia y se fija el tamaño del resultado:
+
+| Parámetro | Valor |
+|---|---|
+| `peso_like` | **1,0** |
+| `visto` / `jugado` (consumo) | **0,3** |
+| `peso_dislike` | **−1,0** |
+| `top_n_default` | **20** |
+
+**Fundamento de los pesos**: son los de `domain.py` en el prototipo, ya ejercitados contra el catálogo
+de referencia. La asimetría entre consumo (0,3) y like (1,0) es coherente con FR-022b —el consumo no
+expresa preferencia— sin llegar a ignorarlo: aporta señal débil, que es lo que un consumo sin
+valoración significa. El dislike simétrico al like (−1,0) es lo que permite que un rechazo activo
+mueva el perfil **por debajo de cero** en esos tags, comportamiento que RD-68 ya había adoptado
+explícitamente al elegir TF-IDF con signo.
+
+**Fundamento de `top_n_default = 20`**: no es un número nuevo. **RD-66 ya razonó sobre él** al fijar
+la cuota: *«con `top_n_default` en el orden de 20, tres posiciones son el ~15 % del resultado»*. Fijar
+otro valor ahora invalidaría el fundamento de una decisión anterior sin decirlo. Con 20, la cuota de
+novedades ocupa el 15 % — la proporción que RD-66 consideró al aceptarla.
+
+> Vale registrar el orden en que ocurrió esto: la cuota se fijó **antes** que el tamaño del resultado
+> sobre el que se calcula. Salió bien porque RD-66 dejó escrito el supuesto; si no lo hubiera hecho,
+> `top_n_default` se habría elegido por otro criterio y la cuota habría cambiado de significado en
+> silencio. Es un argumento a favor de anotar los supuestos numéricos aunque parezcan obvios.
+
+**Verificación de FR-033a6b**: ~~`fallback_new_item_slots = 3 < top_n_default = 20`~~ — **superada por
+RD-77**, que reemplazó el conteo fijo por proporción con piso y trasladó la cota al cálculo por
+solicitud. Con ratio 0,20 la cuota en `top_n_default` es **4**, y el invariante lo garantiza el clamp,
+no esta comprobación.
+
+**Todos son reversibles**: configuración versionada. Su error se corrige sin destruir nada — a
+diferencia de `signal_retention_days`. Califican bajo el criterio de RD-63/RD-66 como valores
+iniciales.
+
+**Alternativa descartada**: dejarlos para calibración. Se descarta porque `engine_config/v1.yaml` es
+requisito de la Definition of Done y `top_n_default` es necesario para una **validación de arranque**
+(FR-033a6b): sin él, el sistema no puede ni siquiera verificar su propia configuración.
+
+**Condición de revisión**: los pesos, con evaluación offline en Fase 3. `top_n_default`, si se midiera
+que el usuario rara vez recorre 20 resultados — en cuyo caso baja, y la cuota de 3 pasa a ser una
+fracción mayor, lo que obliga a revisar RD-66 y no solo este valor.
+
+---
+
+### RD-72 — El vocabulario de tags es dependencia externa: DEP-10 (Q22.4)
+
+**Decisión**: se registra **DEP-10** — vocabulario de tags normalizado del catálogo, del que se
+ofrecen las opciones de declaración.
+
+**Fundamento**: los tags se originan en **APIs externas** (Steam y equivalentes) y llegan normalizados
+a través de `api-general`. La normalización **no ocurre en este repositorio**, de modo que el conjunto
+de tags elegibles lo determina un criterio que está fuera y puede cambiar sin aviso. Es dependencia de
+**disponibilidad y estabilidad**, no de construcción: el catálogo ya existe poblado.
+
+**Por qué importa más de lo que parece**: DEP-7 ya exigía tags no vacíos por ítem, pero eso es una
+propiedad de **cada ítem**. DEP-10 es sobre el **conjunto**: si el criterio de normalización cambia
+—se fusionan dos tags, se renombra uno—, los tags ya declarados por usuarios pueden dejar de existir.
+`user_declared_tags` tiene `ON DELETE RESTRICT` hacia `tags` (§2.14) precisamente para que esa
+desaparición no sea silenciosa, pero la restricción **detiene** el cambio, no lo resuelve.
+
+**Consecuencia encadenada**: sin vocabulario no hay declaración; sin declaración, FR-088 rechaza toda
+solicitud. Es la única dependencia externa cuyo incumplimiento deja al sistema **sin ningún usuario
+atendible**, no degradado.
+
+**No se reutiliza DEP-3**, que está vacante en la tabla. Reutilizar identificadores retirados es uno
+de los modos de falla recurrentes de este proyecto —ocurrió con FR-052, con FR-022c y con
+FR-072/073—, y el hueco de DEP-3 se deja como está.
+
+**Condición de revisión**: si la normalización se trajera a este repositorio, DEP-10 se cierra y pasa
+a ser responsabilidad propia.
+
+---
+
+### RD-71 — La recuperabilidad se declara tal como está, sin ampliar el alcance (Q22.2)
+
+**Decisión**: **lo declarado recuperable es recuperable; lo que no, no lo es.** No se incorpora un
+requisito de respaldo ni de punto de recuperación en esta feature.
+
+**Fundamento**: el respaldo y la restauración son responsabilidad de infraestructura, no de este
+servicio. Incorporarlos acá ampliaría el alcance funcional en una sesión de clarificación, que es
+justamente lo que estas sesiones tienen prohibido.
+
+**Lo que esta decisión obliga a corregir**: `plan.md` afirmaba, heredándolo de su versión anterior,
+que *«todo lo necesario para recalcular vive en Postgres»*. Con tres entidades no regenerables eso es
+**falso**, y la afirmación no puede sobrevivir a esta decisión. El plan regenerado ya la retiró y
+enumera qué no se reconstruye y con qué consecuencia:
+
+| Entidad | Consecuencia de su pérdida |
+|---|---|
+| `user_signals` | Se pierde el historial |
+| `user_declared_tags` | **Hay que volver a preguntarle al usuario** |
+| `user_exclusions` | **Reaparece lo que el usuario rechazó** |
+
+**La distinción que esta decisión fija**: la pérdida de estas tablas **no es un incidente de
+disponibilidad sino de integridad**. No se resuelve esperando ni recomputando; solo se resuelve
+restaurando desde fuera del sistema, o no se resuelve. Declararlo es lo que corresponde hacer acá;
+proveer el mecanismo, no.
+
+**Alternativa descartada**: declarar un requisito de respaldo con punto de recuperación objetivo. Se
+descarta por alcance, y porque un RPO fijado sin conocer la infraestructura sería un número
+decorativo — el mismo defecto que este documento se prohíbe en los parámetros.
+
+**Condición de revisión**: antes del primer despliegue productivo. La decisión es «no ahora», no
+«nunca»: el momento correcto para fijarlo es cuando exista infraestructura real sobre la que fijarlo.
+
+---
+
+### RD-70 — Cierre de NC-20: el arranque en frío se resuelve en el usuario, no en el catálogo (Q21)
+
+**Decisión**: **NC-20 se cierra**. Ambos subpuntos quedan resueltos, pero **ninguno con el valor que
+se pedía**: (a) el umbral de evidencia deja de ser una decisión bloqueante y (b) queda **sin objeto**.
+Se eliminan **FR-033a6f** y **FR-033a6g** —el régimen de arranque y su transición monótona— y se
+reemplazan por FR-033a6f1 y FR-033a6f2.
+
+**Fundamento**: la pregunta era *«cómo ordenar el conjunto emergente cuando gobierna todo el
+respaldo»*. La declaración de gustos (RD-68) elimina la premisa: **el respaldo deja de gobernar
+nada**, porque el usuario sin señales ya no cae en él. Un pendiente cuya pregunta deja de tener
+referente no se cierra eligiendo una respuesta — se cierra mostrando que la pregunta ya no aplica.
+
+**(b) sin objeto**: FR-033a6d exigía un criterio de orden propio para el emergente porque Wilson,
+entre ítems de poca evidencia, ordena por anchura del intervalo. Ese criterio ahora existe y no hubo
+que inventarlo: es **la afinidad con el perfil del usuario** (FR-033a6f1). No es un criterio nuevo
+sino el mismo que ordena el resto del resultado, aplicado donde antes no había ninguno.
+
+**El abrazo mortal se disuelve por construcción, no por rotación** (FR-033a6f2). El bucle
+identificado —solo los primeros del orden global reciben exposición, luego solo ellos acumulan
+evidencia, luego el conjunto general nunca crece— dependía de que **existiera un orden único para
+todos los usuarios**. Con el orden por perfil, usuarios con gustos distintos ven emergentes distintos
+y la exposición se reparte sola. Por eso se **prohíbe explícitamente** introducir aleatoriedad: sería
+resolver con azar un problema que el diseño ya no tiene, a costa del determinismo de la respuesta.
+
+> **Corrección de mi propio análisis.** Había concluido que B1 —aleatorio con semilla rotativa— era
+> «la única opción que ataca la causa». Era falso, y el error tiene forma reconocible: busqué el
+> remedio dentro del conjunto de opciones que yo mismo había enumerado, en lugar de revisar la premisa
+> que las hacía necesarias a todas. Las cuatro opciones compartían el supuesto de un orden global; el
+> aporte de la propuesta fue **negar ese supuesto**, no elegir mejor dentro de él. Es el cuarto caso
+> en este documento de razonar dentro de un marco sin cuestionarlo.
+
+**(a) deja de ser bloqueante**: el umbral de evidencia sigue existiendo como criterio de partición
+(FR-033a6c) pero ya **no gobierna cuánto dura un régimen especial**, porque ese régimen no existe. Un
+umbral mal elegido ahora produce un conjunto emergente más grande o más chico —y con ello una cuota de
+tres posiciones mejor o peor aprovechada—, no un sistema atrapado sirviendo novedades. **Su error pasó
+de irreversible a acotado**, y con eso califica bajo el criterio de RD-63/RD-66: valor inicial
+declarado como punto de partida.
+
+**Se elimina un trinquete**: FR-033a6g era irreversible y no revisable por configuración. Con la
+declaración de gustos desaparece sin dejar residuo. Queda **solo uno**: la promoción definitiva
+(FR-033a6e), que sigue justificada por la ventana móvil.
+
+**Lo que se conserva y por qué**: la cuota de **3 posiciones** (RD-66) y la partición en dos conjuntos
+(RD-67) se mantienen íntegras. Podría argumentarse que sobran —si el ítem nuevo compite por afinidad
+de tags, sus tags valen lo mismo el primer día—, pero el argumento falla: el ítem nuevo compite bien
+en **α**, y sigue en desventaja estructural en **β** (nadie lo consumió, ningún vecino lo recomienda)
+y en el respaldo. Las tres posiciones garantizan visibilidad de la lista de novedades con
+independencia del término que domine el puntaje.
+
+**Alternativa descartada**: derogar RD-65/66/67 completos y confiar el descubrimiento al término de
+contenido. Se descarta porque dejaría al ítem nuevo sin ninguna protección frente a β y frente al
+respaldo, que son exactamente los dos lugares donde su desventaja no es de gusto sino de antigüedad.
+
+**Condición de revisión**: si se midiera que la cuota de tres posiciones se llena siempre con ítems
+que el usuario ya habría recibido por afinidad, la cuota es redundante y ahí sí corresponde derogarla.
+
+---
+
+### RD-69 — Declaración perezosa por módulo, con herencia por vocabulario compartido (Q21)
+
+**Decisión**: la declaración de gustos ocurre **al ingresar por primera vez a cada módulo**, no al
+crear la cuenta (FR-084). Al declarar en el segundo módulo, los tags ya declarados en el primero que
+pertenezcan al vocabulario compartido (`tag_modules`, FR-010b) **se incorporan sin volver a pedirse**,
+pero **no cuentan para el mínimo de cinco** (FR-085).
+
+**Fundamento de la pereza**: un usuario que solo quiere recomendaciones de juegos no tiene por qué
+declarar gustos de películas. Pedir ambas declaraciones al alta cobra un costo cierto —fricción en el
+formulario— por un beneficio hipotético, para un módulo que puede no visitarse nunca. El costo se
+cobra **cuando el beneficio se vuelve concreto**, que es al pedir recomendaciones de ese módulo.
+
+> **Corrección**: había planteado la declaración como **tercer campo obligatorio del alta**, junto a
+> `birth_date` y `region` (FR-079a), y la califiqué como «la más pesada porque no es un dato que el
+> usuario tiene sino uno que tiene que pensar». Ese diagnóstico era correcto y la conclusión
+> equivocada: la respuesta no era aceptar la fricción sino **moverla al momento en que se justifica**.
+> **FR-079a no se toca**: el alta sigue pidiendo solo fecha de nacimiento y región.
+
+**Fundamento de la herencia**: los géneros no son disjuntos entre módulos —«terror», «estrategia»,
+«ciencia ficción» significan lo mismo en una película que en un juego—, y `tag_modules` con su
+`is_shared` **ya modela esa intersección** (RD-14). Volver a preguntar lo mismo trataría al usuario
+como si su gusto por el terror dependiera del soporte.
+
+**Por qué la herencia no cuenta para el mínimo** (FR-085): si contara, un usuario con cinco tags
+compartidos declarados en juegos entraría a películas con el mínimo ya satisfecho y **declaración
+propia nula**. El mínimo existe para medir elección deliberada **en ese módulo**; satisfacerlo con
+herencia lo convertiría en una formalidad. La herencia aporta insumo, no cumple requisito.
+
+**Consecuencia sobre el estado de la solicitud** (FR-088): una solicitud para un módulo sin
+declaración se rechaza como **precondición incumplida**, no como estado de respuesta. Los cinco
+estados de FR-056 describen el resultado de un cálculo posible; sin declaración el cálculo es
+imposible. Un sexto estado obligaría a actualizar a los tres consumidores por un caso que el cliente
+debe impedir antes de preguntar — y FR-057 define esos estados como contrato compartido, que no se
+amplía por una precondición local.
+
+**Alternativa descartada**: declaración única y global, compartida por ambos módulos. Más simple, pero
+obliga a elegir entre pedir tags de un módulo que no interesa o aceptar un perfil construido con tags
+que no aplican al módulo consultado. El prototipo de referencia ya había resuelto esto: mantiene
+**vocabularios independientes por módulo** y tres perfiles (`UserMovieProfile`, `UserGameProfile`,
+`UserGeneralTagProfile`). La declaración por módulo es la forma que corresponde a esa estructura.
+
+**Condición de revisión**: si se midiera que la mayoría de los usuarios declara en ambos módulos en la
+misma sesión, la pereza no está ahorrando fricción y conviene ofrecer ambas declaraciones juntas —como
+opción, no como obligación.
+
+---
+
+### RD-68 — El perfil se siembra con gustos declarados, derivado y reconstruible (Q21)
+
+**Decisión**: se incorpora **`user_declared_tags`** (§2.14), única fuente local de gustos enunciados.
+El perfil vectorial del usuario (`user_profiles.vector`) se construye a partir de **tags declarados +
+señales vigentes**, es **derivado y reconstruible** (FR-087), y usa el mismo esquema TF-IDF del
+prototipo de referencia. Los gustos declarados **no caducan** (FR-086).
+
+**Fundamento**: el término de contenido pesa α = 0,5 y construía el perfil exclusivamente desde
+señales. Un usuario sin señales tenía perfil vacío, caía al respaldo, y el respaldo —global por
+definición— no lo conocía. Con gustos declarados, **α tiene insumo desde la primera solicitud**. El
+diagnóstico de fondo es que al lanzar la aplicación **β = 0,3 está estructuralmente muerto**: sin
+feedback no hay vecinos. Sembrar α es la única forma de que el usuario nuevo reciba algo mejor que un
+ranking global.
+
+**Es el primer atributo funcional cuya autoridad nace en este repositorio**. No es proyección de
+`api-general` —ese repositorio no tiene el dato— ni derivado de `user_signals`. La zona de §1.1 lo
+registra como **dato de origen local**, categoría que hasta ahora estaba vacía.
+
+**Forma del vector — TF-IDF con pesos con signo, no puntaje acotado**. Se había descrito el vector
+como pares *(tag, puntaje ∈ [0,1])*. El prototipo hace otra cosa, y se adopta lo del prototipo:
+
+```
+profile = Σ (tag_vector_item × peso_feedback),  normalizado L2
+```
+
+con `like: 1,0 · visto/jugado: 0,3 · dislike: −1,0`. Tres consecuencias que el modelo acotado no
+tiene y que se aceptan explícitamente: **(i)** los componentes **pueden ser negativos** —un dislike
+sobre terror no baja el peso «un poco», puede llevarlo por debajo de cero, que es lo correcto para un
+rechazo activo—; **(ii)** la escala la fija la normalización L2, no un rango declarado; **(iii)** cada
+componente pondera por **IDF**, de modo que un tag raro pesa más que uno común aunque ambos se hayan
+declarado igual — deseable, porque un gusto poco frecuente discrimina más.
+
+El modelo acotado a [0,1] era más explicable, pero **no es intercambiable**: obligaría a redefinir la
+comparación contra el vector del ítem, que hoy es coseno sobre el mismo espacio TF-IDF. Se prioriza lo
+ya validado en el prototipo.
+
+**Siembra por feedback sintético**: la declaración se traduce a señales sintéticas de tipo `like`
+sobre los ítems que contienen los tags declarados, y el constructor de perfiles opera sin cambios. Es
+el mecanismo de `cli_preferencias.py`, ya probado. **Estas señales sintéticas no son `user_signals`**
+y no entran a la tabla: no son hechos ocurridos, no tienen `origin_interaction_id` (CR-17) y
+violarían la inmutabilidad de RD-50. Existen solo dentro del cálculo del perfil.
+
+**Derivado, no incremental** (FR-087). Se había propuesto que el feedback *modificara el puntaje del
+tag en el vector guardado*. Se rechaza: un vector actualizado incrementalmente es **estado propio no
+reconstruible** —si se corrompe no hay de dónde recomputarlo— y es el patrón que RD-12 y RD-14
+corrigieron dos veces. Con el recálculo completo, `user_profiles` sigue siendo derivado puro y la
+declaración persiste como insumo que **no se purga**, de modo que el perfil sobrevive a la purga de
+señales de RD-46.
+
+**Los gustos no caducan, el peso sí se modula** (FR-086). La distinción es deliberada: el feedback
+cambia **cuánto contribuye** un tag, no **si el usuario lo declaró**. Borrar una declaración por
+efecto de un dislike sustituiría un enunciado del usuario por una inferencia del sistema, que es
+justamente lo que la declaración existe para evitar.
+
+**Mínimo cinco, sin máximo** (FR-083), en `declared_tags_min`. Con uno o dos tags el perfil inicial es
+tan estrecho que el usuario ve siempre lo mismo y el MMR no tiene de dónde diversificar. El mínimo es
+**punto de partida**, reversible por configuración: cambiarlo no invalida declaraciones existentes.
+
+**Restricción que el esquema no sostiene**: el mínimo de cardinalidad por grupo no es expresable como
+`CHECK`. Se verifica en la transacción de declaración y se audita por DI-28. Se deja constancia porque
+este documento sostiene que lo irrepresentable es preferible a lo verificado en código, y **este es un
+caso donde no se pudo**.
+
+**Alternativas descartadas**: **(i)** vector como estado incremental — más barato, no reconstruible,
+tercer trinquete; **(ii)** puntaje por tag acotado a [0,1] — más explicable, incompatible con el
+coseno TF-IDF ya validado; **(iii)** gustos con caducidad — evita arrastrar un gusto de 2026 para
+siempre, pero el feedback ya cumple esa función modulando el peso, y una caducidad haría desaparecer
+insumo sin que el usuario lo pidiera.
+
+**Riesgo declarado**: si los gustos declarados se concentran en pocos tags, los ítems con tags raros
+no se muestran a nadie. Es el mismo bucle de exposición, sesgado ahora por distribución de gustos en
+lugar de por posición en una lista. Es **más débil** que el original —la distribución de gustos es
+diversa por naturaleza, un orden global no— pero no es nulo, y la ponderación IDF lo atenúa al dar más
+peso a los tags raros. Se deja registrado como condición de revisión, no como pendiente: no bloquea, y
+medirlo requiere operar.
+
+**Dependencia nueva**: `api-general` debe proveer el vocabulario de tags normalizado del catálogo, del
+cual se ofrecen las opciones de declaración. El catálogo ya existe poblado, de modo que la dependencia
+es de disponibilidad, no de construcción.
+
+**Condición de revisión**: si se midiera que el perfil sembrado converge rápido al que producirían las
+señales solas, la declaración estaría cobrando fricción por un beneficio que se evapora en días. La
+corrección sería reducir el mínimo, no eliminar la declaración: el valor está concentrado en las
+primeras sesiones.
+
+---
+
 ### RD-67 — Dos conjuntos con promoción definitiva y régimen de arranque (Q20, NC-20)
 
 **Decisión**: el catálogo de respaldo se parte en **dos conjuntos disjuntos y exhaustivos**
@@ -4534,6 +5265,11 @@ solo que sirviendo novedades indefinidamente.
 ---
 
 ### RD-66 — La cuota de novedades son 3 posiciones absolutas (Q19, cierra parte de NC-20)
+
+> **REVERTIDA por RD-77 (Q23)**. La forma vuelve a ser proporcional con piso de una posición, y el
+> valor pasa de 3 a 4 en `top_n_default`. Se conserva el registro completo porque RD-77 se apoya en él:
+> el análisis de abajo es correcto en lo que examina — el modo de falla de la fracción en los `top_n`
+> bajos — y el defecto es lo que **no** examina, el modo simétrico en los `top_n` altos.
 
 **Decisión**: `fallback_new_item_slots = **3**`. La cuota de RD-65 se expresa en **posiciones
 absolutas del resultado**, no en proporción, y su valor inicial es 3 (FR-033a6, FR-033a6a).
@@ -5158,4 +5894,4 @@ con un valor de entorno de prueba.
 
 <sub>Refinamiento de `plan.md` §2 · Trazable a spec.md FR-001→FR-071 y constitution v1.0.0 · Prototipo consultado como referencia (no normativo)</sub>
 | ~~**NC-19**~~ | ~~Valor del umbral de recálculo por interacciones~~ | **CERRADO por Q18 (RD-63)**: **10**, explícitamente etiquetado como punto de partida y no como medición. Admisible sin datos porque es configuración versionada y su error es **reversible sin consecuencia permanente** — a diferencia de `signal_retention_days`, cuya reducción destruye datos |
-| **NC-20** | **(a) Umbral de evidencia** que promueve del conjunto emergente al general y **(b) criterio de orden del conjunto emergente** (FR-033a6c..g). RD-65 fijó el mecanismo, RD-66 la cuota en **3 posiciones**, RD-67 la partición en dos conjuntos con promoción definitiva y régimen de arranque (`fallback_bootstrap_min_items` = 1000). Falta solo el criterio de admisión y el orden interno. **(b) no es menor**: bajo el régimen de arranque ese criterio gobierna **todo** el respaldo, no tres posiciones, y por eso no se da por cerrado con la antigüedad ascendente que FR-033a6 enunciaba | **No bloquea Fase 1**: con `fallback_new_item_slots = 0` el comportamiento es el previo a RD-65. **Sí condiciona la vida temprana del sistema**: con el catálogo por debajo de 1000 ítems demostrados, (b) es el único orden del respaldo |
+| ~~**NC-20**~~ | ~~Umbral de evidencia y criterio de orden del conjunto emergente~~ | **CERRADO por Q21 (RD-70)**, y **no eligiendo un valor**: la declaración de gustos (RD-68) elimina la premisa del pendiente. **(b) queda sin objeto** — el emergente se ordena por afinidad con el perfil, criterio que ya existía y no hubo que inventar (FR-033a6f1). **(a) deja de ser bloqueante**: sin régimen de arranque, un umbral mal elegido produce una cuota mejor o peor aprovechada, no un sistema atrapado sirviendo novedades; su error pasó de irreversible a acotado. Se eliminan **FR-033a6f/g** y con ellos **un trinquete**. El abrazo mortal se disuelve por construcción —usuarios distintos ven emergentes distintos— y por eso se **prohíbe** la aleatoriedad que yo había propuesto |
