@@ -65,6 +65,55 @@
 
 - **Q**: ¿El 20 % puro contradice algún requisito vigente? Si no, rige solo; si sí, la cuota es 3 en todos los casos. → **A**: **No contradice nada, de modo que rige el 20 % solo** (RD-80). Verificado punto por punto: el riesgo de redondeo a cero que el piso cubría ya es **irrepresentable** con `top_n_min` = 10 —`floor(10 × 0,20)` = 2—; `cuota < top_n` se cumple con margen; y **ningún requisito exige un 3**, que provenía de RD-66 (revertido) y de RD-78 (piso, no derivación). Consecuencia: **`fallback_new_item_quota_min` se elimina**, no se baja a `1`, porque con `top_n ≥ 10` jamás gobernaría — el mismo criterio con que RD-77 descartó el redondeo hacia arriba: *un parámetro que nunca gobierna miente sobre lo que hace*. **El clamp `top_n − 1` también se quita** de la fórmula y la garantía vuelve a la validación de arranque, donde es verificable una vez en lugar de ejecutarse en cada solicitud para no hacer nada. Fórmula vigente: `cuota = floor(top_n × ratio)`. **Costo aceptado**: se pierde la garantía de 3 posiciones — en `top_n` ∈ [10, 14] la cuota es **2** —, que es precisamente lo que la instrucción puso en la balanza. **`top_n_min` = 10 permanece**: su segundo fundamento (evitar el apagado por redondeo) es independiente del piso y sobrevive a su eliminación.
 
+### Session 2026-09-22 — ciclo de vida del ítem
+
+- **Q**: ¿Se aprueban los cuatro requisitos del ciclo de vida del ítem propuestos en `data-model.md`
+  §9.1 el 2026-09-10, y con qué identificadores? → **A**: **Se aprueban `FR-072`, `FR-073` y
+  `FR-075` con sus identificadores originales**, que estaban **vacantes** —nunca designaron otro
+  requisito— a diferencia de `FR-052`, `DEP-3` y `FR-070a`…`FR-070e`, que están *retirados* y por eso
+  no se reasignan. `FR-074` queda **reservado y pendiente** (Q31): su premisa —interpretar la
+  desaparición del origen como retiro— es una decisión de producto que `data-model.md:2099` marca
+  como excedente de lo técnico. (RD-87, RD-88)
+- **Q**: ¿Qué requisitos vigentes quedaron incompletos por haberse escrito antes de que existiera la
+  noción de vigencia? → **A**: **Tres**, y se completan en este acto: `FR-033a1` (el respaldo por
+  popularidad se computa solo sobre ítems vigentes), `FR-036` (la reevaluación del resultado obsoleto
+  incluye la vigencia, no solo la aptitud etaria) y `FR-056` (la precedencia se evalúa sobre la lista
+  posterior a las guardas; reducida ≠ vacía). `FR-010a` **se excluye a propósito** y se consulta por
+  separado (Q32). `FR-025` **no requiere cambio**: `tiebreak_criteria` ya no aparece en `spec.md`,
+  RD-10 lo eliminó del esquema. (RD-89)
+- **Q**: ¿Se crean `FR-076`, `FR-077` y `FR-078`? → **A**: **No.** Su contenido ya está vigente bajo
+  `FR-021b`, `FR-068d` y el registro de clarificación del umbral 0,9 respectivamente. Los tres
+  identificadores quedan **retirados y no reasignables**. (RD-90)
+
+### Session 2026-09-22 — cierre del ciclo de vida del ítem
+
+- **Q31**: ¿La desaparición de un ítem del listado del origen se interpreta como retiro? → **A**:
+  **Sí (opción a)**. Se confirma la premisa de `CR-8`; `FR-074` queda redactado. El criterio es la
+  **asimetría del modo de falla**, no la frecuencia del retiro: retirar de más es silencioso pero se
+  corrige solo en la corrida siguiente, retirar de menos es ruidoso y permanente. Se declara el
+  costo: se infiere un hecho de negocio a partir de una ausencia, razonamiento que `FR-079` y
+  `FR-011a` rechazan; se acepta porque allá la inferencia es permanente y acá revocable. Se registra
+  además el fundamento **descartado** —la baja frecuencia del retiro—, que no se usa porque no es
+  cierto en un catálogo licenciado y porque se evaporaría si la frecuencia cambiara. (RD-91, RD-92)
+- **Q32**: ~~¿El vocabulario compartido se deriva del catálogo completo o solo de ítems vigentes?~~ →
+  **RETIRADA — formulación inválida.** La pregunta se abrió como decisión de producto pendiente y
+  **ya estaba cerrada** por `RD-20`: «`tag_modules` se calcula **únicamente sobre
+  `items.status = 'available'`»**, con la consecuencia sobre la propagación cruzada declarada como
+  deliberada. No se retira una decisión —nunca hubo decisión contraria que revertir— y **no se
+  registró ningún RD con la respuesta**: la pregunta se detuvo en la verificación previa. `FR-010a`
+  queda **sin modificar**, y la razón es que opera sobre `tag_modules`, tabla que **ya** tiene la
+  semántica de vigencia correcta. Se deja constancia porque una pregunta ya respondida, planteada
+  como «no cambiar nada», habría revertido `RD-20` sin que se notara. (RD-93)
+- **Q33**: ¿`FR-075` y `FR-056` dicen lo mismo sobre lista reducida frente a lista vacía? → **A**:
+  **Sí, confirmado y verificado.** Reducida por las guardas ⟹ se sirve, con el estado que
+  corresponda a su frescura; vaciada por las guardas ⟹ `empty_no_candidates`. Coincide con `RD-42` y
+  con la tabla de estados de `data-model.md`. No quedó redacción que permita leer «reducida» como
+  «vacía».
+
+### Session 2026-09-22 — cierre de ítems del checklist
+
+- **Q**: Cierre de siete ítems bloqueantes de `checklists/requirements-clarify-2026-09-14.md`. → **A**: **CHK071**: la familia de supresión se renumera `FR-070a…e` → **FR-091…FR-095**; `FR-070` (desempate) no cambia y los identificadores viejos quedan **retirados y no reasignables** (RD-81). Se renumera la supresión porque el desempate tiene 6 referencias en `tasks.md` y ella ninguna. **CHK031**: el mínimo de cinco tags disponibles se declara **supuesto**, no requisito, con su costo escrito — si falla, ningún usuario del módulo es atendible y no hay texto que diga cuál regla cede (RD-82, *Assumptions*). **CHK045**: la supresión **aborta** el recálculo en curso mediante marca consultada **inmediatamente antes de escribir**; §7.11 paso 2 decía «suprimir el bloqueo», que **no detiene al worker que ya lo tomó** y empeoraba la carrera (FR-092a, RD-82). **CHK046**: la verificación de supresión recibe **observador** —métrica con valor esperado 0 y dueño— y **escalamiento acotado**; un fallo que nadie observa no es un fallo (FR-095a, RD-83). **CHK055**: se declara `collab_min_neighbors` = 10 (FR-096, RD-84); FR-081b garantizaba peso extrarregional positivo, pero un peso minúsculo es indistinguible de cero tras el **corte top-k del k-NN** — el requisito se cumplía en la fórmula y se incumplía en el resultado. **CHK061 + CHK062**: verificado que el top-N **vive solo en Redis** (ninguna de las 16 tablas lo persiste; §3.3 lo recomputa), de modo que FR-080 **no coordina dos almacenes** (FR-080b); la regla única **«Redis primero, siempre»** (FR-080c) unifica actualización y supresión y disuelve la contradicción aparente. **CHK053**: la política de ingesta de §7.5 se extiende a `region` de forma literal con contador propio, y se declara **DEP-11** (backfill previo al despliegue): sin él, **todo usuario preexistente deja de recibir recomendaciones simultáneamente** — correcto según FR-079 y catastrófico a la vez (RD-85). **Desfasajes corregidos en el mismo pase**: §4.3 afirmaba que `region` es nulable y que nadie la lee (RD-85); §7.11 omitía `user_declared_tags` del CASCADE y contaba «cuatro tablas» en vez de cinco (RD-86); RD-57 arrastraba NC-19 como abierto cuando FR-080a ya lo fijó en 10.
+
 ## Dependencias Externas Bloqueantes
 
 > Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature
@@ -78,10 +127,11 @@
 | DEP-8 | **Identificador propio de cada interacción**, único y no reutilizado | FR-011, FR-069, DI-21 | **Sostiene la idempotencia de ingesta.** Sin él, una reentrega con marca temporal alterada entra como interacción nueva: no viola ninguna restricción y el síntoma aparece después como popularidad inflada sin causa aparente |
 | DEP-9 | **Notificación de cada transición de estado como emisión propia**, con identificador nuevo. El origen **puede** almacenar estado; lo que no puede es dejar una transición sin emitir o reemitirla bajo el identificador anterior | FR-029d, FR-029e, FR-068a, y toda la temporalidad del motor | Este repositorio recibiría estado y no historial. La ventana de popularidad pierde sentido, el filtrado colaborativo pierde temporalidad y la purga se deshace en cada sincronización |
 | DEP-4 | ~~Fuente de popularidad global por ítem~~ — **resuelto**: se deriva del volumen de likes propio (FR-033a). No es dependencia externa. | FR-033a | — |
-| DEP-7 | **Tags temáticos por ítem**, conjunto no vacío | FR-022a, FR-026, FR-032, y todo el término content-based | **El más grave de la tabla.** Sin tags el término `α = 0,5` no se degrada: no existe. También quedan sin sustento el cruce entre módulos (`γ`) y la diversificación MMR, que mide diversidad **sobre clusters de tags**. Faltaba en esta tabla: DEP-1 lo daba por supuesto |
+| DEP-7 | **Tags temáticos por ítem** —exigencia *por unidad*: todo ítem trae al menos un tag; presupone a DEP-10, que provee el vocabulario del que esos tags salen (CHK067)— | FR-022a, FR-026, FR-032, y todo el término content-based | **El más grave en cuanto al motor**, aunque no en cuanto a la cobertura de usuarios: esa distinción la fija DEP-10 (CHK068). Sin tags el término `α = 0,5` no se degrada: no existe. También quedan sin sustento el cruce entre módulos (`γ`) y la diversificación MMR, que mide diversidad **sobre clusters de tags**. Faltaba en esta tabla: DEP-1 lo daba por supuesto |
 | DEP-5 | **Fecha de nacimiento** del usuario, obligatoria y no nula | FR-030, FR-051 | **El usuario se rechaza en la ingesta** y no recibe recomendaciones. Ya no existe el modo degradado de «restricción máxima»: la fecha es condición de admisión (CR-1) |
-| DEP-6 | Acuerdo sobre el conjunto de estados de respuesta | FR-006, FR-056, FR-057 | El contrato de lectura no puede cerrarse |
-| DEP-10 | **Vocabulario de tags normalizado del catálogo**, del que se ofrecen las opciones de declaración | FR-082, FR-083, RD-68 | **Sin él no hay de dónde elegir**: la declaración no puede presentarse y, por FR-088, ningún usuario nuevo puede recibir recomendaciones. Los tags se originan en APIs externas (Steam y equivalentes) y llegan normalizados vía `api-general`: la normalización **no ocurre acá**, y una variación en su criterio cambia el conjunto elegible sin aviso. Es dependencia de **disponibilidad y estabilidad**, no de construcción — el catálogo ya existe poblado. **No se reutiliza DEP-3**, vacante |
+| DEP-6 | Acuerdo sobre el conjunto de estados de respuesta | FR-006, FR-056, FR-057, **FR-088** | El contrato de lectura no puede cerrarse. **El acuerdo debe constatar que la ausencia de declaración NO amplía el conjunto**: es precondición incumplida y se rechaza antes de la precedencia de FR-056, de modo que los estados siguen siendo cinco (CHK039) |
+| DEP-11 | **Backfill de `region` en los usuarios preexistentes**, completado por `api-general` **antes** del despliegue | FR-079, FR-079a, CR-1, CR-5 | El día del despliegue, **todo usuario preexistente deja de recibir recomendaciones simultáneamente**: sin `region` el registro se rechaza en la ingesta (§7.5) y el usuario queda fuera del universo recomendable. Es el comportamiento **correcto** según FR-079 y es **catastrófico** al mismo tiempo; merece estar escrito antes de ocurrir, no después. No se mitiga con valor por defecto ni centinela: FR-079 lo prohíbe y `data-model.md` §4.3 lo prohíbe por nombre —«nada de inferencia por IP, por idioma ni por ningún otro medio»—, porque inferirla la convertiría en dato propio y violaría el Principio I (RD-85, CHK053) |
+| DEP-10 | **Vocabulario de tags normalizado del catálogo**, del que se ofrecen las opciones de declaración —exigencia *sobre el conjunto*, no por ítem: es el universo elegible, y no se satisface porque cada ítem traiga tags (CHK067)— | FR-082, FR-083, RD-68 | **Sin él no hay de dónde elegir**: la declaración no puede presentarse y, por FR-088, ningún usuario nuevo puede recibir recomendaciones. Los tags se originan en APIs externas (Steam y equivalentes) y llegan normalizados vía `api-general`: la normalización **no ocurre acá**, y una variación en su criterio cambia el conjunto elegible sin aviso. Es dependencia de **disponibilidad y estabilidad**, no de construcción — el catálogo ya existe poblado. **No se reutiliza DEP-3**, vacante |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -549,6 +599,46 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   producir un segundo registro **aunque su marca temporal difiera**.
 - **FR-011b**: El identificador del origen MUST NOT usarse como clave primaria interna. La identidad
   interna de un registro MUST permanecer bajo control de este servicio.
+**Ciclo de vida del ítem — FR-072 a FR-075**
+
+> Estos cuatro identificadores estaban **vacantes, no retirados**: nunca designaron ningún
+> requisito. `data-model.md` §9.1 los propuso el 2026-09-10 con la advertencia de que «el modelo de
+> datos los anticipa; no los autoriza», y el backlog respetó esa advertencia. Se aprueban e
+> incorporan aquí el 2026-09-22 (RD-87).
+>
+> La distinción importa: **vacante ≠ retirado**. `FR-052`, `DEP-3` y `FR-070a`…`FR-070e` quedaron
+> *retirados* —designaron algo y se los dio de baja— y por eso **no se reasignan**. Reusar un
+> identificador vacante no repite el patrón de identificador recolocado que este proyecto ya registra
+> cuatro veces; reusar uno retirado sí lo repetiría.
+
+- **FR-072**: Un ítem retirado del catálogo MUST NOT ser recomendado. La prohibición alcanza a los
+  tres caminos por los que un ítem puede llegar al usuario: MUST NOT ser **seleccionado como
+  candidato** en el cómputo, MUST NOT ser **incluido en el conjunto de respaldo**, y MUST NOT ser
+  **servido desde un resultado precomputado o degradado**. Cubrir solo el primero dejaría al ítem
+  retirado saliendo por caché durante toda la vigencia del resultado.
+- **FR-073**: El retiro MUST ser **lógico**, no destructivo. Las señales históricas del usuario sobre
+  un ítem retirado MUST conservarse y MUST seguir alimentando tanto su perfil vectorial como su
+  conjunto de exclusión. Borrar la señal junto con el ítem haría que un ítem retirado y luego
+  repuesto reapareciera como recomendable para quien ya lo había rechazado, y que el perfil del
+  usuario cambiara por un hecho ajeno a él.
+- **FR-074**: Un ítem que **desaparece del origen sin señal explícita de retiro** MUST tratarse como
+  retirado. La sincronización MUST **abortar sin marcar retiro alguno** si no puede confirmar que el
+  listado recibido es completo (CR-9); en particular, MUST abortar cuando el conteo recibido sea
+  menor al 90 % del de la última corrida completa (`sync_volume_delta_ratio < 0,9`). Abortar sin
+  marcar es la única conducta segura: un listado truncado que se procesa retira masivamente ítems
+  vigentes, y el retiro se aplica antes de que nadie pueda revisarlo.
+  > Confirma la premisa de **CR-8** el 2026-09-22 (Q31, RD-91). El criterio es la **asimetría del
+  > modo de falla**, no la frecuencia del retiro: retirar de más es silencioso pero **se corrige
+  > solo** en la corrida siguiente, retirar de menos es ruidoso y **permanente** si el origen nunca
+  > emite. Se acepta a sabiendas que acá se infiere un hecho de negocio a partir de una ausencia
+  > —razonamiento que FR-079 y FR-011a rechazan— porque allá la inferencia es permanente y acá es
+  > revocable.
+- **FR-075**: Si tras excluir los ítems retirados el resultado queda **por debajo de `top_n`**, MUST
+  servirse la **lista reducida**. MUST NOT rellenarse con sustitutos: reponer posiciones exige
+  seleccionar candidatos nuevos, que es cómputo en la ruta de lectura y está prohibido por FR-003.
+  `top_n` es un **máximo**, no una cantidad garantizada. Si la lista queda **vacía**, el estado es
+  *sin candidatos* según FR-056(2); una lista reducida pero no vacía **no** es *sin candidatos*.
+
 - **FR-079**: La región del usuario MUST ser obligatoria y no nula, y MUST recogerse al crear la
   cuenta. Un usuario sin región válida MUST rechazarse en la ingesta; MUST NOT persistirse con un
   valor ausente ni con un centinela, porque ambos trasladarían la decisión a cada consulta que la
@@ -557,22 +647,43 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   de la aplicación web, y ambas MUST ser de respuesta obligatoria. Las dos condicionan el rechazo en
   la ingesta (FR-079, CR-1), de modo que un alta que omita cualquiera de ellas produce un usuario que
   el motor no puede atender. El formulario MUST NOT permitir completar el alta sin ambas.
-- **FR-070a**: La supresión de un usuario a pedido MUST eliminar **todos** los datos de su alcance,
+**Supresión de usuario a pedido — FR-091 a FR-095**
+
+> Esta familia llevaba los identificadores `FR-070a`…`FR-070e`, que **colisionaban** con FR-070
+> (desempate por score): un sufijo designa un sub-requisito de su base —`FR-033a6a` ⊂ `FR-033a6`— y la
+> supresión no refina el desempate. Renumerada el 2026-09-22 (RD-81, CHK071). Los identificadores
+> `FR-070a`…`FR-070e` quedan **retirados y no reasignables**, como `DEP-3` y `FR-052`.
+
+- **FR-091**: La supresión de un usuario a pedido MUST eliminar **todos** los datos de su alcance,
   incluidos los almacenados en caché. MUST NOT considerarse suprimido un dato cuya eliminación se
   delegue en el vencimiento de su tiempo de vida.
-- **FR-070b**: La supresión MUST invalidar la caché **antes** de eliminar el dato de origen, y MUST
-  verificar que no haya un recálculo en curso para ese usuario. Un recálculo iniciado antes de la
-  supresión MUST NOT poder reescribir datos ya eliminados.
-- **FR-070c**: La supresión MUST alcanzar a **toda** versión de configuración y a todos los módulos,
+- **FR-092**: La supresión MUST invalidar la caché **antes** de eliminar el dato de origen. Un recálculo
+  iniciado antes de la supresión MUST NOT poder reescribir datos ya eliminados.
+- **FR-092a**: Ante un recálculo en curso, la supresión MUST **abortarlo**, y MUST NOT esperar a que
+  termine ni proceder ignorándolo. El sistema MUST marcar al usuario como **en supresión**, y el worker
+  MUST consultar esa marca **inmediatamente antes de escribir** su resultado, abortando la corrida si
+  está presente. La consulta MUST NOT realizarse solo al inicio de la corrida: un chequeo temprano deja
+  abierta exactamente la ventana que este requisito cierra —el intervalo entre la comprobación y la
+  escritura—. El trabajo de cómputo ya realizado MUST descartarse sin persistirse.
+- **FR-093**: La supresión MUST alcanzar a **toda** versión de configuración y a todos los módulos,
   no solo a los activos.
-- **FR-070d**: El sistema MUST verificar la ausencia efectiva de datos tras la supresión y MUST
+- **FR-094**: El sistema MUST verificar la ausencia efectiva de datos tras la supresión y MUST
   señalar todo residuo. Una supresión parcial MUST tratarse como fallo, no como éxito degradado.
-- **FR-070e**: La verificación de FR-070d MUST ser una comprobación **ejecutable y registrada**: tras
+- **FR-095**: La verificación de FR-094 MUST ser una comprobación **ejecutable y registrada**: tras
   cada supresión, el sistema MUST consultar cada almacén de su alcance —tablas normalizadas y claves
   de caché de ámbito de usuario— y MUST dejar constancia del resultado, incluido el caso negativo.
   Una supresión cuya verificación no se haya registrado MUST tratarse como **no completada** y MUST
   reintentarse. La constancia MUST NOT contener datos del usuario suprimido más allá de su
   identificador y la marca temporal.
+- **FR-095a**: La verificación de FR-095 MUST tener **observador declarado**: una métrica de supresiones
+  sin constancia registrada, con **valor esperado 0** y acción **alerta**, con responsable asignado — el
+  mismo tratamiento que `contract_violations_total{field="birth_date"}`, exigido por RD-6 y RD-25. El
+  reintento MUST ser **acotado**, con backoff; al agotarse, el sistema MUST emitir alerta de severidad
+  alta y la supresión MUST quedar en estado **fallido visible**, consultable como tal y no solamente
+  anotada en un registro de eventos.
+  > FR-094 ya manda tratar la supresión parcial como fallo, pero **un fallo que nadie observa no es un
+  > fallo**: el requisito decía «fallo» sin decir a quién le falla. Agregado el 2026-09-22 (RD-83,
+  > CHK046).
 - **FR-029e**: Las señales MUST almacenarse **en este repositorio** como hechos inmutables. Una
   transición de estado MUST registrarse como un hecho nuevo y MUST NOT modificar ni reemplazar el
   registro anterior. La obligación recae sobre este servicio: el origen MAY almacenar estado, y la
@@ -610,6 +721,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-033a1**: La popularidad MUST computarse sobre una **ventana temporal acotada** definida en
   configuración versionada, no sobre el histórico completo, para que el respaldo refleje interés
   actual y no quede fijado por ítems antiguos acumulados.
+  El conjunto sobre el que se computa MUST restringirse a **ítems vigentes** (FR-072): un respaldo
+  construido sobre el catálogo completo propondría ítems retirados a todo usuario que caiga en él,
+  que es justamente la población sin resultado propio.
 - **FR-033a3**: La popularidad de un ítem MUST definirse como el **límite inferior del intervalo de
   confianza de Wilson** sobre la **tasa de conversión a like entre quienes interactuaron** con el
   ítem dentro de la ventana. El nivel de confianza MUST ser un parámetro de la configuración
@@ -722,6 +836,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   de una ventana acordada.
 - **FR-036**: Un resultado obsoleto MUST reevaluarse contra los filtros obligatorios vigentes antes
   de servirse; MUST NOT exponer ítems que hoy resulten no aptos.
+  La reevaluación MUST incluir la **vigencia del ítem**, no solo la aptitud etaria y las exclusiones.
+  La redacción original se escribió antes de que existiera la noción de retiro y, leída literalmente,
+  un resultado obsoleto podía pasar la reevaluación con ítems retirados dentro.
 - **FR-037**: MUST existir un límite máximo de antigüedad configurable más allá del cual un
   resultado obsoleto deja de servirse y se responde como recálculo pendiente.
 - **FR-038**: La respuesta degradada MUST ser determinística: dos consultas consecutivas sobre el
@@ -783,6 +900,16 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   sirve el precomputado global; (4) obsoleto si el personalizado excedió su vigencia; (5) vigente.
   Un respaldo que queda vacío tras aplicar los filtros del usuario MUST reportarse como **sin
   candidatos**, no como respaldo.
+  Esta precedencia MUST aplicarse **únicamente a solicitudes que superaron sus precondiciones**. Una
+  solicitud sin declaración de gustos MUST NOT clasificarse en el estado (1): «no hay resultado alguno
+  servible» describe un cálculo que se intentó y no produjo nada, no un cálculo que no pudo intentarse.
+  El rechazo de FR-088 ocurre **antes** de que esta precedencia sea aplicable.
+  La precedencia se evalúa sobre la lista **posterior a las guardas**, incluida la exclusión de
+  ítems retirados (RD-42, FR-072). Un resultado vaciado por ellas es *sin candidatos*; un resultado
+  **reducido pero no vacío** conserva su estado y se sirve tal cual (FR-075).
+  > Acotación agregada el 2026-09-22 (CHK039). Sin ella, la redacción del estado (1) capturaba por su
+  > propio texto el caso que FR-088 manda rechazar, y la exhaustividad declarada al inicio del requisito
+  > volvía esa lectura la más natural.
 - **FR-056a**: Cuando se sirva respaldo existiendo además un resultado personalizado vencido, la
   respuesta MUST señalar que ese personalizado obsoleto está **disponible y consultable**. El estado
   sigue siendo *respaldo* —la precedencia de FR-056 no cambia—, pero la existencia del personalizado
@@ -915,9 +1042,32 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   región del usuario pesa `1` y una de otra región pesa `1 − region_weight_factor`. El dominio admisible
   MUST ser `0 <= region_weight_factor < 1`, **inclusivo abajo** —`0` es el neutro de FR-090— y
   **estricto arriba** —`1` anula el aporte extrarregional y es el caso que FR-081a prohíbe—.
+- **FR-096**: El término colaborativo MUST considerar un **número mínimo de vecinos con peso no
+  despreciable**, declarado en configuración versionada (`collab_min_neighbors`). Si la región del
+  usuario no los aporta, el vecindario MUST completarse con usuarios de otras regiones hasta alcanzar el
+  mínimo. Este requisito es el **criterio verificable** de FR-081a: un usuario situado en una región con
+  muy pocos usuarios MUST obtener un vecindario de tamaño mayor o igual al mínimo, condición sobre la que
+  un test puede fallar.
+  > FR-081b ya garantiza que el peso extrarregional `1 − region_weight_factor` es **estrictamente
+  > positivo** en todo el dominio, lo que cierra la segunda frase de FR-081a. Lo que no cerraba es la
+  > primera, «seguir produciendo resultado»: un peso positivo pero minúsculo es **funcionalmente
+  > indistinguible de cero** una vez que interviene el corte top-k del k-NN, porque los vecinos
+  > extrarregionales quedan fuera del corte antes de que su peso importe. El requisito se cumplía en la
+  > fórmula y se incumplía en el resultado (RD-84, CHK055).
 - **FR-080**: La caché de recomendaciones de un usuario MUST invalidarse en el mismo acto en que se
   actualiza su resultado precomputado. No MUST existir una vía por la que el resultado se actualice y
   la caché sobreviva.
+- **FR-080b**: El resultado precomputado de un usuario MUST residir **únicamente en Redis**
+  (`reco:v{cfg}:{user_id}:{module}`). Ninguna tabla de `data-model.md` §2 MUST persistirlo: ante pérdida
+  de Redis se **recomputa** (§3.3), no se restaura. En consecuencia, FR-080 **no coordina dos almacenes**
+  —la escritura del resultado *es* la escritura de la clave— y la única coordinación real es con
+  `reco:stale:v{cfg}:{user_id}:{module}`, que reside en el mismo Redis y admite atomicidad nativa.
+- **FR-080c**: Toda operación que afecte a la vez a Redis y a Postgres MUST ejecutar **Redis primero**.
+  La regla es única y vale tanto para la actualización (FR-080) como para la supresión (FR-092), de modo
+  que ambas dejan de ser reglas de orden distintas. Fundamento por modo de falla: un fallo tras el
+  borrado en Redis deja la caché vacía y el origen viejo, y la siguiente lectura es un **miss** que
+  dispara recálculo —caro pero correcto—; el orden inverso deja la caché sirviendo un resultado obsoleto
+  durante `TTL_FRESH` (24 h), que es exactamente la vía que FR-080 prohíbe.
 - **FR-080a**: El recálculo del top-N de un usuario MUST dispararse al acumular un número de
   interacciones nuevas declarado en **configuración versionada**, y ese umbral MUST NOT quedar
   implícito en el código. El conteo MUST llevarse por usuario y MUST reiniciarse al recalcular. El
@@ -1038,6 +1188,12 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 
 ## Assumptions
 
+- **El vocabulario de tags de cada módulo ofrece al menos `declared_tags_min` (5) tags distintos y
+  elegibles.** Se asume; no se verifica ni se valida al arrancar. **Costo explícito de asumirlo**: si no
+  se cumpliera, FR-083 impediría completar la declaración y FR-088 impediría atender al usuario, de modo
+  que **ningún usuario de ese módulo sería atendible** — y **no hay texto que resuelva cuál de las dos
+  reglas cede**. Es una apuesta consciente sobre un dato que provee `api-general` (DEP-10), no un hueco
+  por olvido: quedó registrada en RD-82 tras verificarse en CHK031.
 - El consumidor exclusivo de este servicio es `api-general`; ningún frontend lo consulta directa ni
   indirectamente sin pasar por él.
 - El contrato del evento `recomendacion.actualizar` y los contratos REST relevantes ya existen o

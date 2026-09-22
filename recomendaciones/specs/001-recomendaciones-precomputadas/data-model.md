@@ -1075,6 +1075,11 @@ el ratio nunca baja de 2, de modo que ningún piso llegaría a gobernar · **`to
 parámetro: es la afinidad con el perfil del usuario (FR-033a6f1, RD-70) ·
 ~~`fallback_bootstrap_min_items`~~ **eliminado por RD-70** junto con el régimen de arranque ·
 **`declared_tags_min` = 5** (mínimo de tags declarados por módulo, Q21/RD-68) ·
+**`collab_min_neighbors` = 10** (mínimo de vecinos con peso no despreciable que el término colaborativo
+debe considerar; si la región del usuario no los aporta, se completan con extrarregionales — Q26/RD-84,
+FR-096. Es el **criterio falsable** de FR-081a: sin él, «degradación continua» se cumplía en la fórmula y
+se incumplía en el resultado, porque el corte top-k del k-NN descarta al vecino extrarregional antes de
+que su peso importe) ·
 **`region_weight_factor` = 0,1** en `v1` (Q18/RD-64, Q23/RD-76, Q24/RD-79 — **revierte** el arranque
 en `0` que había fijado RD-74: la segmentación queda **activa** con intensidad mínima, el aporte
 extrarregional se reduce un 10 %) — mide la **intensidad de
@@ -1221,11 +1226,19 @@ fallo que FR-036 existe para impedir. La comparación ordinal es lo que vuelve e
 |---|---|
 | **Dato ajeno proyectado** | La fuente de verdad es `api-general`. Este repositorio guarda una copia de solo lectura (§1) |
 | **No se edita ni se enriquece localmente** | Nada de inferencia por IP, por idioma ni por ningún otro medio. Inferirla la convertiría en dato propio y violaría el Principio I |
-| **Sin consumo en esta feature** | Ni el motor, ni el post-procesamiento (scoring → edad → exclusión → MMR), ni el request path la leen |
-| **Verificable** | Test: ninguna consulta de esos componentes referencia la columna. Es una aserción sobre el código, no una convención |
+| ~~**Sin consumo en esta feature**~~ | **INVALIDADO** (RD-52, RD-61, CR-5): el término colaborativo **sí la lee**, ponderando por `region_weight_factor` (FR-081, FR-081b) |
+| ~~**Verificable** por ausencia de consulta~~ | **INVALIDADO**: el test correcto ya no es que nadie la referencie, sino que la ponderación degrade de forma continua (FR-081a, FR-096) |
 
-**Impacto sobre invariantes existentes: ninguno.** `region` es nulable, no participa de ninguna
-derivación, no entra en ninguna clave y no tiene índice. Los invariantes etarios (DI-1, DI-2,
+> **Corrección 2026-09-22 (CHK053, RD-85).** Esta subsección quedó sin tocar cuando RD-52 y RD-61
+> incorporaron `region` al motor. RD-61 declara haber corregido la afirmación en §2.1, pero **acá
+> sobrevivió**, y quien leyera solo §4.3 concluiría que un usuario sin región no representa problema
+> alguno. Lo que **sigue vigente** de la tabla son las dos primeras filas: `region` es dato ajeno
+> proyectado y **no se infiere localmente** por ningún medio. Eso no cambió; lo que cambió es que ahora
+> se consume.
+
+~~**Impacto sobre invariantes existentes: ninguno.**~~ **Corregido**: `region` es **`NOT NULL`** (§2.1,
+FR-079a), participa de la derivación del término colaborativo y condiciona el rechazo en la ingesta
+(§7.5). Lo que sigue siendo cierto es que no entra en ninguna clave y no tiene índice. Los invariantes etarios (DI-1, DI-2,
 DI-2a'..DI-2e) y de exclusión (DI-3) dependen de `birth_date`, de los ordinales y de
 `user_exclusions`; ninguno los toca. No se agrega invariante nuevo: **no hay nada que preservar**
 sobre un atributo que nadie lee. Ese vacío es exactamente el costo declarado en §2.1.
@@ -1648,19 +1661,28 @@ clave primaria los distingue—, y la activación es un único `UPDATE` sobre `v
 
 ### 7.5 Ingesta de usuarios y caducidad de los derivados etarios
 
-**Política de ingesta (Data Transformer, T029)** — un usuario sin `birth_date` **no se inserta ni se
-actualiza en modo degradado**:
+**Política de ingesta (Data Transformer, T029)** — un usuario sin `birth_date` **o sin `region`** **no se
+inserta ni se actualiza en modo degradado**. Las dos condiciones son **independientes**: basta que falte
+una para rechazar.
 
 | Paso | Acción |
 |---|---|
 | 1 | Se **rechaza** el registro. No hay inserción parcial ni fila con derivados por default |
 | 2 | Se registra como **violación de contrato** (`WARN`), con `user_id` y `sync_run_id`, no como error de datos del usuario |
 | 3 | El usuario queda **fuera del universo recomendable**: sin fila, no hay a quién recomendar. La ausencia es el fail-closed |
-| 4 | Se incrementa `contract_violations_total{field="birth_date"}`, cuyo **valor esperado es 0**. Cualquier valor > 0 alerta: indica que `api-general` incumple CR-1 |
+| 4 | Se incrementa `contract_violations_total{field="birth_date"}` **o** `contract_violations_total{field="region"}` según cuál falte —**contadores propios y separados**, no uno agregado—, cuyo **valor esperado es 0**. Cualquier valor > 0 alerta: indica que `api-general` incumple CR-1 (o CR-5 para `region`) |
 | 5 | `sync_runs.status = 'failed'` con `failure_reason`; la corrida no se marca exitosa en silencio |
 
 Que la métrica tenga valor esperado cero es lo que la vuelve útil: no mide un fenómeno normal con
 umbral arbitrario, mide un incumplimiento binario.
+
+> **Extensión a `region` — 2026-09-22 (CHK053, RD-85).** Esta política nombraba **solo** a `birth_date`.
+> RD-61 estableció que `region` y `birth_date` tienen la misma naturaleza —ambas obligatorias en el alta
+> (FR-079a), ambas condicionan el rechazo—, pero la política no se extendió, y la simetría quedó
+> implícita. Se escribe **literal**: para `region` rigen los cinco pasos, con contador propio. Los
+> contadores se mantienen **separados** porque distinguen dos incumplimientos distintos del origen, y
+> agregarlos ocultaría cuál de los dos campos falta. Ver DEP-11 para el caso de los usuarios
+> preexistentes, que es el escenario en que esta política se activa masivamente.
 
 **Caducidad del ordinal.** Es el costo de materializarlo: `max_age_ordinal` es correcto *al momento
 de derivarlo* y deja de serlo por **dos causas distintas**, que exigen consultas y respuestas
@@ -1944,12 +1966,21 @@ clave reconstruida después del borrado relacional volvería a materializar dato
 1. **Invalidar las cuatro claves de alcance de usuario** en Redis, para **toda** `config_version` y
    módulo —no solo los activos—: `filters:{user_id}`, `reco:v{cfg}:{user_id}:{module}`,
    `reco:stale:v{cfg}:{user_id}:{module}`, `recompute:lock:{user_id}:{module}`.
-2. **Suprimir el bloqueo de recálculo** y verificar que no haya una corrida en vuelo para ese
-   usuario. Un worker activo reescribiría las claves recién borradas.
-3. **Eliminar la fila de `users`.** El `CASCADE` arrastra `user_profiles`, `user_signals` y
-   `user_exclusions` (RD-51).
-4. **Verificar ausencia**: ninguna fila con ese `user_id` en las cuatro tablas, ninguna clave con
+2. **Marcar al usuario como en supresión** (FR-092a). El worker consulta esa marca **inmediatamente
+   antes de escribir** y aborta la corrida si está presente, descartando el cómputo ya realizado.
+   > **Corrección 2026-09-22 (CHK045, RD-82).** Este paso decía «suprimir el bloqueo de recálculo».
+   > **Borrar el lock no detiene al worker que ya lo tomó**: solo habilita a un segundo worker a
+   > arrancar, con lo cual **empeoraba** la carrera que el paso decía cerrar. La marca de supresión sí la
+   > cierra, porque se consulta del lado que escribe.
+3. **Eliminar la fila de `users`.** El `CASCADE` arrastra `user_profiles`, `user_signals`,
+   `user_exclusions` y **`user_declared_tags`** (RD-51; §2.14 declara `ON DELETE CASCADE` hacia `users`).
+4. **Verificar ausencia**: ninguna fila con ese `user_id` en las **cinco** tablas, ninguna clave con
    ese `user_id` en Redis.
+
+> **Corrección 2026-09-22 (CHK048, RD-86).** El paso 3 enumeraba tres tablas y el paso 4 hablaba de
+> «cuatro tablas». `user_declared_tags` (§2.14) faltaba desde que RD-68 la creó. La consecuencia no era
+> cosmética: **la verificación de FR-095 habría dado positivo con los gustos declarados aún vivos**, y la
+> supresión se habría marcado completa sin estarlo.
 
 > **Por qué Redis va primero y aun así hace falta el paso 2.** Invertir el orden deja una ventana en
 > la que la clave sigue viva y reconstruible desde datos que aún existen. Pero incluso en este orden,
@@ -2127,7 +2158,20 @@ guarda de vigencia en el request path. D-items sin cambio.
 (T051 → #61, T052 → #62). **Ninguno se cierra por obsolescencia** — ni siquiera el de
 `tiebreak_criteria`, porque T004 existe por el loader completo, no por ese parámetro.
 
-> ⚠️ **Estos cambios no deben aplicarse al backlog hasta que los FR-072..FR-075 se aprueben.**
+> ⚠️ **Estos cambios no deben aplicarse al backlog hasta que los FR-072..FR-075 se aprueben**
+>
+> 🔄 **Estado actualizado el 2026-09-22 — bloqueo levantado por completo.** Los **cuatro** requisitos
+> fueron aprobados e incorporados a `spec.md`: `FR-072`, `FR-073` y `FR-075` por **RD-87**, sobre
+> identificadores vacantes; `FR-074` quedó reservado por **RD-88** y se cerró el mismo día con
+> **RD-91**, al confirmarse la premisa de `CR-8`.
+>
+> En consecuencia, la advertencia de arriba **ya no aplica**: el backlog se propagó el 2026-09-22
+> —`T052` creada, y `T012`, `T017`, `T018`, `T029`, `T037` y `T038` modificadas—. La secuencia que
+> el propio aviso exigía se cumplió en ese orden: primero aprobar los FR, después propagar.
+>
+> La tabla de arriba se conserva tal como se escribió el 2026-09-10: era correcta entonces y es
+> registro de auditoría fechado, por el mismo criterio con que la corrección de CHK073 conservó las
+> menciones de «15 tablas» en esta misma sección.
 > Modificar T037 para filtrar por vigencia es implementar un requisito que todavía no existe en
 > `spec.md`. La secuencia correcta es: aprobar los FR, después propagar.
 
@@ -2376,6 +2420,12 @@ Ninguno se cierra.
 
 - §2: la tabla de entidades pasa a **15 tablas** — cifra final y única. La mención de «12 tablas» en
   §9.3 es una cifra **intermedia** de la auditoría de popularidad, y quedó anotada como tal.
+  > **Corrección 2026-09-22 (CHK073)**: «cifra final y única» **dejó de ser cierta**. La incorporación de
+  > §2.14 `user_declared_tags` (RD-68) llevó el total a **16 tablas**, distribuidas en 14 subsecciones
+  > —§2.3 agrupa `tags` + `item_tags`, §2.13 agrupa `vocab_versions` + `vocab_version_tags`—. Las demás
+  > menciones de «15 tablas» en §9 son **registros de auditoría fechados** y se conservan como tales: eran
+  > correctas cuando se escribieron. La que no podía conservarse era esta, por declararse definitiva.
+  > Cifra vigente: **16**.
 - Incorporar a la descripción de componentes: el trigger de inmutabilidad (RD-37) y la ventana
   acotada del set de retirados (RD-39), que es un acoplamiento con `TTL_STALE` y no una constante.
 
@@ -2578,7 +2628,7 @@ Este repositorio tiene **prioridad de definición** sobre el modelo de datos; `a
 | **CR-4** | Toda corrección de `birth_date` genera evento de sincronización | Sin él, un permiso restringido tarda hasta el próximo sync completo |
 | **CR-5** | El usuario expone **`region`** como código **ISO 3166-1 alfa-2** en mayúsculas, **obligatoria y no nula**. Se recoge al crear la cuenta | **El usuario se rechaza en la ingesta**, igual que ante `birth_date` ausente (CR-1). **Modificado por RD-52**: era best-effort mientras nada la consumía |
 | **CR-6** | Toda corrección de `region` se refleja en la siguiente sincronización | **Ya no es inocua** (RD-52): la región segmenta el vecindario colaborativo, de modo que una corrección cambia **qué recomendaciones recibe** esa persona. No exige evento dedicado —el cambio de país es infrecuente y el recálculo natural lo absorbe—, pero deja de ser «ninguna consecuencia» |
-| **CR-7** | El catálogo expone el **estado de disponibilidad** del ítem, y comunica el retiro de forma explícita | Sin él, el retiro solo se detecta por desaparición (CR-8), con el rezago del sync completo |
+| **CR-7** | El catálogo expone el **estado de disponibilidad** del ítem, y comunica el retiro de forma explícita | **Deseable, no bloqueante** (RD-92). Sin él el retiro se detecta igual, por desaparición (CR-8, FR-074), pero con el rezago del sync completo — y ese rezago **es la ventana durante la cual un ítem retirado se sigue recomendando**. Degrada latencia de detección, no corrección |
 | **CR-8** | Un ítem que **desaparece** del catálogo se interpreta como retirado | Si la desaparición fuera un defecto de paginación o un error transitorio del origen, se retirarían ítems vigentes. Mitigación: CR-9 |
 | **CR-9** | La respuesta del catálogo permite distinguir un **listado completo** de uno parcial o fallido | **Crítico.** Sin esto, una respuesta truncada retiraría masivamente ítems vigentes. La sincronización **MUST** abortar sin marcar retiros si no puede confirmar completitud |
 | **CR-10** | Los nombres de tag son **estables e idénticos entre sincronizaciones**: un mismo concepto conserva su nombre exacto | El nombre **es** la identidad (RD-16). Un cambio de nombre es una baja más un alta ⟹ nueva versión de vocabulario ⟹ recálculo completo de vectores. No es un error, pero es caro |
@@ -4517,6 +4567,442 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
+### RD-93 — Q32 se formuló sobre una decisión ya cerrada (formulación inválida)
+
+**Fecha**: 2026-09-22 · **Origen**: `/speckit.clarify` · **Estado**: Q32 **retirada**
+
+**Qué pasó**: en la sesión del ciclo de vida del ítem se abrió la pregunta Q32 —«¿la propagación
+cross-module debe operar sobre tags cuyos ítems se retiraron?»— como si fuera una decisión de
+producto pendiente. **No lo era.** `RD-20` la había resuelto antes, con este texto:
+
+> «La pertenencia se determina **únicamente sobre `items.status = 'available'`**. Un tag cuyos únicos
+> ítems en un módulo fueron retirados deja de pertenecer a ese módulo […] **Consecuencia sobre la
+> propagación cruzada, deliberada**: el término γ deja de propagar a través de ese tag.»
+
+Y estaba propagado: §9 manda que **T030** calcule `tag_modules` solo sobre vigentes citando RD-20, y
+**T012** consulta esa tabla.
+
+**Decisión**: Q32 queda **retirada por formulación inválida**, no resuelta ni revertida. La
+distinción importa: *revertir* supone que hubo decisión contraria y la hubo a favor. No se escribió
+ningún RD registrando la respuesta «(b)», de modo que no hay nada que retirar aguas abajo — la
+pregunta se detuvo en la verificación previa, antes de aplicarse.
+
+**`FR-010a` queda sin modificar**, y la razón correcta es distinta de la que se dio al abrir Q32: no
+se modifica porque **la tabla de la que depende ya tiene la semántica correcta**, no porque la
+decisión estuviera pendiente.
+
+**Dos afirmaciones falsas que se formularon al plantear Q32, y que no se registran como fundamento**:
+
+1. *«El vocabulario podría derivarse de ítems vigentes».* Confunde dos entidades distintas. El
+   vocabulario se deriva de los **tags** (§2.13, `vocab_versions` / `vocab_version_tags`);
+   `tag_modules` es otra tabla, con otro criterio. Que ambas se recalculen en T030 no las vuelve la
+   misma cosa.
+2. *«Retirar un ítem podría cambiar el hash del vocabulario y disparar el recálculo completo de
+   vectores».* **Esa cascada no existe.** El hash es función de la composición de tags. Lo que sí
+   existe, y ya está declarado, es que el retiro cambia el corpus de ponderación IDF y por tanto los
+   vectores —y se resuelve por lotes en la ventana de vocabulario, no por disparador—. Es un efecto
+   conocido y acotado, no un riesgo por descubrir.
+
+**Por qué se registra un no-evento**: porque es el mismo modo de fallo que `RD-21` documenta sobre sí
+mismo —«es una contradicción que introduje en RD-17 y que no detecté entonces»—. Abrir una pregunta
+ya cerrada cuesta poco si se detecta al verificar, y cuesta mucho si se responde: la respuesta «(b)»
+habría revertido RD-20 sin que nadie lo notara, porque venía redactada como «no cambiar nada».
+
+**Alternativa descartada**: borrar Q32 del registro de clarificación y no dejar rastro. Descartada
+porque el registro es un log fechado y una pregunta mal formulada que se detectó a tiempo es
+evidencia de que la verificación previa funciona.
+
+**Condición de revisión**: ninguna sobre el fondo. Si `RD-20` se revisara alguna vez, la pregunta de
+Q32 vuelve a ser legítima y habrá que formularla contra el texto vigente de entonces.
+
+---
+
+### RD-92 — `CR-7` sigue siendo deseable, y su consecuencia declarada era imprecisa
+
+**Fecha**: 2026-09-22 · **Origen**: `/speckit.clarify` Q31
+
+**Decisión**: `CR-7` (el catálogo comunica el retiro de forma explícita) **permanece como deseable,
+no bloqueante**. Se precisa su consecuencia declarada.
+
+**Fundamento**: con `CR-8` confirmado (RD-91), el retiro se detecta igual sin `CR-7` —por ausencia,
+con el rezago del sync completo—, de modo que su falta degrada latencia, no corrección. Eso es
+exactamente lo contrario de `CR-9`, que sigue siendo **crítico**: sin poder distinguir un listado
+completo de uno parcial, la inferencia de `CR-8` no tiene red y el aborto por volumen es la única
+protección, que cubre el truncamiento grande y no el pequeño.
+
+**Precisión aplicada**: la consecuencia de `CR-7` decía «sin él, el retiro solo se detecta por
+desaparición (CR-8), con el rezago del sync completo». Es exacta en cuanto al mecanismo y omitía que
+ese rezago es **la ventana durante la cual un ítem retirado se sigue recomendando**. Se explicita.
+
+**Alternativa descartada**: promover `CR-7` a bloqueante. Es la opción (b) de Q31 y se descartó allí;
+mantenerla acá sería reabrirla por la puerta de la tabla de contratos.
+
+**Condición de revisión**: ligada a la de RD-91. Si el retiro se volviera frecuente, `CR-7` pasa a
+bloqueante y esta decisión cae con ella.
+
+---
+
+### RD-91 — La desaparición del origen se interpreta como retiro (`FR-074`)
+
+**Fecha**: 2026-09-22 · **Origen**: `/speckit.clarify` Q31 · **Cierra**: la reserva de RD-88
+
+**Decisión**: se confirma la premisa de `CR-8`. Un ítem que desaparece del listado del origen sin
+señal explícita se trata como **retirado**, con `CR-9` como mitigación y el aborto de la corrida por
+`sync_volume_delta_ratio < 0,9` como red. `FR-074` queda redactado en `spec.md`.
+
+**Fundamento — la asimetría del modo de falla**:
+
+| | Falla | Quién se entera | ¿Se corrige sola? |
+|---|---|---|---|
+| Retirar de más *(esta decisión)* | ítems vigentes desaparecen | nadie, hasta que alguien pregunta | **Sí** — el ítem vuelve en el listado siguiente |
+| Retirar de menos | ítems muertos se recomiendan | el usuario, al no encontrar el ítem | **No** — si el origen nunca emite, es permanente |
+
+Se elige la falla **silenciosa pero autocorregible** sobre la **ruidosa y permanente**. Es además la
+de menor impacto sobre el planeamiento: una sola rama en el Data Transformer, sin modo degradado que
+mantener.
+
+**Costo declarado, sin atenuar**: este servicio **infiere un hecho de negocio —que un ítem dejó de
+estar disponible— a partir de una ausencia**. Es la misma forma de razonamiento que el proyecto
+rechazó en `FR-079` (ni centinelas ni valores ausentes, porque «trasladarían la decisión a cada
+consulta») y en `FR-011a` (identidad por identificador del origen, no por combinación de atributos).
+Acá se acepta **a sabiendas**. La diferencia que lo justifica, y la única: allá la inferencia era
+permanente, acá es revocable en la corrida siguiente.
+
+**Fundamento explícitamente descartado — la baja frecuencia del retiro**: durante la decisión se
+observó que «una película o un videojuego no debería retirarse». **No se usa como apoyo, y se deja
+registrado que no se usa.** Primero porque no es cierto en un catálogo licenciado: vencen licencias
+territoriales, caen acuerdos de distribución, se despublican títulos. Y segundo, más importante,
+porque un fundamento que depende de una frecuencia **se evapora el día que la frecuencia cambia**, y
+la decisión quedaría en pie sin nada que la sostenga. El argumento del modo de falla no depende de
+cuán seguido ocurra el retiro.
+
+**Alternativas descartadas**:
+- **(b) Depender solo de `CR-7`** (señal explícita, nunca retirar por ausencia): convierte `CR-7`
+  —hoy deseable— en **bloqueante duro**, agregando una exigencia contractual nueva a `api-general`,
+  que ya acumula **dieciséis vigentes** (`CR-1`…`CR-18` menos `CR-13` y `CR-14`, eliminados por
+  RD-50 — contados en §10, no citados de memoria). Y cambia una falla reversible por una permanente.
+- **(c) Retirar por ausencia solo con `CR-9` satisfecha, degradando a (b) si no**: la más defendible
+  en abstracto, descartada por costo de planeamiento y por un motivo propio: la rama degradada casi
+  nunca se ejercitaría, y **una rama que no se ejercita es una rama rota cuando hace falta**. Es el
+  mismo argumento con el que `FR-090a` mandó arrancar la segmentación regional activa en `0,1` en
+  lugar de en `0`.
+
+**Condición de revisión**: si el retiro resultara **frecuente** y el origen siguiera sin emitir señal
+explícita, reconsiderar la exigencia de `CR-7` y promoverla a bloqueante. No porque la decisión deje
+de ser correcta —el modo de falla no cambia—, sino porque el rezago del sync completo se vuelve una
+ventana de exposición que hoy es despreciable y entonces no lo sería.
+
+---
+
+### RD-90 — `FR-076`, `FR-077` y `FR-078` quedan retirados y no reasignables
+
+**Fecha**: 2026-09-22 · **Origen**: `/speckit.clarify` — ciclo de vida del ítem
+
+**Decisión**: los identificadores `FR-076`, `FR-077` y `FR-078`, propuestos en §9 y nunca
+incorporados a `spec.md`, **no se crean y no se reasignan**. Su contenido ya está vigente bajo otros
+identificadores, verificado uno por uno:
+
+| ID propuesto | Contenido | Dónde quedó (verificado) |
+|---|---|---|
+| `FR-076` | Ítem que llega sin tags | **`FR-021b`** (`spec.md:614`): rechazo en la ingesta |
+| `FR-077` | Reconstrucción aditiva de exclusiones | **`FR-068d`** (`spec.md:879`): la exclusión persiste aunque su señal de origen se purgue |
+| `FR-078` | Umbral de aborto por volumen anómalo | **Registro de clarificación** (`spec.md:40`): 0,9, materializado en `sync_volume_delta_ratio` |
+
+**Fundamento**: estos tres **sí designaron contenido** que después se reubicó, a diferencia de
+`FR-072`…`FR-075`, que estaban vacantes. Reasignarlos crearía dos referencias válidas para el mismo
+requisito y volvería ambiguo todo texto anterior que los cite. Es el criterio que ya se aplicó a
+`FR-052`, `DEP-3` y `FR-070a`…`FR-070e`.
+
+**Alternativa descartada**: reasignarlos a los próximos requisitos que hagan falta, aprovechando que
+son huecos consecutivos. Descartada porque el proyecto acumula **cuatro** incidentes de identificador
+recolocado y cada uno costó una corrección posterior; el hueco de numeración es barato, la ambigüedad
+no.
+
+**Condición de revisión**: ninguna. Un identificador retirado no vuelve.
+
+---
+
+### RD-89 — La vigencia entra en requisitos escritos antes de que existiera
+
+**Fecha**: 2026-09-22 · **Origen**: `/speckit.clarify` — ciclo de vida del ítem
+
+**Decisión**: se completan `FR-033a1`, `FR-036` y `FR-056` para que contemplen la vigencia del ítem.
+
+**Fundamento**: los tres se redactaron antes de que hubiera noción de retiro, y ninguno es incorrecto
+—son **incompletos**, que es peor de detectar. `FR-036` mandaba reevaluar «contra los filtros
+obligatorios vigentes» y la vigencia no era uno de ellos, de modo que la reevaluación pasaba con
+ítems retirados dentro y el texto no mentía. `FR-033a1` acotaba la ventana temporal pero no el
+conjunto: el respaldo se construía sobre el catálogo completo, y el respaldo es lo que recibe
+exactamente la población sin resultado propio. `FR-056` no distinguía lista vacía de lista reducida.
+
+**Alternativa descartada**: escribir un requisito nuevo, transversal, del tipo «toda lectura filtra
+ítems retirados», en vez de tocar los tres. Descartada porque un requisito transversal obliga a
+recordarlo en cada lugar donde aplica, y el modo de fallo de estos tres fue precisamente que nadie
+recordó actualizarlos.
+
+**Alternativa descartada (2)**: incluir también `FR-010a` en este lote. Se excluye porque **no le
+falta nada**: opera sobre el vocabulario compartido, que se materializa en `tag_modules`, y `RD-20`
+ya estableció que esa tabla se calcula **únicamente sobre `items.status = 'available'`**. La
+semántica de vigencia ya está donde tiene que estar, una capa más abajo.
+
+> Corrección del 2026-09-22: este párrafo decía que la cuestión «se consulta por separado (Q32)».
+> Era falso — ya estaba decidida en RD-20 desde antes. Ver RD-93.
+
+**Condición de revisión**: si aparece un cuarto requisito de lectura escrito sin noción de vigencia,
+reconsiderar la alternativa transversal — tres omisiones son un patrón, cuatro son un diseño.
+
+---
+
+### RD-88 — `FR-074` se reserva, no se redacta
+
+**Fecha**: 2026-09-22 · **Origen**: `/speckit.clarify` — ciclo de vida del ítem
+
+**Decisión**: `FR-072`, `FR-073` y `FR-075` se incorporan a `spec.md` con texto definitivo.
+`FR-074` queda **reservado para su contenido propuesto** y se marca pendiente de Q31.
+
+**Fundamento**: `data-model.md:2099` señala que `FR-074` «tiene una consecuencia de producto —qué
+hacer ante un origen que responde parcialmente— que excede lo técnico». Parte ya está resuelta —el
+umbral 0,9— pero la premisa que lo sostiene no: **interpretar una ausencia como un hecho de
+negocio**. Redactarlo ahora sería cerrar por mi cuenta la decisión que el propio documento marcó
+como no técnica.
+
+**Alternativa descartada**: dejar el hueco sin marca, como estaba. Descartada porque un hueco mudo es
+indistinguible de un olvido, y este ya se pasó por alto durante doce días.
+
+**Alternativa descartada (2)**: redactar `FR-074` restringido solo a la parte resuelta (el aborto por
+volumen anómalo) y dejar fuera la premisa. Descartada porque la regla de aborto **existe para
+proteger** la inferencia de `CR-8`; sin la inferencia, no protege nada y el requisito no tiene objeto.
+
+**Condición de revisión**: al responderse Q31. Si la respuesta es no confirmar `CR-8`, `FR-074` no se
+redacta y el identificador pasa a **retirado y no reasignable**, no vuelve a quedar vacante.
+
+---
+
+### RD-87 — Aprobación de `FR-072`…`FR-075` sobre identificadores vacantes
+
+**Fecha**: 2026-09-22 · **Origen**: `/speckit.clarify` — ciclo de vida del ítem
+
+**Decisión**: los cuatro requisitos del ciclo de vida del ítem propuestos en §9.1 se aprueban y se
+incorporan a `spec.md` **conservando los identificadores `FR-072`…`FR-075`**.
+
+**Fundamento**: los cuatro estaban **vacantes**: `spec.md` saltaba de `FR-071` a `FR-079` y ninguno
+designó jamás otro requisito (verificado: 0 menciones en `spec.md` antes de este acto, 21 en
+`data-model.md` refiriéndose a estas mismas propuestas). Reusar un identificador vacante no crea
+ambigüedad histórica, porque no hay historia que contradecir. La alternativa de numerarlos desde
+`FR-097` obligaría a corregir veintiún puntos de `data-model.md` sin ganar nada.
+
+**Distinción que se deja explícita**: vacante ≠ retirado. `FR-052`, `DEP-3` y `FR-070a`…`FR-070e`
+**designaron** contenido y se dieron de baja; por eso no se reasignan. La reasignación de §9.9, que
+movió «ítem sin tags» de `FR-072` a `FR-076`, es lo que dejó a `FR-072` vacante — y es la razón por
+la que este RD tiene que explicar la diferencia en vez de darla por obvia.
+
+**Alternativa descartada**: numerar desde el final (`FR-097`…`FR-100`) por prudencia general contra
+la reutilización. Descartada porque la prudencia aplica al identificador *retirado*, no al vacante, y
+aplicarla indiscriminadamente convertiría una regla útil en una superstición cara.
+
+**Condición de revisión**: si se encuentra cualquier documento —commit, issue, checklist— donde
+`FR-072`…`FR-075` designen algo distinto de estos enunciados, revertir a numeración nueva de
+inmediato.
+
+---
+
+### RD-86 — Corrección del alcance de la supresión: `user_declared_tags` faltaba (CHK048)
+
+**Decisión**: §7.11 paso 3 incorpora `user_declared_tags` al `CASCADE`, y el paso 4 pasa a verificar
+**cinco** tablas, no cuatro.
+
+**Fundamento**: no es un ajuste cosmético de conteo. §2.14 declara `user_id` con `ON DELETE CASCADE`
+hacia `users`, de modo que el borrado **sí ocurría**; lo que no ocurría era la **verificación**. Y como
+FR-095 define la supresión como completa en función de lo que la verificación recorre, una supresión
+podía marcarse completa mientras los gustos declarados seguían vivos — o, si el CASCADE se hubiera
+implementado según la enumeración del paso 3 en lugar de según §2.14, seguían vivos de hecho. Las dos
+lecturas son malas y la discrepancia entre ambas es lo que había que cerrar.
+
+**Causa**: RD-68 creó la tabla y actualizó §2; §7.11 quedó fuera del alcance de esa edición. Es el mismo
+patrón que RD-85 corrige en §4.3: **una entidad nueva se incorpora al modelo y los procedimientos que la
+enumeran no se revisan**, porque nada obliga a recorrerlos.
+
+**Condición de revisión**: toda entidad futura con `user_id` debe entrar a §7.11 en el mismo acto en que
+entra a §2. Conviene que la verificación de FR-095 se derive de un inventario y no de una lista escrita a
+mano, porque esta lista ya falló una vez.
+
+---
+
+### RD-85 — `region` se incorpora a la política de ingesta, y su backfill es dependencia externa (CHK053)
+
+**Decisión**: dos partes. **(a)** La política de ingesta de §7.5 se extiende a `region` de forma
+**literal**: registro rechazado, violación de contrato, usuario fuera del universo recomendable, contador
+propio con valor esperado 0, corrida marcada `failed`. **(b)** Se declara **DEP-11**: `api-general`
+completa `region` en los usuarios preexistentes **antes** del despliegue.
+
+**Fundamento de (a)**: RD-61 estableció que `region` y `birth_date` tienen la misma naturaleza —ambas
+obligatorias en el alta (FR-079a), ambas condicionan el rechazo—, pero §7.5 siguió nombrando solo a
+`birth_date`. La simetría quedó **implícita**, y una política de rechazo que hay que deducir por analogía
+no es una política: quien implemente T029 leyendo §7.5 tiene todo el derecho a insertar usuarios sin
+región. Los contadores se mantienen **separados** porque distinguen dos incumplimientos distintos del
+origen; agregarlos ocultaría cuál de los dos campos falta.
+
+**Fundamento de (b)**: la consecuencia merece estar escrita antes de ocurrir. El día del despliegue,
+**todo usuario preexistente deja de recibir recomendaciones simultáneamente**. Es el comportamiento
+**correcto** según FR-079 —fail-closed, no se atiende a quien no se puede filtrar— y es **catastrófico**
+al mismo tiempo. Las dos cosas son verdad, y declararlo como dependencia externa es lo único que impide
+que se descubra en producción.
+
+**Alternativa descartada, y no por criterio propio sino por texto vigente**: completar `region` con un
+valor por defecto o centinela. Lo prohíbe FR-079 y lo prohíbe §4.3 **por nombre** —«nada de inferencia
+por IP, por idioma ni por ningún otro medio»—, porque inferirla la convertiría en dato propio y violaría
+el Principio I. No había decisión que tomar acá: estaba tomada.
+
+**Corrección colateral, §4.3**: la subsección seguía afirmando que `region` «es nulable», que «no
+participa de ninguna derivación» y que «ni el motor, ni el post-procesamiento, ni el request path la
+leen». Las tres afirmaciones están invalidadas por RD-52, RD-61 y CR-5. RD-61 declara haber corregido
+esto en §2.1, y así fue — **pero §4.3 quedó sin tocar**. El efecto era concreto sobre este mismo ítem:
+quien leyera §4.3 concluiría que un usuario sin región no representa problema alguno, que es exactamente
+lo contrario de lo que este RD decide. Lo que **sigue vigente** de §4.3 son las dos primeras filas:
+`region` es dato ajeno proyectado y no se infiere localmente.
+
+**Condición de revisión**: si DEP-11 se incumpliera y el despliegue ocurriera igual, la corrección es
+posponer el despliegue, no relajar FR-079.
+
+---
+
+### RD-84 — La degradación continua se vuelve falsable con un mínimo de vecinos (Q26, CHK055)
+
+**Decisión**: se declara **`collab_min_neighbors` = 10** en configuración versionada (FR-096). El término
+colaborativo debe considerar al menos ese número de vecinos con peso no despreciable; si la región del
+usuario no los aporta, el vecindario se completa con extrarregionales.
+
+**El problema que esto nombra, y que FR-081a no veía**: FR-081b ya garantiza que el peso extrarregional
+`1 − region_weight_factor` es **estrictamente positivo** para todo factor del dominio. Eso cierra la
+segunda frase de FR-081a —«no debe existir un valor que anule el aporte ajeno»— y se verifica leyendo el
+dominio. Lo que **no** cierra es la primera: «seguir produciendo resultado».
+
+> Un peso positivo pero minúsculo es **funcionalmente indistinguible de cero** una vez que interviene el
+> corte top-k del k-NN. Los vecinos extrarregionales quedan fuera del corte **antes de que su peso
+> importe**. El requisito se cumplía en la fórmula y se incumplía en el resultado, que es la peor forma
+> de incumplirse: ningún test sobre el dominio del parámetro lo habría detectado.
+
+**Criterio de test, que es lo que faltaba**: un usuario situado en una región con muy pocos usuarios
+obtiene un vecindario de tamaño ≥ `collab_min_neighbors`. Sobre eso un test puede **fallar**, y eso es lo
+que vuelve falsable a FR-081a. Antes, «degradación continua» era una intención sin observable asociado.
+
+**Alternativas descartadas**:
+- **Cota superior arbitraria al factor** (p. ej. `≤ 0,5`): el número no se deriva de nada, y el valor
+  vigente es `0,1` (FR-090a), lejísimos de la zona de peligro. Habría dado la sensación de protección sin
+  proteger de lo que efectivamente falla, que es el corte top-k y no la magnitud del factor.
+- **Fallback condicional por población de la región**: FR-081 eligió ponderación **justamente** para no
+  tener condicionales, y el modo de falla discontinuo que RD-64 descartó volvería por esta puerta.
+- **Declarar el requisito no falsable**: es la opción honesta si no hubiera criterio, pero lo hay.
+
+**Condición de revisión**: si se midiera que completar con extrarregionales degrada la relevancia en
+regiones densas, lo que se ajusta es el mínimo, no el mecanismo.
+
+---
+
+### RD-83 — La verificación de supresión recibe observador y escalamiento (CHK046)
+
+**Decisión**: FR-095a. **(1) Observador**: métrica de supresiones sin constancia registrada, con **valor
+esperado 0**, acción **alerta** y responsable asignado — el mismo tratamiento de
+`contract_violations_total{field="birth_date"}` que RD-6 y RD-25 ya exigen. **(2) Escalamiento**:
+reintento **acotado** con backoff; al agotarse, alerta de severidad alta y la supresión queda en estado
+**fallido visible**, no anotada en un log.
+
+**Fundamento**: FR-094 ya mandaba tratar la supresión parcial como fallo, y eso parecía suficiente. No lo
+era. **Un fallo que nadie observa no es un fallo**: el requisito decía «fallo» sin decir **a quién le
+falla**. En una obligación de privacidad, el destinatario del fallo no es el sistema sino una persona que
+pidió que sus datos dejaran de existir, y el único mecanismo que la representa es una alerta con dueño.
+
+**Por qué valor esperado cero y no un umbral**: por la misma razón que §7.5 lo argumenta para las
+violaciones de contrato — no mide un fenómeno normal con umbral arbitrario, mide un incumplimiento
+**binario**. Un umbral distinto de cero equivaldría a declarar aceptable una cantidad de supresiones
+incompletas.
+
+**Alternativas descartadas**:
+- **Reintento indefinido**: convierte un fallo permanente en ruido de fondo. El sistema reintenta para
+  siempre, nadie mira, y la supresión nunca ocurre ni nunca se declara fallida.
+- **Solo log**: ya rechazado por RD-6 con el mismo argumento, para otro dato.
+- **Fallo de arranque**: desproporcionado. Una supresión fallida no invalida el servicio para el resto de
+  los usuarios.
+
+**Condición de revisión**: si la métrica resultara ruidosa por fallos transitorios de infraestructura, lo
+que se ajusta es la cota de reintentos, no el valor esperado.
+
+---
+
+### RD-82 — Supresión con recálculo en curso: se aborta el recálculo (CHK045), y el mínimo de vocabulario se asume (CHK031)
+
+**Decisión 1 — recálculo en curso**: FR-092a. La supresión **aborta** el recálculo. Se marca al usuario
+como *en supresión*; el worker consulta esa marca **inmediatamente antes de escribir** y descarta la
+corrida si está presente.
+
+**Por qué el chequeo va justo antes de la escritura**: un chequeo al inicio de la corrida deja abierta
+**exactamente la ventana que se quiere cerrar** — el intervalo entre comprobar y escribir —. Es el mismo
+error que el procedimiento vigente cometía: §7.11 paso 2 mandaba «suprimir el bloqueo de recálculo», y
+**borrar el lock no detiene al worker que ya lo tomó**; solo habilita a un segundo worker a arrancar, con
+lo cual **empeoraba** la carrera que decía cerrar. La marca sí la cierra, porque se consulta del lado que
+escribe.
+
+**Alternativas descartadas**:
+- **Esperar** al vencimiento del lock (`recompute:lock:{user_id}:{module}`, TTL 5 min, §3.1): simple y
+  sin cambios en el worker, pero impone hasta cinco minutos de latencia a una **operación de privacidad**,
+  y si el worker muere sin liberar se espera el TTL completo.
+- **Suprimir igual con barrido diferido**: inadmisible **por letra, no por espíritu**. Durante la ventana,
+  la verificación de FR-095 daría negativo y la supresión se marcaría como **no completada** por su
+  propio requisito. No hay que apelar a principios para descartarla: el texto vigente ya la rechaza.
+
+**Decisión 2 — vocabulario con menos de cinco tags**: se declara **supuesto**, no requisito. Se asume que
+el vocabulario de cada módulo ofrece al menos `declared_tags_min` tags elegibles. Queda en *Assumptions*
+de `spec.md`, con su costo escrito sin atenuar: si no se cumpliera, FR-083 impediría declarar y FR-088
+impediría atender, **ningún usuario de ese módulo sería atendible**, y **no hay texto que resuelva cuál de
+las dos reglas cede**.
+
+**Fundamento**: es una apuesta consciente sobre un dato que provee `api-general` (DEP-10), no un hueco por
+olvido. La diferencia entre ambas cosas es que la apuesta está escrita.
+
+**Alternativa descartada**: convertirlo en requisito de contrato con métrica de violación, al modo de
+CR-16. Es más riguroso y habría sido defendible. Se prefiere el supuesto porque **no introduce camino de
+código nuevo para un caso que no se espera**: una validación de arranque, una rama de ejecución y una
+métrica más, todo para un escenario que, de ocurrir, se manifestaría en la primera prueba de integración.
+
+**Condición de revisión**: si el vocabulario de algún módulo se aproximara al mínimo, el supuesto pasa a
+requisito de contrato — y entonces sí corresponde CR-19 y validación de arranque.
+
+---
+
+### RD-81 — Renumeración de la familia de supresión: FR-070a…e → FR-091…FR-095 (CHK071)
+
+**Decisión**: `FR-070a` … `FR-070e` pasan a ser `FR-091` … `FR-095`, en el mismo orden y **sin sufijos**.
+`FR-070` (desempate entre ítems con idéntico score) **no cambia**. Los identificadores `FR-070a`…`FR-070e`
+quedan **retirados y no reasignables**.
+
+**Fundamento**: la convención del propio documento es que **un sufijo designa un sub-requisito de su
+base** — `FR-033a6a` ⊂ `FR-033a6` ⊂ `FR-033a` ⊂ `FR-033`. La familia de supresión **no refina el
+desempate**: son materias sin relación. La numeración afirmaba un parentesco inexistente, y quien
+siguiera «FR-070» desde FR-070c llegaba al requisito equivocado.
+
+**Por qué se renumera la supresión y no el desempate**: el desempate tiene **6 referencias en `tasks.md`**
+(líneas 181, 326, 333, 363, 372, 463) y la familia de supresión **ninguna**. Renumerar lo que el backlog
+no cita **no toca el backlog**. El criterio es de costo, no de mérito: ambos identificadores eran
+igualmente legítimos.
+
+**Por qué se agrega un encabezado de familia**: los sufijos daban una señal visual de agrupamiento que la
+numeración corrida pierde. El encabezado «Supresión de usuario a pedido — FR-091 a FR-095» la repone sin
+reintroducir el parentesco falso.
+
+**Sobre el retiro del identificador**: `FR-070a`…`FR-070e` no se reasignan, igual que `DEP-3` y `FR-052`.
+El documento acumula ya cuatro incidentes de identificador colisionado o reutilizado, y la política de
+dejar vacantes los retirados es la única que ha funcionado.
+
+**Las referencias en las entradas de clarificación fechadas se conservan sin cambio**, por el mismo
+criterio con que se conservan las menciones de «15 tablas» en §9 (CHK073): son **registro histórico** de
+lo que se decidió en una fecha, no texto prescriptivo. Alterarlas falsearía el registro.
+
+**Alternativa descartada**: declarar la homonimia y convivir con ella. Es lo más barato hoy y lo más caro
+después: el documento ya paga el costo de tres identificadores reutilizados, y ninguno mejoró con el
+tiempo.
+
+---
+
 ### RD-80 — El 20 % rige solo, y el piso de la cuota se elimina (Q25)
 
 **Verificación previa, que es lo que la decisión pedía**: se comprobó si una cuota proporcional pura
@@ -5398,7 +5884,7 @@ configuración, que es como suelen volver las decisiones descartadas.
 discontinuo, silencioso y concentrado en los usuarios más vulnerables a él.
 
 **Estado del resto de NC-17**: (b) región nula, cerrado en Q13 (RD-52). (d) constancia de la supresión,
-cerrado en Q17 (RD-59, FR-070e). Con (a) y (c) resueltos acá, **NC-17 se cierra completo**.
+cerrado en Q17 (RD-59, FR-095). Con (a) y (c) resueltos acá, **NC-17 se cierra completo**.
 
 **Condición de revisión**: si se midiera que el aporte extrarregional degrada la relevancia sin aportar
 cobertura en regiones densas. La corrección sería hacer el factor dependiente de la densidad
@@ -5528,11 +6014,11 @@ insumo.
 
 ### RD-59 — La verificación de supresión es ejecutable y registrada (Q17.3)
 
-**Decisión**: FR-070e. Tras cada supresión, el sistema consulta cada almacén de su alcance —tablas y
+**Decisión**: FR-095. Tras cada supresión, el sistema consulta cada almacén de su alcance —tablas y
 claves de caché de ámbito de usuario— y deja constancia del resultado, **incluido el caso negativo**.
 Una supresión sin verificación registrada se trata como **no completada** y se reintenta.
 
-**Fundamento**: FR-070d pedía «verificar la ausencia efectiva» sin decir qué constituye la
+**Fundamento**: FR-094 pedía «verificar la ausencia efectiva» sin decir qué constituye la
 verificación, y un requisito así se cumple escribiendo un comentario. El punto no es la verificación
 en sí sino su **constancia**: sin ella, ante un reclamo posterior no hay forma de distinguir «se
 suprimió» de «se creyó suprimir». Registrar el caso negativo es lo que lo vuelve evidencia; un
@@ -5545,7 +6031,7 @@ requisito describe una comprobación cuyo fracaso no cambia nada.
 y la marca temporal. Una constancia que retuviera el contenido suprimido convertiría al mecanismo de
 supresión en su propia filtración.
 
-**Alternativa descartada**: bajar FR-070d a «registro de la supresión» —anotar que se pidió, sin
+**Alternativa descartada**: bajar FR-094 a «registro de la supresión» —anotar que se pidió, sin
 comprobar—. Se descarta porque es precisamente lo que ya provee el CASCADE, y NC-17 lo señalaba como
 insuficiente.
 
@@ -5618,8 +6104,10 @@ observando la operación.
 periódico por reloj — desacopla el costo de la actividad; (iii) recálculo por cada interacción —
 costo sin beneficio proporcional.
 
-**Pendiente que abre**: el **valor** del umbral no está fijado. El ejemplo conversado fue 10
-interacciones, pero un ejemplo no es una decisión. Queda en NC-19.
+~~**Pendiente que abre**: el valor del umbral no está fijado… Queda en NC-19.~~
+**CERRADO en Q18/RD-63**: `interaction_recalc_threshold` = **10 interacciones**, declarado en FR-080a y
+en §4 como parámetro **operativo**. El ejemplo conversado terminó siendo el valor adoptado, pero por
+decisión explícita y no por inercia. NC-19 está cerrado.
 
 ---
 
@@ -5836,7 +6324,7 @@ tope absoluto de retiros por corrida, que no depende del volumen total.
 | ~~**NC-13**~~ | ~~¿Los ítems recién ingresados necesitan protección en el respaldo?~~ | **CERRADO por Q18 (RD-65)**: **cuota reservada** (`fallback_new_item_share`, FR-033a6..a8), máximo y no mínimo, **sin alterar el puntaje**. Se descartan ventana de gracia y piso artificial por contaminar la medición. Abre **NC-20** (valor de la cuota y umbral de evidencia) |
 | ~~**NC-14**~~ | ~~Valor de `popularity_confidence_z`~~ | **CERRADO por Q14 (RD-53)**: **1,96** (95 %). Costo declarado: **agrava NC-13**, el sesgo contra ítems nuevos. Bajarlo es la corrección más barata si eso resulta un problema | — |
 | ~~**NC-15**~~ | ~~Valor de `signal_retention_days`~~ | **CERRADO por Q14 (RD-53)**: **18–24 meses**. Se fija un rango y no un valor: la diferencia no tiene consecuencia observable, y precisar más sería falsa exactitud. **La ceremonia para reducirlo pasa a NC-18** | — |
-| ~~**NC-17**~~ | ~~Consecuencias de usar `region` en el motor~~ | **CERRADO**, en tres tramos: ~~(b) región nula~~ Q13 (RD-52); ~~(d) constancia de supresión~~ Q17 (RD-59, FR-070e); **(a) + (c)** Q18 (RD-64): **ponderación blanda**, nunca filtro duro, con prohibición explícita del valor que lo emularía (FR-081a). La burbuja geográfica no se elimina: se vuelve graduable, que es el resultado buscado |
+| ~~**NC-17**~~ | ~~Consecuencias de usar `region` en el motor~~ | **CERRADO**, en tres tramos: ~~(b) región nula~~ Q13 (RD-52); ~~(d) constancia de supresión~~ Q17 (RD-59, FR-095); **(a) + (c)** Q18 (RD-64): **ponderación blanda**, nunca filtro duro, con prohibición explícita del valor que lo emularía (FR-081a). La burbuja geográfica no se elimina: se vuelve graduable, que es el resultado buscado |
 | ~~**NC-18**~~ | ~~Ceremonia para reducir `signal_retention_days`~~ | **CERRADO por Q16 (RD-54)**: ceremonia **asimétrica**. Aumentar el horizonte es cambio de configuración normal; **reducirlo requiere aprobación explícita**, porque destruye datos de forma irreversible en la siguiente corrida de purga | — |
 | ~~**NC-16**~~ | ~~¿Eventos o espejo del estado?~~ | **CERRADO por Q11 (RD-50)**: **registro de eventos inmutables** (CR-18). Se descarta espejar el estado —vacía de contenido a Q6, Q7 y Q8— y derivar el historial localmente, que invertiría CR-12 al volver `occurred_at` una hora de detección | — |
 

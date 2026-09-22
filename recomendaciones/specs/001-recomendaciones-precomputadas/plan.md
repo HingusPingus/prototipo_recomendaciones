@@ -15,20 +15,27 @@
 
 ## Estado verificado de los insumos
 
-| Magnitud | Valor | Fuente |
-|---|---|---|
-| Requisitos funcionales | **152** identificadores `FR-` únicos | `spec.md` |
-| Criterios de éxito | **27** (`SC-1`…`SC-27`) | `spec.md` |
-| Entradas de clarificación | **29** (sesiones 2026-09-07 y 2026-09-14) | `spec.md` |
-| Dependencias externas | **10 declaradas**, de las cuales **8 vigentes**, 1 resuelta (DEP-4) y DEP-3 **vacante a propósito** | `spec.md` |
-| Registros de decisión | **RD-1 … RD-80** | `data-model.md` §11 |
-| Invariantes de datos | **32** (`DI-1`…`DI-28`, contando `DI-2a`…`DI-2e`) | `data-model.md` §6 |
-| Cláusulas de contrato a `api-general` | **CR-1 … CR-18** (CR-13 y CR-14 tachadas) | `data-model.md` §10 |
-| Tablas en PostgreSQL | **16**, agrupadas en 14 subsecciones | `data-model.md` §2 |
-| Familias de claves Redis | **7** | `data-model.md` §3 |
-| Historias de usuario | **7** (US1…US7) | `spec.md` |
-| Tareas | **50** (T001…T050) | `tasks.md` |
-| Checklist de calidad de requisitos | **30/30** | `checklists/` |
+| Magnitud | Valor | Fuente | Comando de verificación |
+|---|---|---|---|
+| Requisitos funcionales | **158** identificadores `FR-` únicos · **92** bases | `spec.md` | `grep -oE 'FR-[0-9]{3}[a-z]?[0-9]?' spec.md \| sort -u \| wc -l` |
+| Criterios de éxito | **27** (`SC-001`…`SC-027`) | `spec.md` | `grep -oE 'SC-[0-9]{3}' spec.md \| sort -u \| wc -l` |
+| Entradas de clarificación | **36**, en **5 sesiones** (2026-09-07, 2026-09-14 y tres del 2026-09-22) | `spec.md` | `grep -c '^- \*\*Q' spec.md` |
+| Dependencias externas | **11 declaradas**: **9 vigentes**, 1 resuelta (`DEP-4`) y `DEP-3` **vacante a propósito**. `DEP-11` se agregó después del recuento anterior | `spec.md` | `grep -oE 'DEP-[0-9]+' spec.md \| sort -u` |
+| Registros de decisión | **RD-1 … RD-93** (93 vigentes) | `data-model.md` §11 | `grep -c '^### RD-' data-model.md` |
+| Invariantes de datos | **32** (`DI-1`…`DI-28`, contando `DI-2a`…`DI-2e`) | `data-model.md` §6 | inspección de §6 |
+| Cláusulas de contrato a `api-general` | **18 declaradas**, **16 vigentes** (`CR-13` y `CR-14` eliminadas por RD-50) | `data-model.md` §10 | `grep -oE '^\| \*\*CR-[0-9]+\*\*' data-model.md \| sort -u` |
+| Tablas en PostgreSQL | **16**, agrupadas en 14 subsecciones | `data-model.md` §2 | inspección de §2 |
+| Familias de claves Redis | **7** | `data-model.md` §3 | inspección de §3 |
+| Historias de usuario | **7** (US1…US7) | `spec.md` | inspección |
+| Tareas | **63** (T001…T063, con `T052` ya creada) | `tasks.md` | `grep -c '^### T0' tasks.md` |
+| Checklist de contratos | **30/30** tildados — cerrado | `checklists/requirements-contracts.md` | `grep -c '^- \[x\]'` |
+| Checklist de clarificación | **13/46** tildados, **33 abiertos**, **0 bloqueantes** | `checklists/requirements-clarify-2026-09-14.md` | `grep -c '^- \[x\]'` |
+
+> **Tabla recontada el 2026-09-22.** Cada cifra tiene al lado el comando que la produce, de modo que
+> verificarla cuesta un `grep` y no una lectura. La versión anterior estaba fechada solo de forma
+> implícita y por eso **parecía vigente estando vencida en siete de sus doce filas** — un recuento
+> sin fecha no envejece a la vista, que es la forma más eficiente de volverse falso sin que nadie lo
+> note.
 
 ---
 
@@ -93,7 +100,7 @@ carga de configuración) están **declaradas como excepciones**, con condición 
 
 ```
 specs/001-recomendaciones-precomputadas/
-├── spec.md              # 152 FR · 27 SC · 29 clarificaciones · DEP-1…DEP-10
+├── spec.md              # 158 FR (92 bases) · 27 SC · 36 clarificaciones · DEP-1…DEP-11
 ├── plan.md              # este archivo
 ├── data-model.md        # AUTORITATIVO · 16 tablas · RD-1…RD-80 · DI-1…DI-28 · CR-1…CR-18
 ├── tasks.md             # 50 tareas en 10 milestones
@@ -247,7 +254,7 @@ Rechazo explícito ante: `top_n` fuera de `[10, 50]` · ausencia de API key · f
 gustos (FR-088) · payload inválido. Fallo transitorio (DB/Redis): reintento con backoff exponencial,
 máx. 5 → DLQ.
 
-### 3.5 Dependencias externas — **8 vigentes**
+### 3.5 Dependencias externas — **11 declaradas, 9 vigentes** *(recontado 2026-09-22)*
 
 | ID | Qué se requiere de `api-general` | Estado |
 |---|---|---|
@@ -261,6 +268,7 @@ máx. 5 → DLQ.
 | DEP-8 | Identificador propio de cada interacción, único y no reutilizado | Vigente |
 | DEP-9 | Notificación de cada transición de estado como emisión propia, con identificador | Vigente |
 | DEP-10 | **Vocabulario de tags normalizado del catálogo** | Vigente |
+| DEP-11 | **Backfill de `region` en usuarios preexistentes**, por `api-general`, antes del despliegue | Vigente |
 
 > **DEP-10 es la más severa del inventario.** Es la única dependencia cuyo incumplimiento deja al sistema
 > **sin ningún usuario atendible**: sin vocabulario no hay declaración posible, y FR-088 rechaza todo.
@@ -287,12 +295,31 @@ máx. 5 → DLQ.
 
 ### Funcionalidad clarificada **sin tarea asignada** — inconsistencia pendiente
 
-**FR-088 rechaza toda solicitud de un usuario sin declaración de gustos, y la declaración no tiene tarea
-asignada en `tasks.md`.** Con el estado actual del plan de tareas, Fase 1 produce un sistema que rechaza
-al 100 % de sus usuarios. Requiere tarea nueva antes de que M7 se considere completable.
+> ✅ **RESUELTA el 2026-09-22.** Se conserva como registro de una inconsistencia real —el plan
+> advertía que Fase 1 produciría un sistema que rechaza al 100 % de sus usuarios— y de qué la
+> resolvió.
 
-Lo mismo, en menor grado: siembra de vectores, purga de señales, supresión verificada, disparador por
-conteo, ponderación regional y señal de obsoleto disponible carecen de tarea propia.
+**El aviso decía**: «FR-088 rechaza toda solicitud de un usuario sin declaración de gustos, y la
+declaración no tiene tarea asignada en `tasks.md`». Era exacto cuando se escribió.
+
+**Qué lo resolvió**: la actualización delta de `tasks.md` del 2026-09-17 creó **T053** (endpoint de
+declaración), **T054** (herencia entre módulos) y **T055** (rechazo por módulo sin declaración). El
+camino completo tiene tarea: escribir la declaración, heredar sin que cuente para el mínimo, y
+rechazar antes de la precedencia de estados.
+
+**Estado del resto del párrafo, verificado una por una el 2026-09-22**:
+
+| Funcionalidad que el aviso listaba | Estado |
+|---|---|
+| Purga de señales | ✅ **T057** |
+| Supresión verificada | ✅ **T058** (aborto del recálculo) y **T059** (verificación y observador) |
+| Disparador por conteo | ✅ **T060** |
+| Ponderación regional | ✅ **T061** |
+| Señal de obsoleto disponible | ✅ **T062** |
+| **Siembra de vectores** | ⚠️ **Sigue sin tarea propia.** `T007` vectoriza y `T056` reconstruye el perfil del usuario, pero **el poblado inicial de `item_vectors` para un catálogo ya sincronizado no tiene tarea**. `T030` crea la versión de vocabulario y «recalcula todos los vectores antes de activarla» (FR-010g), que cubre la *transición* entre versiones, no el arranque desde vacío |
+
+**Único pendiente**: la siembra de vectores. Se declara, no se resuelve acá — crear la tarea excede
+el alcance de este pase.
 
 ---
 
@@ -366,11 +393,16 @@ conjunto general · `signal_retention_days` dentro del rango 18–24 meses.
 - [x] Constitution Check sin violaciones no declaradas
 - [x] Modelo de datos completo y autoritativo (`data-model.md`)
 - [x] Contrato a `api-general` especificado (CR-1…CR-18)
-- [x] Dependencias externas inventariadas (8 vigentes)
+- [x] Dependencias externas inventariadas (**11 declaradas, 9 vigentes**; `DEP-4` resuelta, `DEP-3` vacante)
 - [x] Pendientes de clarificación cerrados (NC-1…NC-20)
 - [x] Parámetros de configuración con valor o con criterio de calibración
-- [ ] **`tasks.md` actualizado**: encabezado desactualizado y funcionalidad sin tarea asignada
-- [ ] **Incidencias de GitHub propagadas**
+- [x] **`tasks.md` actualizado** — ejecutado el 2026-09-17 (delta de encabezado, T003, T004, T017,
+      T042, T047 y doce tareas nuevas) y el 2026-09-22 (`T052` creada, seis tareas desbloqueadas,
+      27/27 criterios de éxito atribuidos). Coherente con el Anexo C de este mismo archivo, que ya
+      lo declaraba ejecutado mientras este ítem seguía sin tildar — **contradicción interna
+      resuelta el 2026-09-22**
+- [ ] **Incidencias de GitHub propagadas** — sigue correctamente sin tildar: el impacto se declara
+      en el Anexo C, no se ejecuta
 
 ---
 
@@ -400,15 +432,37 @@ invariante que depende de validación en la capa de aplicación.
 
 ---
 
-## Anexo C — Impacto sobre `tasks.md` e incidencias *(declarado, no ejecutado)*
+## Anexo C — Impacto sobre `tasks.md` e incidencias *(tasks.md ejecutado; incidencias declaradas)*
 
-**Tareas a actualizar**: T003, T004, T007, T012, T017, T022, T029, T031, T036, T038, T047, T050.
+**Estado**: `tasks.md` se actualizó en **dos pases** —2026-09-17 y 2026-09-22—. La propagación a
+GitHub sigue **declarada y no ejecutada**.
 
-**Tareas nuevas requeridas**: endpoint y flujo de declaración de gustos · siembra de vectores · purga de
-señales · verificación de supresión · disparador de recálculo por conteo · ponderación regional · señal de
-resultado obsoleto disponible.
+**Segundo pase, 2026-09-22 — levantamiento del bloqueo del ciclo de vida del ítem**:
+- **T052 creada** en el identificador que la sección de bloqueo mantuvo reservado doce días.
+- **Seis tareas desbloqueadas y modificadas**: T012, T017, T018, T029, T037, T038.
+- **27/27 criterios de éxito atribuidos** a la tarea que los verifica (antes eran 4).
+- **Tres FR nuevos citados** donde faltaban: FR-084 en T053, FR-086 en T054, FR-091 en T058/T059.
+- La sección «Tareas bloqueadas» pasó a ser **registro histórico de un bloqueo levantado**.
+- Total del backlog: **63 tareas**.
 
-**Incidencias**: #3, #4, #7, #12, #17, #22, #29, #31, #36, #38, #47 y #50 requieren actualización; las
-nuevas comienzan en **#61**.
+**Tareas actualizadas** (hecho): T003 (16 tablas de `data-model.md` §2, no 10 de `plan.md`), T004
+(inventario completo de §4 y rechazo de `tiebreak_criteria`), T017 (32 invariantes, DI-28 con test
+propio), T042 (alerta de liveness en reemplazo de la métrica de antigüedad), T047 (DEP-1…DEP-11 y
+CR-1…CR-18), más la cabecera (fuentes de verdad y conteos).
+
+**Tareas nuevas creadas** (hecho): T051 · T053 · T054 · T055 · T056 · T057 · T058 · T059 · T060 ·
+T061 · T062 · T063, más **T052**. Total del backlog: **63 tareas**.
+
+**Bloqueado, no omitido**: T052 (ciclo de vida del ítem) **no se creó**, y T012, T018, T029, T037,
+T038 y T017 no se modificaron en ese aspecto, porque dependen de **FR-072…FR-075, que no existen en
+`spec.md`** — `data-model.md` §9 los propone y advierte que «no deben aplicarse al backlog hasta que
+se aprueben». La numeración salta de T051 a T053 y el hueco se deja declarado.
+
+**Incidencias** *(declarado, no ejecutado)*: #3, #4, #17, #42 y #47 requieren actualización de
+cuerpo; las nuevas van de **#61 a #72** (T051→#61, T053→#62, …), con la salvedad de que la
+correspondencia `TXXX`→`#XXX` no se sostiene porque #51–#60 ya son épicas.
+
+**Componentes con proceso periódico** — verificado que la lista los incluye: refresco de derivados
+etarios (T051), purga de señales (T057) y recálculo de popularidad por ventana (T063).
 
 > Propagación **pendiente de comando expreso**. Este anexo enumera el alcance; no lo ejecuta.

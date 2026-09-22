@@ -6,14 +6,48 @@ description: "Desglose de tareas ejecutables — Feature 001"
 
 **Input**: `specs/001-recomendaciones-precomputadas/` · **Branch**: `001-recomendaciones-precomputadas`
 
-**Fuentes de verdad**: [spec.md](./spec.md) (FR-001→FR-071, 5 clarificaciones) ·
-[plan.md](./plan.md) (D1→D10) · [checklists/requirements-contracts.md](./checklists/requirements-contracts.md) (30/30) ·
-[constitution v1.0.0](../../.specify/memory/constitution.md)
+**Actualizado**: 2026-09-22 (delta sobre la versión del 2026-09-15; T001–T050 conservan numeración e
+incidencias #1–#50)
 
-**Decisiones cerradas — no reabrir**: SWR con obsoleto (Q1) · propagación por vocabulario compartido
-(Q2) · likes y dislikes puntúan, consumo solo excluye (Q3) · configuración versionada en repo (Q4) ·
-respaldo diversificado por MMR (Q5) · α=0.5 β=0.3 γ=0.2 (D4) · espacio vectorial único (D9) ·
-popularidad por likes propios (D10).
+**Fuentes de verdad**:
+- [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 16 tablas en §2,
+  RD-1→RD-86 en §11, DI-1→DI-28 (**32** contando `DI-2a`…`DI-2e`) en §6, CR-1→CR-18 en §10.
+  *Ante discrepancia con cualquier otro documento, manda éste.*
+- [spec.md](./spec.md) — **88 requisitos base** (FR-001→FR-096, con huecos declarados), **157**
+  contando sufijos · **27** criterios de éxito · **30** entradas de clarificación en **3** sesiones
+  (2026-09-07, 2026-09-14, 2026-09-22) · **10** dependencias externas (DEP-1→DEP-11, con DEP-3 vacante
+  a propósito y DEP-4 resuelta)
+- [plan.md](./plan.md) (D1→D10)
+- [checklists/requirements-contracts.md](./checklists/requirements-contracts.md) — 30/30 resueltos
+- [checklists/requirements-clarify-2026-09-14.md](./checklists/requirements-clarify-2026-09-14.md) —
+  **13/46 tildados, 0 bloqueantes abiertos** (los 10 🔴 se cerraron el 2026-09-22)
+- [constitution v1.0.0](../../.specify/memory/constitution.md)
+
+> **Corrección del encabezado anterior**: decía «FR-001→FR-071, 5 clarificaciones» y no citaba
+> `data-model.md` ni una vez en todo el documento, pese a ser el que especifica la capa de datos que
+> T003, T004, T018 y T029 implementan.
+
+**Decisiones cerradas — no reabrir**:
+
+*Primera sesión (2026-09-07)*: SWR con obsoleto (Q1) · propagación por vocabulario compartido (Q2) ·
+likes y dislikes puntúan, consumo solo excluye (Q3) · configuración versionada en repo (Q4) · respaldo
+diversificado por MMR (Q5) · α=0.5 β=0.3 γ=0.2 (D4) · espacio vectorial único (D9) · popularidad por
+likes propios (D10).
+
+*Segunda y tercera sesión (2026-09-14 / 2026-09-22) — las que cambian el trabajo de alguna tarea*:
+
+| Decisión | RD | Tareas afectadas |
+|---|---|---|
+| Popularidad = **límite inferior de Wilson** materializado; nunca se calcula al servir | RD-53 | T038, T012 |
+| **Declaración de gustos** obligatoria por módulo, mínimo 5 tags; sin ella se rechaza la solicitud | RD-68, RD-70 | T051+, T036, T017 |
+| `tiebreak_criteria` **eliminado** de la configuración: el desempate es fijo | RD-10 | **T004** |
+| `region` y `birth_date` **ambas `NOT NULL`**, ambas rechazan en la ingesta | RD-61, RD-85 | T003, T029 |
+| Cuota de novedades = `floor(top_n × 0,20)`, **sin piso ni clamp** | RD-77, RD-80 | T038 |
+| `top_n` acotado a **`[10, 50]`**: se rechaza por ambos extremos | RD-78 | T036 |
+| Supresión verificada: aborta el recálculo en curso, con observador y escalamiento | RD-82, RD-83 | T051+ |
+| **Redis primero, siempre** — regla única de orden para actualización y supresión | RD-84 (FR-080c) | T019, T020 |
+| El top-N **vive solo en Redis**; ninguna tabla lo persiste | FR-080b | T022, T003 |
+| Endpoint de escritura como **excepción declarada**; no calcula | RD-75 | T051+ |
 
 ## Formato: `[ID] [P?] Descripción`
 
@@ -27,6 +61,18 @@ popularidad por likes propios (D10).
 **Alcance: T007–T017** — el motor de recomendación y el post-procesamiento. Son funciones puras, sin
 I/O ni reloj, con entradas y salidas completamente definidas: el caso donde el test *es* la
 especificación ejecutable, no su verificación posterior.
+
+**Alcance ampliado por esta actualización: T053, T054, T055, T058, T060, T062.** El criterio no es
+"tarea nueva, luego TDD" —eso sería asignar por defecto—, sino el mismo de arriba: son tareas cuyo
+criterio de aceptación es **un rechazo o una invariante de conteo**, la clase de cosa que un test
+escrito después acomoda al código. T054 (un tag heredado no cuenta para el mínimo), T055 (el rechazo
+no agrega un sexto estado), T062 (el enum conserva cinco miembros) y T058/T060 (ordenación de
+efectos observable desde afuera) sólo son verificables si el test fija el contrato antes.
+
+**Explícitamente fuera de TDD, con motivo**: T051, T057, T063 son jobs periódicos cuyo diseño se
+descubre contra el esquema real, no contra un test; T056, T059 y T061 dependen de comportamiento
+numérico y de infraestructura donde el rojo previo no aporta. Para todas ellas rige la regla general:
+el test debe existir y bloquear el merge.
 
 El resto del backlog **no** es test-first. En infraestructura (T001, T018, T028) el orden aporta poco:
 no se descubre el diseño de un cliente de Redis escribiendo su test antes. Ahí basta con que el test
@@ -139,22 +185,44 @@ entorno, nunca en repo**. La credencial es válida en un único entorno (FR-059)
 
 ### T003 — Esquema DB Recomendaciones + Alembic
 
-**Descripción**: las 10 tablas de `plan.md` §2 con pgvector. `items.age_rating` es `NOT NULL` con
-default **no-apto** (FR-051): el esquema hace imposible representar un ítem sin clasificación tratable
-como apto.
+**Descripción**: las **16 tablas de `data-model.md` §2** con pgvector —contadas sobre sus 14
+subsecciones: §2.3 agrupa `tags` + `item_tags` y §2.13 agrupa `vocab_versions` + `vocab_version_tags`—.
+`items.age_rating` es `NOT NULL` con default **no-apto** (FR-051): el esquema hace imposible representar
+un ítem sin clasificación tratable como apto.
+
+> **Corrección 2026-09-22**: decía «las 10 tablas de `plan.md` §2». Son **16**, y la fuente es
+> `data-model.md` §2, no `plan.md` §2 —que delega en aquel—. Siete tablas **no se mencionaban ni una vez
+> en todo `tasks.md`**: `user_declared_tags`, `tag_modules`, `vocab_versions`, `vocab_version_tags`,
+> `item_popularity`, `user_exclusions` y `engine_config_versions`.
 
 **Archivos**: `src/recomendaciones/storage/db/models.py`, `migrations/versions/*`, `alembic.ini`
 
 **Dep.**: T001
 
 **Criterios de aceptación**:
-- [ ] Las 10 tablas existen con sus claves e índices; `item_vectors.vector` es pgvector
-- [ ] `item_vectors.vocab_version` es `NOT NULL` (FR-010f)
+- [ ] Las **16** tablas existen con sus claves e índices; `item_vectors.vector` es pgvector
+- [ ] `users`: `birth_date NOT NULL`, **`region NOT NULL` sin default** (FR-079, RD-61, RD-85),
+      `max_age_ordinal`, `age_derived_at`, `age_config_version`. **Sin** `max_age_rating` (RD-2) y
+      **sin** `age_resolution`
+- [ ] `item_vectors`: `vocab_version` **en la PK** (RD-22) y `NOT NULL` (FR-010f)
 - [ ] `items.age_rating` es `NOT NULL` y su default es el valor más restrictivo del catálogo
+- [ ] `item_popularity`: **PK compuesta `(item_id, config_version)`** (RD-12, RD-13)
+- [ ] `user_exclusions`: **sin `is_permanent`**, con FK **`RESTRICT`** hacia `items` (RD-35)
+- [ ] `engine_config_versions`: **trigger de inmutabilidad** (RD-37)
+- [ ] `user_declared_tags`: PK `(user_id, module, tag_name)`, FK `user_id` **`ON DELETE CASCADE`** y FK
+      `tag_name` **`ON DELETE RESTRICT`** (§2.14) — la asimetría es deliberada: un tag no puede
+      desaparecer del catálogo dejando declaraciones colgadas en silencio
+- [ ] `tag_modules`, `vocab_versions`, `vocab_version_tags` existen con sus claves (§2.12, §2.13)
 - [ ] `user_profiles` admite exactamente los módulos `peliculas`, `juegos`, `general` (constraint)
 - [ ] `processed_events.event_id` es único (FR-011)
+- [ ] `user_signals.origin_interaction_id` es `NOT NULL UNIQUE` (DEP-8, DI-21)
+- [ ] **Toda FK declara su política `ON DELETE`.** Es criterio explícito del documento, que registra
+      **cuatro omisiones históricas** (RD-19, RD-31, RD-35, RD-43): una FK sin política no es un olvido
+      menor, es el patrón que más veces se repitió
 - [ ] `upgrade` y `downgrade` se aplican limpio sobre base vacía y sobre base poblada
-- [ ] `INV-2`: toda información necesaria para recalcular un top-N reside acá
+- [ ] `INV-2`: toda información necesaria para recalcular un top-N reside acá. **Matiz de FR-080b**: el
+      top-N *resultante* **no** se persiste —vive solo en Redis y se recomputa (§3.3)—; lo que reside
+      acá son sus **insumos**
 
 **Tests**: `tests/integration/test_migrations.py` (testcontainers) — ciclo upgrade/downgrade/upgrade; insertar ítem sin `age_rating` viola constraint; insertar perfil con módulo inválido viola constraint.
 
@@ -169,16 +237,35 @@ configuración que desactive un filtro obligatorio** (FR-054). `config_version` 
 
 **Dep.**: T001
 
-**Contenido de `v1.yaml`**: `alpha: 0.5`, `beta: 0.3`, `gamma: 0.2`, `k: 20`, `lambda_mmr: 0.7`,
-`peso_like`, `peso_dislike`, `top_n_default`, `top_n_max`, `age_rating_catalog`, `tiebreak_criteria`,
-`popularity_window_days`, `diversity_max_cluster_share`, `vocab_regeneration_policy`.
+**Contenido de `v1.yaml`** — inventario autoritativo en `data-model.md` §4: `alpha: 0.5`, `beta: 0.3`,
+`gamma: 0.2`, `k: 20`, `lambda_mmr: 0.7`, `peso_like: 1.0`, `peso_dislike: -1.0`, peso de consumo `0.3`
+(RD-73), **`top_n_min: 10`**, `top_n_default: 20`, `top_n_max: 50` (RD-78), `age_rating_catalog`,
+`popularity_window_days`, **`popularity_confidence_z: 1.96`** (RD-53),
+**`fallback_new_item_quota_ratio: 0.20`** (RD-77, RD-80), `diversity_max_cluster_share`,
+**`declared_tags_min: 5`** (RD-68), **`region_weight_factor: 0.1`** (RD-79),
+**`collab_min_neighbors: 10`** (RD-84), `vocab_regeneration_policy`.
+
+> **`tiebreak_criteria` ya no va.** Estaba en la lista anterior y **RD-10 lo eliminó del esquema**: el
+> desempate es fijo y determinista, no configurable.
+
+**Parámetro operativo, fuera de este archivo** (RD-46): el umbral de recálculo por conteo de
+interacciones (`interaction_recalc_threshold`, valor inicial **10** — FR-080a, RD-63). No altera el
+valor del top-N, solo **cuándo** se lo recomputa.
 
 **Criterios de aceptación**:
 - [ ] `alpha+beta+gamma` fuera de `1.0±ε` → fallo de arranque con mensaje que nombra el campo (FR-027)
 - [ ] Cualquier peso fuera de `[0,1]` → fallo de arranque
 - [ ] Una clave que intente desactivar el filtro de edad o de exclusión → fallo de arranque (FR-054)
 - [ ] `age_rating_catalog` es la **única** fuente de valores válidos (FR-053); no hay constantes de rating en código
-- [ ] `tiebreak_criteria` está poblado: el desempate nunca depende del orden de iteración (FR-070)
+- [ ] **El loader RECHAZA `tiebreak_criteria`** si aparece: fue eliminado del esquema por RD-10.
+      El desempate sigue sin depender del orden de iteración (FR-070), pero por diseño fijo, no por
+      configuración
+- [ ] `region_weight_factor` valida `0 <= x < 1` — **límite inferior INCLUSIVO** (FR-081b, corregido por
+      RD-76: excluirlo volvía **irrepresentable** el valor neutro y la configuración de `v1` no habría
+      podido cargarse) y superior **estricto** (equivale al filtro duro que FR-081a prohíbe)
+- [ ] `0 < fallback_new_item_quota_ratio < 1` y `10 <= top_n_min <= top_n_default <= top_n_max`
+- [ ] `declared_tags_min` y `collab_min_neighbors` son enteros positivos y están presentes
+- [ ] **Una versión desactivada no puede reactivarse** (DI-24): el loader rechaza el intento
 - [ ] `config_version` es determinista: mismo archivo → mismo hash, en cualquier máquina
 - [ ] **Deuda del prototipo resuelta**: no queda ninguna constante del motor hardcodeada
 
@@ -219,6 +306,7 @@ que alguien "resuelva" una latencia calculando en línea.
 - [ ] Falla si `engine/` importa `storage/`, `httpx`, `redis` o `sqlalchemy`
 - [ ] Falla si el entrypoint de la API abre una conexión a DB fuera del health check
 - [ ] El mensaje de fallo nombra el import ofensor y cita FR-003
+- [ ] **SC-012** — 0 conexiones directas a bases de datos de otros repos y 0 rutas de acceso desde frontends. El test de arquitectura es el único lugar donde esto se verifica estructuralmente y no por inspección
 
 **Tests**: es la tarea de test. Se verifica con un caso negativo temporal que debe hacerla fallar.
 
@@ -253,6 +341,7 @@ producido registra la `vocab_version` con la que se generó (FR-010f).
 - [ ] Todo vector emitido lleva `vocab_version`; comparar vectores de versiones distintas lanza error (FR-010f)
 - [ ] El vocabulario es determinista: mismo catálogo → mismo espacio, mismo orden de dimensiones
 - [ ] Función pura: sin I/O, sin reloj
+- [ ] **SC-016** — 100 % de las actividades sobre ítems con al menos un tag compartido propaga el recálculo
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_vocabulary.py`, commit propio):
 determinismo con dos órdenes de entrada distintos; comparar vectores de `vocab_version` distinta
@@ -369,8 +458,15 @@ Desempate por criterio secundario estable (FR-070).
 **Criterios de aceptación**:
 - [ ] Los pesos se leen de configuración; **cero constantes numéricas** en el módulo (FR-025)
 - [ ] El resultado es idéntico entre ejecuciones con la misma entrada y `config_version` (SC-021)
-- [ ] El desempate usa `tiebreak_criteria` de configuración y **nunca** el orden de iteración (FR-070)
+- [ ] El desempate es determinista y **nunca** usa el orden de iteración (FR-070).
+      ⚠️ **Corregido el 2026-09-22**: este criterio exigía leer `tiebreak_criteria` de configuración,
+      parámetro que **RD-10 eliminó del esquema** y que T004 ahora manda rechazar en el loader. El
+      criterio pedía usar algo que el sistema ya no acepta
 - [ ] El `config_version` usado viaja en la salida del scoring, no se pierde
+- [ ] **Los candidatos se restringen a `items.status = 'available'`** (FR-072, §4.4 punto 1), vía
+      `WHERE status = 'available'` sobre `idx_items_candidates`. Un ítem retirado no entra al
+      ranking: excluirlo después sería reordenar una lista ya contaminada
+- [ ] **SC-021** queda verificado por el test de reproducibilidad de esta tarea
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_scoring.py`): reproducibilidad exacta en 100 corridas con el
 orden de entrada barajado; cambiar `config_version` cambia el resultado de forma trazable; el módulo
@@ -409,6 +505,7 @@ directamente P2 del prototipo, donde un rating desconocido se trataba como apto 
 - [ ] El catálogo de ratings viene de configuración versionada (FR-053) — sin `dict` hardcodeado
 - [ ] **No existe** parámetro, flag ni rama que desactive el filtro (FR-054)
 - [ ] Un rating desconocido nuevo (p. ej. `"NC-17"` sin declarar) se filtra, no se admite
+- [ ] **SC-002** — 0 % de ítems que violen el filtro de edad. Acá se implementa; T017 y T052 lo ejercitan de forma exhaustiva
 
 **🔴 Paso 1 — Rojo** (`tests/invariants/test_age_filter.py`, commit propio): producto cartesiano
 `age_rating` × franja etaria (FR-055); property-based — para todo usuario menor, ningún ítem para
@@ -435,6 +532,7 @@ el test de valores basura escrito primero hace estructuralmente imposible reintr
 - [ ] La resolución señal→exclusión es determinista y auditable
 - [ ] **Deuda del prototipo resuelta**: el conjunto de exclusión expone una interfaz pública de consulta; ningún llamador accede a sus atributos internos
 - [ ] `INV-2`: las exclusiones se derivan de Postgres; Redis solo las cachea
+- [ ] **SC-003** y **SC-018** — 0 % de ítems del conjunto de exclusión y 0 % de ítems con señal registrada en el top-N
 
 **🔴 Paso 1 — Rojo** (`tests/invariants/test_exclusion.py` + `tests/unit/test_exclusion_api.py`):
 ningún ítem excluido aparece en ninguno de los cinco `result_type`; like posterior revierte dislike;
@@ -461,6 +559,7 @@ selecciona de un conjunto ya filtrado y no puede reintroducir nada** (FR-031).
 - [ ] La diversidad se mide como proporción máxima del top-N atribuible a un cluster (FR-071)
 - [ ] Con `lambda=1` el orden coincide con el de relevancia pura (caso degenerado correcto)
 - [ ] Determinista ante empates (FR-070)
+- [ ] **SC-011** — ningún top-N concentra más del porcentaje máximo acordado de ítems de un mismo atributo
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_mmr.py`): property-based — `set(salida) ⊆ set(entrada)` para
 toda entrada; con `lambda=1` el orden coincide con relevancia pura; la diversidad medida mejora
@@ -506,9 +605,28 @@ diseño estructural del orden; escrito después, se habría aceptado el orden co
 **Criterios de aceptación**:
 - [ ] Cubre el producto cartesiano `age_rating` × franja etaria
 - [ ] Cubre cada uno de los cuatro orígenes de exclusión
-- [ ] Cubre los cinco `result_type` (FR-056) — incluido el respaldo y el obsoleto
+- [ ] Cubre los cinco `result_type` (FR-056) — incluido el respaldo y el obsoleto. **El rechazo por
+      falta de declaración NO es un sexto estado** (FR-088): es precondición incumplida y se verifica
+      como tal, antes de la precedencia
+- [ ] **Cubre los 32 invariantes vigentes de `data-model.md` §6** (DI-1→DI-28, contando `DI-2a`…`DI-2e`),
+      o declara por escrito cuáles quedan fuera y por qué
+- [ ] **DI-28 incluido y con test propio**: un usuario con módulo declarado tiene al menos
+      `declared_tags_min` filas **propias** en `user_declared_tags` —sin contar las heredadas por
+      FR-085—. Es el **único invariante que el esquema no sostiene**: no hay restricción de tabla que
+      exprese un mínimo de filas, de modo que su cumplimiento depende **enteramente** de este test
+- [ ] **DI-10 con test propio**: retirar un ítem presente en `reco:*` **y** en `fallback:*` → la
+      lectura siguiente no lo contiene. Debe cubrir **los tres puntos de §4.4** —selección, respaldo
+      y guarda del request path—, no uno: cada uno es un camino distinto por el que el ítem llega al
+      usuario, y verificar solo el primero deja vivos los otros dos (FR-072)
+- [ ] **DI-11 con test propio**: retirar un ítem con señales → `user_signals` conserva las filas y
+      los perfiles **no cambian**. El retiro es lógico (FR-073); si el perfil cambiara, un hecho
+      ajeno al usuario estaría alterando sus recomendaciones
 - [ ] Incluye valores límite: exactamente la edad mínima, un día antes, un día después
 - [ ] Es property-based, no solo por ejemplos
+- [ ] **SC-002 y SC-003 quedan verificados acá**: 0 % de violaciones del filtro de edad y 0 % de
+      ítems del conjunto de exclusión, en cualquier respuesta emitida. Son los dos invariantes de
+      seguridad de US5 y esta es la tarea que los hace demostrables
+- [ ] **SC-018** verificado acá: 0 % de ítems con like, dislike o consumo aparece en el top-N
 - [ ] Corre en CI como **gate bloqueante**: si falla, no hay merge
 
 **Tests**: es la tarea de test — consolida y extiende las suites de T013–T016. Verificación de poder
@@ -545,6 +663,12 @@ parte de la clave, de modo que resultados de versiones distintas conviven sin co
 - [ ] `filters:{user_id}` tiene TTL **más corto** que `reco:` — corrige P4 del prototipo, donde compartían 7 días
 - [ ] **Deuda del prototipo resuelta**: caché en memoria reemplazada por Redis persistente
 - [ ] `INV-2`: no hay dato cuya única copia esté en Redis
+- [ ] Existe la familia **`retired:{module}`** (§3.1), usada como guarda del request path por T037
+- [ ] Ese set contiene **solo los ítems retirados en los últimos `TTL_STALE` + 1 día** (RD-39), no
+      el histórico completo. La cota no es heurística: un ítem retirado hace más de `TTL_STALE` no
+      puede estar en ninguna entrada de caché viva
+- [ ] La ventana **se deriva de `TTL_STALE`**, no es constante independiente. **DI-25** verifica el
+      acoplamiento: subir `TTL_STALE` sin subir la ventana haría fallar la guarda **en silencio**
 
 **Tests**: `tests/unit/test_cache_keys.py` — colisión imposible entre módulos, entre `config_version`
 y entre vigente/obsoleto; una entrada obsoleta de `v1` no es legible desde `v2`.
@@ -565,6 +689,7 @@ y entre vigente/obsoleto; una entrada obsoleta de `v1` no es legible desde `v2`.
 - [ ] La escritura del top-N vigente y su copia obsoleta es consistente entre sí
 - [ ] Serialización y deserialización son simétricas — round-trip exacto
 - [ ] Una entrada escrita con una `config_version` retirada no se sirve como vigente
+- [ ] **SC-004** — 100 % de los top-N servidos incluyen la versión de configuración del motor
 
 **Tests**: `tests/integration/test_cache_repository.py` — round-trip; la respuesta permite reconstruir con qué configuración se generó.
 
@@ -586,6 +711,7 @@ sin candidatos → respaldo → obsoleto → vigente. Ante miss, emitir señal d
 - [ ] La señal de recálculo se emite a lo sumo una vez por ventana de supresión
 - [ ] La lectura **nunca falla** porque el broker esté caído: la señal es fire-and-forget con fallo registrado (D7)
 - [ ] `INV-1`: el miss no dispara cómputo en línea
+- [ ] **SC-015** — una ráfaga de misses del mismo par (usuario, módulo) dentro de la ventana no multiplica los recálculos
 
 **Tests**: `tests/integration/test_cache_miss.py` — 50 lecturas concurrentes en miss producen 1 sola señal; broker caído → la lectura responde igual; tabla de los cinco estados con su entrada correspondiente.
 
@@ -626,6 +752,7 @@ colateral del tráfico de lectura.
 - [ ] Es reanudable: interrumpirlo y relanzarlo no duplica trabajo ni pierde usuarios
 - [ ] Con Redis vacío, el servicio sigue respondiendo (pendiente/respaldo) mientras reconstruye
 - [ ] `INV-2`: reconstruye íntegramente desde Postgres
+- [ ] **SC-008** — tras un vaciado total de la caché, 100 % de los top-N afectados se reconstruye sin intervención manual
 
 **Tests**: `tests/integration/test_warmup.py` — flush total de Redis; el servicio no devuelve 500; el warm-up repuebla; la tasa de publicación no supera el límite.
 
@@ -682,6 +809,7 @@ expirar la marca debe poder reprocesarse sin corromper estado.
 - [ ] La marca vive en Redis **y** en Postgres: perder Redis no rompe la idempotencia (INV-2)
 - [ ] Reprocesar tras expirar la marca produce el mismo resultado, sin duplicar señales (FR-069)
 - [ ] El TTL de retención es configurable (FR-068)
+- [ ] **SC-005** — reprocesar el mismo evento produce un top-N idéntico
 
 **Tests**: `tests/integration/test_idempotency.py` — mismo evento 10 veces → 1 recálculo; con la marca expirada, el reproceso converge al mismo estado.
 
@@ -720,6 +848,7 @@ que nunca va a ser válido solo bloquea la cola.
 - [ ] El consumo continúa: el mensaje siguiente se procesa normalmente
 - [ ] Una ráfaga de mensajes inválidos no detiene el procesamiento de los válidos
 - [ ] El log incluye el `event_id` cuando es extraíble
+- [ ] **SC-007** — 100 % de los eventos con payload inválido termina en dead-letter con causa registrada
 
 **Tests**: `tests/integration/test_invalid_payload.py` — intercalar 5 inválidos entre 5 válidos: los 5 válidos se procesan, los 5 inválidos están en DLQ, cero reintentos.
 
@@ -741,6 +870,7 @@ motivo quedan registrados (FR-010c).
 - [ ] Los dos módulos son unidades independientes: sin atomicidad cruzada (FR-067)
 - [ ] El resultado escrito pasó por el pipeline completo de T016
 - [ ] Se registra la métrica `reco_cross_module_propagation_total{propagated}`
+- [ ] **SC-010** y **SC-017** — cobertura cross-module y registro del motivo en 100 % de los recálculos
 
 **Tests**: `tests/integration/test_propagation.py` — ítem con tag compartido → ambos módulos recalculan; ítem sin tag compartido → solo el propio, con motivo registrado.
 
@@ -793,7 +923,17 @@ re-ejecutar sobre los mismos datos no duplica ni altera el resultado.
 - [ ] Un ítem sin `age_rating` se materializa con el valor **más restrictivo** (FR-051)
 - [ ] La actividad conserva `signal_type` y `occurred_at` (FR-062, DEP-1, DEP-2)
 - [ ] Interrupción a mitad de camino deja estado consistente, no parcial e indistinguible
-- [ ] La popularidad se calcula por volumen de likes sobre la ventana configurada (FR-033a1)
+- [ ] La popularidad se calcula sobre la ventana configurada (FR-033a1), restringida a **ítems
+      vigentes**
+- [ ] **El retiro se detecta por dos vías y se aplica por una sola rama** (FR-074, RD-91): señal
+      explícita del origen (CR-7) y **ausencia** del ítem en el listado (CR-8). No hay modo
+      degradado: Q31 descartó la opción de operar distinto según el origen pueda o no confirmar
+      completitud, porque una rama que casi nunca se ejercita es una rama rota cuando hace falta
+- [ ] **La corrida aborta sin marcar retiro alguno** si no puede confirmar que el listado es
+      completo (CR-9), y en particular cuando `sync_volume_delta_ratio < 0,9`. Abortar sin marcar es
+      la única conducta segura: un listado truncado que se procesa retira ítems vigentes en masa
+- [ ] **El retiro es lógico** (FR-073): se cambia `status`, **no** se borra la fila ni sus señales
+- [ ] **SC-006** — re-ejecutar una corrida completa del Data Transformer sobre datos sin cambios deja un estado idéntico
 
 **Tests**: `tests/integration/test_sync_idempotent.py` — doble ejecución → mismo estado; ítem sin rating → valor restrictivo; interrupción simulada → estado consistente.
 
@@ -834,6 +974,7 @@ la versión nueva (FR-010g).
 - [ ] La métrica de freshness refleja el **último éxito**, no el último intento
 - [ ] Una corrida fallida no actualiza el timestamp de éxito
 - [ ] La antigüedad es consultable operativamente sin entrar a la DB
+- [ ] **SC-014** — la antigüedad de la última sincronización exitosa está disponible como métrica
 
 **Tests**: `tests/integration/test_freshness.py` — corrida fallida no mueve la métrica; corrida exitosa sí.
 
@@ -886,6 +1027,10 @@ comparte `pipeline.py` con T031)
 - [ ] La paginación es estable: la misma consulta con el mismo cursor devuelve lo mismo
 - [ ] `INV-1`: no importa `engine/`, no consulta Postgres en el camino normal (verificado por T006)
 - [ ] `config_version` de la respuesta permite trazar con qué configuración se generó
+- [ ] **SC-009** — 0 % de los requests de lectura ejecuta scoring, similitud o diversificación. Lo
+      verifica `tests/integration/test_no_heavy_computation` de esta tarea, apoyado en el test
+      estructural de T006. La guarda de vigencia de T037 **no** cuenta como excepción: es diferencia
+      de conjuntos, no cómputo de recomendaciones (RD-8)
 
 **Tests**: `tests/contract/test_read_endpoint.py` — la respuesta valida contra el OpenAPI publicado; `limit` excesivo → 422. `tests/integration/test_no_heavy_compute.py` — espía de conexiones: cero queries a Postgres en el camino normal.
 
@@ -905,6 +1050,7 @@ rutas públicas declaradas y restricción de red auditable.
 - [ ] Key de otro entorno → `401` (FR-059)
 - [ ] La aplicación no declara ninguna ruta pública fuera de health (FR-060)
 - [ ] La restricción de red está documentada y es auditable automáticamente
+- [ ] **SC-012** (mitad de frontends) — 0 rutas de acceso alcanzables desde un frontend
 
 **Tests**: `tests/contract/test_auth.py` — matriz de casos de key; test que enumera rutas y falla si alguna no exige autenticación (salvo health).
 
@@ -967,6 +1113,17 @@ tarea filtra, y su test no sería significativo)
 - [ ] El costo es lineal sobre una lista acotada por `top_n_max`
 - [ ] Respaldo que queda vacío tras filtrar → `empty_no_candidates` (FR-056)
 - [ ] Conjunto de exclusión no disponible → se rechaza, no se sirve sin filtrar (FR-050)
+- [ ] **Guarda de vigencia** (§4.4 punto 3, FR-072): diferencia contra el set `retired:{module}`
+      antes de responder. Es el tercero de los tres puntos donde se aplica la regla, y el único que
+      alcanza a un resultado **ya precomputado**: sin él, un ítem retirado se sigue sirviendo desde
+      caché durante toda la vigencia de la entrada
+- [ ] La guarda es **diferencia de conjuntos sobre ≤ `top_n_max`**, no cálculo: FR-003 prohíbe
+      computar recomendaciones, no ejecutar guardas de corrección (RD-8)
+- [ ] **Lista reducida tras las guardas → se sirve tal cual** (FR-075), con el estado que
+      corresponda a su frescura. **No** se rellena con sustitutos: reponer exige seleccionar
+      candidatos, que es cómputo prohibido. Solo la lista **vacía** es `empty_no_candidates`
+- [ ] **SC-026** verificado acá: 0 % de respaldos servidos viola el filtro de edad
+- [ ] **SC-026** y **SC-027** — 0 % de respaldos servidos viola el filtro de edad, y 100 % se marca como no personalizado
 
 **Tests**: `tests/invariants/test_fallback_filtering.py` — menor de edad nunca recibe contenido adulto vía respaldo. `tests/unit/test_fallback_bounded.py` — el módulo no importa `engine/` ni funciones de similitud.
 
@@ -987,12 +1144,17 @@ volumen de likes propio en ventana acotada (D10, FR-033a1). Global por módulo, 
 > Fase 2, pero no es condición para que el respaldo exista y sea testeable.
 
 **Criterios de aceptación**:
-- [ ] La popularidad sale del volumen de likes propio, sin campo externo (FR-033a)
+- [ ] La popularidad sale de señal propia, sin campo externo (FR-033a)
+- [ ] **El batch se construye únicamente sobre ítems vigentes** (FR-033a1, FR-072, §4.4 punto 2):
+      reunión con `item_popularity` bajo `WHERE status = 'available'` (RD-12). El respaldo es lo que
+      recibe exactamente la población sin resultado propio; contaminarlo con retirados afecta a
+      quien menos defensa tiene
 - [ ] Se computa sobre ventana temporal configurable, no sobre histórico completo (FR-033a1)
 - [ ] El resultado pasa por MMR: no se concentra en el género dominante (FR-033b)
 - [ ] Es global por módulo, **no** personaliza por usuario (FR-033c)
 - [ ] Sin likes suficientes → respaldo vacío y respuesta `empty_no_candidates`; **no** se sustituye por otro criterio (FR-033a2)
 - [ ] Se persiste en Redis **y** en tabla, para rehidratar sin recomputar (D8)
+- [ ] **SC-024** y **SC-025** — 100 % de los usuarios sin actividad recibe respaldo no vacío, y el respaldo cumple el mismo umbral de diversidad de SC-011
 
 **Tests**: `tests/integration/test_fallback_batch.py` — diversidad medida supera la del top-N sin MMR; sistema sin likes → respaldo vacío, no relleno arbitrario.
 
@@ -1081,6 +1243,17 @@ sino que su umbral esté mal y jamás se active.
 - [ ] Alerta por tasa de `503` (Redis caído)
 - [ ] Alerta por caída abrupta de hit rate
 - [ ] Alerta por `config_version` inconsistente entre instancias
+- [ ] **Liveness del job de refresco etario**: `age_refresh_last_success_timestamp` por encima de su
+      umbral. **Reemplaza a la alerta de `age_ordinal_staleness_seconds`**, eliminada por
+      `data-model.md` §7.6 — que la califica como la corrección más importante de aquella auditoría:
+      la métrica de *staleness* **no dispara cuando el job está muerto**, que es precisamente el único
+      caso en que la alerta hace falta. Medía el desfasaje de lo que el job procesó, no el hecho de que
+      hubiera dejado de procesar
+- [ ] Alerta por `contract_violations_total{field="birth_date"} > 0` y
+      `contract_violations_total{field="region"} > 0` — contadores **separados** (§7.5, RD-85)
+- [ ] Alerta por supresiones sin constancia registrada, **valor esperado 0** (FR-095a, RD-83)
+- [ ] **`orphaned_exclusions_total` NO tiene alerta**: FR-068d1 la declara informativa y **sin umbral**.
+      Configurarle una contradiría el requisito
 - [ ] Cada alerta tiene entrada en el runbook con primer paso de diagnóstico
 - [ ] **Cada alerta se probó induciendo su condición** en entorno de prueba, no solo por revisión
 - [ ] Ninguna alerta permanece activa tras normalizarse la condición (no se queda pegada)
@@ -1150,6 +1323,7 @@ qué validar.
       `api-general`** y que esta copia es derivada (Principio II) — no es fuente de verdad
 - [ ] La copia derivada registra la versión del contrato origen y su fecha de sincronización
 - [ ] El OpenAPI propio se genera desde el código, no se mantiene a mano
+- [ ] **SC-023** — la versión de configuración activa es consultable en tiempo de ejecución
 
 **Tests**: `tests/contract/test_openapi_sync.py` — el OpenAPI publicado coincide con las rutas reales
 de la aplicación; falla si divergen.
@@ -1196,6 +1370,7 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 - [ ] Existe un test que **falla si un campo requerido desaparece** del contrato
 - [ ] Cubre las seis dependencias DEP-1..DEP-6
 - [ ] Es gate bloqueante: contract test roto = no hay merge (Principio VI)
+- [ ] **SC-013** — 100 % de los endpoints expuestos y del evento consumido pasa la validación de contrato
 
 **Tests**: es la tarea de test. Verificación: eliminar `signal_type` del schema del doble debe hacerla fallar.
 
@@ -1219,6 +1394,7 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 - [ ] **Payload inválido** → DLQ sin bloquear la cola
 - [ ] **Catálogo sin candidatos** → vacío explícito, nunca relleno con no aptos
 - [ ] **Dependencia externa caída** → Redis: 503 sin fallback a DB; broker: la lectura sigue; `api-general`: se degrada la frescura, no la disponibilidad
+- [ ] **SC-019** y **SC-020** — un dislike reduce de forma medible el score de los ítems que comparten sus tags, y un like posterior revierte el efecto
 
 **Tests**: es la tarea de test. Cada escenario debe ser identificable por nombre en el reporte de CI.
 
@@ -1257,8 +1433,9 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 
 ### T047 [P] — Documento de campos requeridos a `api-general`
 
-**Descripción**: el documento único que exige FR-063, índice de DEP-1..DEP-6. **No sustituye** la
-documentación oficial de `api-general` (Principio II): es la lista de lo que este repo necesita.
+**Descripción**: el documento único que exige FR-063, índice de **DEP-1…DEP-11** y de **CR-1…CR-18**.
+**No sustituye** la documentación oficial de `api-general` (Principio II): es la lista de lo que este
+repo necesita.
 
 **Archivos**: `docs/contracts/required-fields.md`
 
@@ -1266,7 +1443,14 @@ documentación oficial de `api-general` (Principio II): es la lista de lo que es
 
 **Criterios de aceptación**:
 - [ ] Enumera cada campo requerido, su FR asociado y el impacto de su ausencia
-- [ ] Cubre DEP-1, DEP-2, DEP-3, DEP-5, DEP-6 (DEP-4 quedó cerrada internamente)
+- [ ] Cubre las **10 dependencias vigentes**: DEP-1, DEP-2, DEP-5, DEP-6, DEP-7, DEP-8, DEP-9, DEP-10,
+      DEP-11. **DEP-4** se marca como **resuelta internamente** (la popularidad se deriva localmente) y
+      **DEP-3** como **vacante a propósito**: el identificador fue retirado y **no se reasigna**
+      > La versión anterior de este criterio citaba **DEP-3 como si existiera** y se detenía en DEP-6,
+      > ignorando las cinco posteriores.
+- [ ] Cubre **CR-1…CR-18**, marcando **CR-13 y CR-14 como retiradas** (RD-50)
+- [ ] Señala cuál es la dependencia de mayor severidad y por qué: **DEP-10** es la única cuyo
+      incumplimiento deja al sistema **sin ningún usuario atendible**, por encadenamiento con FR-088
 - [ ] Declara explícitamente que la fuente de verdad del contrato es `api-general`
 - [ ] Está enlazado desde el README y desde los contract tests
 
@@ -1301,6 +1485,410 @@ Esto automatiza la *integridad* de la matriz; el juicio sobre si la evidencia es
 siendo revisión humana y así debe quedar declarado en el PR de cierre.
 
 ---
+
+## Milestone 11 — Requisitos de la segunda y tercera sesión de clarificación
+
+> Tareas incorporadas por **actualización delta**. T001–T050 conservan su numeración, sus issues
+> (#1–#50) y sus milestones. La numeración de issues **no** coincide con la de tareas a partir de
+> aquí: `#51–#60` ya están tomados por épicas, de modo que T051 → #61 y así sucesivamente
+> (`data-model.md` §9.4). Esa ruptura se declara en vez de disimularse: una correspondencia
+> `TXXX`→`#XXX` que falla en silencio es peor que una que se documenta.
+
+### T051 — Job `age_threshold_refresh` (refresco de derivados etarios)
+
+**Descripción**: la edad del usuario no es un dato almacenado sino un derivado de `birth_date`, y
+cambia sin que nadie escriba nada. Un derivado que sólo se recalcula ante escrituras nunca se
+recalcula para este caso. El job recorre **dos criterios de selección separados**, no uno: (A) los
+usuarios cuyo umbral etario cambió por el mero paso del tiempo (§7.5 causa A), y (B) los usuarios
+cuya `birth_date` fue corregida. Unificarlos en una sola consulta perdería el caso A, que no deja
+rastro de escritura.
+
+**Archivos**: `src/recomendaciones/jobs/age_threshold_refresh.py`,
+`src/recomendaciones/jobs/scheduler.py`
+
+**Dep.**: T003, T023, T039
+
+**Criterios de aceptación**:
+- [ ] Los dos criterios de selección se consultan por separado y se registran por separado
+- [ ] El cruce de umbral se calcula contra `birth_date`, nunca contra un campo de edad materializado
+- [ ] Un usuario que cruza el umbral sin ninguna escritura queda seleccionado por el criterio A
+- [ ] El job invalida la caché del usuario afectado en el mismo acto (FR-080, FR-080c: Redis primero)
+- [ ] Emite la métrica de **liveness** al completar cada corrida (ver T042: la métrica de antigüedad
+      no dispara cuando el job está muerto, porque nada la actualiza)
+- [ ] Es idempotente: dos corridas seguidas no producen recálculos duplicados
+
+**Tests**: `tests/integration/test_age_threshold_refresh.py` — usuario que cumple años sin escritura
+alguna es recalculado; corrección de `birth_date` hacia atrás también; corrida sobre conjunto vacío
+emite igualmente la métrica de liveness.
+
+---
+
+### T052 [TDD] — Tests de ciclo de vida del ítem
+
+**Descripción**: la suite que hace verificable la familia «Ciclo de vida del ítem» (`FR-072` a
+`FR-075`). Es la tarea que estuvo **bloqueada doce días** porque sus cuatro requisitos existían solo
+como propuesta en `data-model.md` §9.1; se desbloqueó el 2026-09-22 al aprobarse con RD-87, RD-88 y
+RD-91.
+
+El identificador `T052` es el que la sección de bloqueo reservó para este contenido. No se reasignó a
+otra cosa mientras estuvo vacante, que era exactamente el punto.
+
+**Archivos**: `tests/invariants/test_item_lifecycle.py`,
+`tests/integration/test_sync_retirement.py`
+
+**Dep.**: T017, T029, T037, T038
+
+**Criterios de aceptación**:
+
+- [ ] **El retiro lógico preserva señales** (FR-073, DI-11): retirar un ítem con señales registradas
+      deja intactas las filas de `user_signals` y **no altera ningún perfil vectorial**. Se verifica
+      comparando el perfil antes y después, no solo la presencia de las filas: conservar la señal y
+      dejar de usarla tendría el mismo efecto observable que borrarla
+- [ ] **El ítem retirado no es servible por ninguno de los tres caminos** (FR-072, DI-10, §4.4).
+      Un solo test no alcanza; hacen falta tres, porque son tres mecanismos distintos:
+      - selección de candidatos → `WHERE status = 'available'` (T012)
+      - construcción del respaldo → reunión bajo el mismo filtro (T038)
+      - guarda del request path → diferencia contra `retired:{module}` (T037)
+      El caso crítico es el tercero: un ítem retirado **después** de precomputarse el resultado.
+      Los dos primeros filtros ya pasaron y no lo detienen
+- [ ] **La desaparición del origen equivale a retiro** (FR-074, RD-91): un ítem ausente del listado
+      sincronizado, sin señal explícita, queda `retired`
+- [ ] **La corrida aborta sin marcar retiros** si no puede confirmar que el listado es completo
+      (CR-9), y cuando `sync_volume_delta_ratio < 0,9`. Test obligatorio: listado truncado al 50 % →
+      **cero** ítems marcados como retirados y corrida abortada con causa registrada
+- [ ] **La lista reducida se sirve sin relleno** (FR-075): un top-N que queda en 7 de 20 tras
+      excluir retirados se sirve con 7, y el estado sigue siendo el que corresponde a su frescura.
+      Solo la lista **vacía** es `empty_no_candidates` (FR-056, RD-42)
+- [ ] **Un ítem retirado y repuesto vuelve a ser recomendable**, y las señales previas siguen
+      aplicando — es el corolario de que el retiro sea lógico y de que FR-074 sea revocable
+- [ ] Verificación de poder de detección: **mutar la guarda de vigencia debe hacer fallar la suite**.
+      Si la mutación pasa, la suite no afirma lo que dice afirmar
+
+> **No incluye caso de modo degradado.** Q31 descartó la opción (c) —operar distinto según el origen
+> pueda o no confirmar completitud—, de modo que **no existen dos modos** entre los cuales probar la
+> transición. Escribir ese test crearía cobertura de una rama inexistente, que es peor que no
+> tenerla: sugiere que la rama existe.
+
+**Tests**: es la tarea de test. Corre en CI como gate bloqueante, junto con T017.
+
+---
+
+### T053 [P] [TDD] — Endpoint de declaración de gustos
+
+**Descripción**: FR-089 abre una **excepción declarada** a la prohibición de escritura de FR-003. La
+excepción alcanza a la escritura, **no al cómputo**: el endpoint persiste la declaración y responde,
+y no ejecuta el motor (FR-089b). Si ejecutara el motor, la excepción dejaría de ser una excepción y
+pasaría a ser una revocación de FR-003.
+
+**Archivos**: `src/recomendaciones/api/routes/declaraciones.py`,
+`src/recomendaciones/services/declaracion.py`, `contracts/openapi.yaml`
+
+**Dep.**: T003, T049
+
+**Criterios de aceptación**:
+- [ ] Persiste en `user_declared_tags` con PK `(user_id, module, tag_name)` (FR-082)
+- [ ] Rechaza declaraciones con menos de `declared_tags_min` = 5 tags propios (FR-083)
+- [ ] **No impone máximo** de tags
+- [ ] Responde de forma **síncrona** confirmando la persistencia (FR-089a): una confirmación diferida
+      habilitaría el rechazo inmediato de FR-088 sobre un dato ya entregado por el usuario
+- [ ] **No dispara el motor de recomendación** ni cómputo alguno (FR-089b); se verifica por ausencia
+      de llamada, no por tiempo de respuesta
+- [ ] Sólo los tags del vocabulario vigente son aceptables (DEP-10)
+- [ ] **La declaración se exige al primer ingreso al módulo, no al crear la cuenta** (FR-084). El
+      endpoint acepta declaración para **un** módulo por llamada y **no** exige el otro: un usuario
+      que solo use recomendaciones de juegos nunca declara tags de películas, y la falta de
+      declaración en un módulo **no** impide operar en el otro
+
+**Tests**: `tests/contract/test_declaracion_endpoint.py`; `tests/unit/test_declaracion_minimo.py` —
+4 tags rechaza, 5 acepta, 40 acepta; test que falla si el motor es invocado.
+
+---
+
+### T054 [TDD] — Herencia de tags entre módulos
+
+**Descripción**: los tags declarados en un módulo se ofrecen preseleccionados al declarar en el otro
+(FR-085), pero **no cuentan para el mínimo de FR-083**. El mínimo mide elección deliberada en ese
+módulo; si la herencia contara, un usuario podría quedar "declarado" en un módulo donde nunca eligió
+nada, y FR-088 lo dejaría pasar sin que hubiera declaración real.
+
+**Archivos**: `src/recomendaciones/services/declaracion.py`
+
+**Dep.**: T053
+
+**Criterios de aceptación**:
+- [ ] Los tags aplicables al otro módulo se resuelven vía `tag_modules`, no por copia ciega
+- [ ] Los heredados se ofrecen **preseleccionados**, y confirmarlos es un acto del usuario
+- [ ] Un tag heredado y **no confirmado** no cuenta para el mínimo
+- [ ] Un tag heredado y confirmado cuenta como propio de ese módulo y se persiste como tal
+- [ ] Un usuario con 5 heredados y 0 confirmados **no** satisface FR-083
+- [ ] **El feedback no altera la pertenencia del tag a la declaración** (FR-086): un dislike reduce
+      la **contribución** de sus tags al perfil y **nunca** borra ni hace caducar una fila de
+      `user_declared_tags`. Se verifica sobre la tabla, no sobre el perfil: la declaración es un
+      enunciado del usuario, no una inferencia del sistema, y el sistema no revoca enunciados ajenos
+- [ ] Un usuario que acumula dislikes sobre todos sus tags declarados **sigue declarado** y sigue
+      satisfaciendo FR-083 — de lo contrario FR-088 lo expulsaría por haber usado el producto
+
+**Tests**: `tests/unit/test_herencia_tags.py` — el caso 5 heredados / 0 propios debe ser rechazo.
+
+---
+
+### T055 [TDD] — Rechazo por módulo sin declaración
+
+**Descripción**: FR-088 manda rechazar la solicitud de un usuario sin declaración en ese módulo. El
+rechazo **no introduce un sexto estado de respuesta**: ocurre *antes* de que la precedencia de
+estados de FR-056 sea aplicable. Tratarlo como estado nuevo rompería la exhaustividad declarada del
+contrato de lectura (DEP-6).
+
+**Archivos**: `src/recomendaciones/api/routes/recomendaciones.py`,
+`src/recomendaciones/services/precondiciones.py`
+
+**Dep.**: T053, T012
+
+**Criterios de aceptación**:
+- [ ] El chequeo de declaración ocurre en precondiciones, antes de resolver estado de resultado
+- [ ] El conjunto de estados de respuesta sigue teniendo **cinco** miembros
+- [ ] El rechazo es por módulo: declarado en uno y no en el otro → rechazo sólo en el segundo
+- [ ] El cuerpo del rechazo indica qué falta, sin exponer detalle interno
+
+**Tests**: `tests/contract/test_rechazo_sin_declaracion.py` — enumera los estados posibles y falla si
+aparece uno sexto.
+
+---
+
+### T056 — Perfil vectorial derivado puro
+
+**Descripción**: FR-087 exige que el perfil vectorial sea **derivado y reconstruible** a partir de
+sus insumos. Queda **prohibida la actualización incremental**: un perfil que se actualiza sumando
+deltas deja de ser reconstruible en cuanto se pierde un delta, y el error no se manifiesta como
+fallo sino como recomendaciones levemente peores, que es el modo de fallo más difícil de detectar.
+
+**Archivos**: `src/recomendaciones/engine/user_profile.py`
+
+**Dep.**: T053, T017
+
+**Criterios de aceptación**:
+- [ ] La única operación pública es **reconstruir desde los insumos**; no existe `update_partial`
+- [ ] Reconstruir dos veces sobre los mismos insumos da el mismo vector (determinismo)
+- [ ] El perfil no se persiste como fuente de verdad; si se cachea, se puede descartar sin pérdida
+- [ ] Los insumos son la declaración (FR-082) y las señales vigentes, no señales purgadas
+
+**Tests**: `tests/unit/test_user_profile_derivado.py` — reconstrucción idempotente; test que falla si
+se agrega un método de actualización incremental.
+
+---
+
+### T057 — Purga de señales de actividad con guarda de exclusión
+
+**Descripción**: la retención es finita y declarada (FR-068, FR-068a), y el horizonte debe ser
+estrictamente mayor que toda ventana operativa (FR-068b). Antes de purgar una señal de consumo, el
+procedimiento verifica la guarda de FR-068c; y la exclusión permanente persiste **aunque su señal de
+origen haya sido purgada** (FR-068d), por reconstrucción aditiva, no por dependencia de la señal.
+
+**Archivos**: `src/recomendaciones/jobs/purga_senales.py`
+
+**Dep.**: T003, T023
+
+**Criterios de aceptación**:
+- [ ] Retención y horizonte son parámetros **obligatorios con valor explícito**, sin default oculto
+- [ ] El arranque falla si el horizonte no supera estrictamente la ventana operativa mayor
+- [ ] La guarda de FR-068c se evalúa **antes** de cada purga de señal de consumo
+- [ ] Purgar la señal de origen **no** elimina la exclusión derivada (`user_exclusions`, RESTRICT)
+- [ ] Emite `orphaned_exclusions_total` como medida **informativa y sin umbral de alerta**
+      (FR-068d1) — y T042 verifica que **no** exista alerta asociada
+
+**Tests**: `tests/integration/test_purga_senales.py` — exclusión sobrevive a la purga de su señal;
+configuración con horizonte menor que la ventana no arranca.
+
+---
+
+### T058 [TDD] — Supresión verificada con aborto del recálculo en curso
+
+**Descripción**: FR-092 ordena invalidar la caché **antes** de eliminar el dato de origen, y FR-092a
+exige **abortar** el recálculo en curso en vez de esperarlo. Esperar no basta: suprimir el bloqueo
+de recálculo no detiene al worker que ya lo tomó, sólo habilita a que entre un segundo.
+
+**Archivos**: `src/recomendaciones/services/supresion.py`,
+`src/recomendaciones/jobs/recalculo.py`
+
+**Dep.**: T023, T028, T057
+
+**Criterios de aceptación**:
+- [ ] Orden de operaciones: Redis primero, Postgres después (FR-080c)
+- [ ] El recálculo en curso se **aborta**; el worker comprueba una señal de cancelación y se detiene
+- [ ] La supresión alcanza a **toda** versión de configuración y a **todos** los módulos (FR-093)
+- [ ] Alcanza las **cinco** tablas de §7.11, incluida `user_declared_tags`
+- [ ] **El alcance incluye la caché** (FR-091), no solo Postgres: las entradas `reco:`,
+      `reco:stale:` y `filters:` del usuario se eliminan explícitamente
+- [ ] **Ningún dato se da por suprimido delegando en el vencimiento de su TTL** (FR-091). Se
+      verifica leyendo la clave inmediatamente después de la supresión, no esperando su expiración:
+      un dato que sigue siendo legible no está suprimido, por más que vaya a expirar
+- [ ] Un worker que termina después de la supresión **no** reescribe el resultado suprimido
+
+**Tests**: `tests/integration/test_supresion_aborta_recalculo.py` — recálculo en vuelo durante la
+supresión; verificar que ningún registro reaparece.
+
+---
+
+### T059 — Verificación ejecutable de supresión, observador y escalamiento
+
+**Descripción**: FR-094 manda tratar la supresión parcial como fallo y FR-095 exige que la
+verificación sea **ejecutable y registrada**. FR-095a agrega observador: un fallo que nadie observa
+no es un fallo detectado.
+
+**Archivos**: `src/recomendaciones/services/supresion_verify.py`, `ops/alerts.yaml`
+
+**Dep.**: T058, T039
+
+**Criterios de aceptación**:
+- [ ] Tras suprimir, una comprobación recorre las cinco tablas **y las claves de Redis** y deja
+      registro del resultado. La verificación cubre el mismo alcance que FR-091 declara: una
+      comprobación que solo mira Postgres daría por exitosa una supresión que dejó la caché intacta
+- [ ] Residuo detectado → la supresión se marca **fallida**, no parcialmente exitosa
+- [ ] Métrica de supresiones con verificación fallida, **con alerta** (FR-095a) — a diferencia de
+      `orphaned_exclusions_total`, que es informativa
+- [ ] Escalamiento declarado en el runbook
+
+**Tests**: `tests/integration/test_supresion_verificada.py` — residuo inyectado produce fallo y
+dispara la alerta.
+
+---
+
+### T060 [TDD] — Disparador de recálculo por conteo e invalidación en el mismo acto
+
+**Descripción**: FR-080a dispara el recálculo al acumular un número de señales; FR-080 exige que la
+invalidación de caché ocurra **en el mismo acto** que la causa. Separarlos deja una ventana en la
+que el sistema sirve un resultado que ya sabe obsoleto.
+
+**Archivos**: `src/recomendaciones/services/trigger_recalculo.py`
+
+**Dep.**: T023, T028
+
+**Criterios de aceptación**:
+- [ ] El conteo umbral es parámetro de §4, no constante en código
+- [ ] Causa e invalidación son atómicas respecto del lector: no hay lectura intermedia del valor viejo
+- [ ] FR-080b se respeta: el top-N reside **únicamente en Redis**; se persisten sus insumos, no él
+- [ ] Redis primero, Postgres después (FR-080c)
+- [ ] **SC-022** — un cambio de versión de configuración provoca 0 invalidaciones masivas
+
+**Tests**: `tests/integration/test_trigger_recalculo.py` — n−1 señales no disparan, n sí; ninguna
+lectura entre causa e invalidación devuelve el resultado viejo.
+
+---
+
+### T061 — Ponderación regional del término colaborativo
+
+**Descripción**: FR-081 manda implementar la segmentación como **ponderación**, no como filtro, y
+FR-081a exige degradación continua. FR-081b fija el factor como **intensidad de la segmentación**:
+`0` es el neutro. `v1` arranca activo en su intensidad mínima, `region_weight_factor = 0,1`
+(FR-090a), revirtiendo la prescripción de RD-74 sin revertir la capacidad de FR-090.
+
+**Archivos**: `src/recomendaciones/engine/collaborative.py`
+
+**Dep.**: T004, T017
+
+**Criterios de aceptación**:
+- [ ] Con `region_weight_factor = 0` el resultado es **idéntico** al de no segmentar
+- [ ] El peso extraregional es positivo para todo factor `< 1`: ningún vecino queda excluido por regla
+- [ ] `collab_min_neighbors` = 10: si tras ponderar no hay ese mínimo de vecinos con peso no
+      despreciable, el término colaborativo no se aplica (FR-096) en vez de aplicarse sobre ruido
+- [ ] El corte top-k **posterior** se verifica: un peso positivo pero ínfimo no debe volverse
+      indistinguible de cero al recortar (riesgo señalado al cerrar FR-081a)
+
+**Tests**: `tests/unit/test_ponderacion_regional.py` — factor 0 equivale a sin segmentación; región
+con 3 vecinos no aplica colaborativo; barrido de factores sin discontinuidades.
+
+---
+
+### T062 [TDD] — Señal de resultado obsoleto como campo aparte
+
+**Descripción**: FR-056a pide señalar que, además del respaldo servido, existe un resultado
+personalizado vencido. Es **un campo aparte, no un sexto estado**: agregarlo al enum rompería la
+exhaustividad acordada en DEP-6 y obligaría a renegociar el contrato de lectura con `api-general`.
+
+**Archivos**: `src/recomendaciones/api/schemas/respuesta.py`, `contracts/openapi.yaml`
+
+**Dep.**: T055, T049
+
+**Criterios de aceptación**:
+- [ ] El enum de estados conserva **cinco** miembros
+- [ ] El campo es opcional y sólo aparece cuando se sirve respaldo existiendo personalizado vencido
+- [ ] La precedencia de FR-056 aplica sólo a solicitudes que **pasaron** precondiciones
+
+**Tests**: `tests/contract/test_estado_obsoleto.py`.
+
+---
+
+### T063 — Recálculo de popularidad por ventana
+
+**Descripción**: la popularidad se recalcula por ventana (RD-12, RD-13) y se guarda en
+`item_popularity` con PK `(item_id, config_version)`. El intervalo de confianza usa
+`popularity_confidence_z` = 1,96.
+
+**Archivos**: `src/recomendaciones/jobs/popularidad.py`
+
+**Dep.**: T003, T004
+
+**Criterios de aceptación**:
+- [ ] La ventana es parámetro de §4 y es **menor** que el horizonte de retención de FR-068b
+- [ ] El resultado se escribe por `config_version`; cambiar de versión no pisa la anterior
+- [ ] `popularity_confidence_z` se lee de configuración, no se codifica
+- [ ] La cuota de ítems nuevos usa `floor(top_n × fallback_new_item_quota_ratio)` con ratio 0,20,
+      sin mínimo absoluto y sin clamp a `top_n − 1` (RD-80)
+
+**Tests**: `tests/integration/test_popularidad.py` — ventana mayor que retención no arranca;
+`top_n`=10 → cuota 2; `top_n`=50 → cuota 10.
+
+---
+
+# Bloqueo levantado — ciclo de vida del ítem *(registro histórico)*
+
+> **Estado: LEVANTADO el 2026-09-22.** Esta sección se conserva como registro de un bloqueo real que
+> duró doce días, no se borra. Lo que sigue describe qué bloqueaba, qué lo levantó y qué se aplicó
+> en consecuencia.
+
+**El bloqueo**: entre el 2026-09-10 y el 2026-09-22, `data-model.md` §9 citaba **FR-072 a FR-078**
+veinticinco veces, y **ninguno de los siete existía en `spec.md`** — el documento saltaba de FR-071 a
+FR-079. No era omisión de lectura: §9.1 los **proponía** y §9 lo advertía con todas las letras —«el
+modelo de datos los anticipa; no los autoriza»—. El backlog respetó la advertencia y no propagó nada.
+
+**Qué lo levantó**: la sesión de clarificación del 2026-09-22 incorporó la familia «Ciclo de vida del
+ítem — FR-072 a FR-075» a `spec.md`. `FR-072`, `FR-073` y `FR-075` se aprobaron con **RD-87** sobre
+identificadores **vacantes** —nunca designaron otra cosa—; `FR-074` quedó reservado por **RD-88** y
+se cerró el mismo día con **RD-91**, al confirmarse la premisa de `CR-8`.
+
+| ID | Contenido | Estado hoy |
+|---|---|---|
+| FR-072 | Ítem retirado no recomendable, por ninguno de los tres caminos | ✅ **Vigente** en `spec.md` (RD-87) |
+| FR-073 | Retiro lógico, señales históricas conservadas | ✅ **Vigente** (RD-87) |
+| FR-074 | Desaparición del origen equivale a retiro | ✅ **Vigente** (RD-91, cierra la reserva de RD-88) |
+| FR-075 | Lista reducida sin relleno | ✅ **Vigente** (RD-87) |
+| FR-076 | Ítem sin tags | Absorbido por **FR-021b**. Identificador **retirado y no reasignable** (RD-90) |
+| FR-077 | Reconstrucción aditiva de exclusiones | Absorbido por **FR-068d**. Ídem (RD-90) |
+| FR-078 | Umbral 0,9 de volumen anómalo | Absorbido por el registro de clarificación. Ídem (RD-90) |
+
+**Qué se aplicó al levantarse** (2026-09-22):
+
+- ✅ **T052 creada**, con el alcance que `data-model.md` §9.3 tenía redactado desde el 2026-09-10 y
+  en el identificador que esta sección mantuvo reservado. **Sin caso de modo degradado**: Q31
+  descartó la opción (c) y no hay dos modos de operación que contrastar.
+- ✅ **Las seis tareas congeladas, modificadas**: **T012** (candidatos restringidos a
+  `status='available'`), **T017** (DI-10 y DI-11 con test propio cada uno), **T018** (familia
+  `retired:{module}` acotada a `TTL_STALE` + 1 día por RD-39), **T029** (retiro por CR-7 y CR-8 con
+  **una sola rama**, aborto por CR-9 y por `< 0,9`), **T037** (guarda de vigencia del request path),
+  **T038** (respaldo solo sobre vigentes).
+- ✅ **El hueco de numeración se cerró correctamente**: `T052` quedó ocupada por el contenido que
+  tenía reservado, no por otra tarea. Era el riesgo declarado — reutilizar el identificador habría
+  repetido el patrón de identificador recolocado que este proyecto registra cuatro veces (`FR-052`,
+  `FR-022c`, la reasignación de §9.9, `FR-070a`…`FR-070e`) y por el que `DEP-3` sigue vacante.
+
+**Lo que este episodio deja registrado**: un requisito citado veinticinco veces en un documento y
+ausente del otro puede sobrevivir doce días sin que nadie lo note, porque **cada cita individual
+parece una referencia legítima**. Lo detectó una verificación de existencia, no una lectura. La
+lección operativa es la regla que rige estas sesiones: contar y verificar contra el archivo, nunca
+copiar identificadores de un documento derivado.
+
+---
+
 
 # Ruta crítica
 
@@ -1374,7 +1962,22 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato, según D1.
 - [ ] Constantes del motor y mapeo de `age_rating` externalizados a configuración (T004, T013)
 
 ## Operación
-- [ ] Las diez métricas emitiéndose (T039)
+- [ ] **Las dieciséis métricas de observabilidad emitiéndose** (T039). La cifra anterior ("diez")
+      quedó obsoleta: el recuento sobre `data-model.md` da dieciséis nombres de métrica
+      (`age_stale_config_users_total`, `age_threshold_crossings_total`, `catalog_retired_total`,
+      `catalog_unrated_ratio`, `catalog_unvectorized_ratio`, `contract_violations_total`,
+      `exclusion_resolve_lag_seconds`, `exclusions_orphaned_permanent_total`,
+      `projection_field_anomalies_total`, `signal_duplicate_rejections_total`,
+      `signal_ingest_lag_seconds`, `signals_purge_deferred_total`, `sync_volume_delta_ratio`,
+      `user_deletion_residual_keys_total`, `vector_recompute_lag_seconds`, y la métrica de
+      **liveness** del job de T051 que reemplaza a `age_ordinal_staleness_seconds`). Un DoD que pide
+      diez sobre dieciséis se da por satisfecho con seis métricas faltando.
+- [ ] `contract_violations_total` se emite con contadores **separados** para `birth_date` y `region`
+- [ ] `exclusions_orphaned_permanent_total` se emite **sin alerta asociada** (FR-068d1): su ausencia
+      de umbral es un requisito, no un olvido de configuración
+- [ ] **Ningún FR carece de tarea**, o su ausencia está declarada con motivo en la sección
+      «Tareas bloqueadas por requisitos inexistentes». La cobertura supuesta es la forma más barata
+      de aparentar completitud
 - [ ] Correlation ID sobrevive el salto asíncrono (T040)
 - [ ] Health/readiness/liveness en los tres entrypoints (T041)
 - [ ] **Cada alerta probada induciendo su condición**, y se apaga al normalizarse (T042)
@@ -1388,4 +1991,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato, según D1.
       ningún ítem marcado sin evidencia concreta (T048)
 - [ ] `test_traceability.py` en verde: toda evidencia referenciada existe (T048)
 - [ ] Sin violaciones de la constitution v1.0.0
-- [ ] Decisiones abiertas D1, D2, D3, D5, D6, D7, D8 resueltas o explícitamente diferidas a Fase 3
+- [ ] Decisiones abiertas: **ninguna pendiente**. `plan.md` §8 declara «Ninguna bloqueante» y
+      NC-1…NC-20 **todos cerrados** (`data-model.md` §12). La lista «D1, D2, D3, D5, D6, D7, D8» que
+      figuraba aquí quedó obsoleta y se retira: un DoD que exige resolver decisiones ya resueltas
+      envejece hacia el ruido, y el ruido se termina tildando sin leer
