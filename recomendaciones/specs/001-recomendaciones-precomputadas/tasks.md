@@ -117,9 +117,33 @@ coinciden, y esta tabla manda sobre el encabezado de cada milestone.
 
 | Fase | Tareas | Entregable |
 |---|---|---|
-| **1 — Vertical slice** | T001–T024, **T027**, T033–T038 | Ciclo completo: leer, registrar feedback, recalcular. Cierra US1, US2, US5 |
-| **2 — Robustez operativa** | T025, T026, T028–T032, T039–T042, T046, **T049** | Sobrevive a fallos. Cierra US3, US4, US6, US7 |
-| **3 — Optimización y cierre** | T043–T045, T047, T048, **T050** | Rendimiento, gates de CI y gobernanza |
+| **1 — Vertical slice** | T001–T024, **T027**, **T028, T029, T030**, T033–T038, **T053, T054, T055, T063** | Ciclo completo: leer, registrar feedback, recalcular. Cierra US1, US2, US5 |
+| **2 — Robustez operativa** | T025, T026, **T031, T032**, T039–T042, T046, **T049**, **T051, T052, T056, T057, T060, T061, T062** | Sobrevive a fallos. Cierra US3, US4, US6, US7 |
+| **3 — Optimización y cierre** | T043–T045, T047, T048, **T050**, **T058, T059** | Rendimiento, gates de CI y gobernanza |
+
+**Fundamento de T051–T063** *(asignadas el 2026-09-22; ninguna por proximidad numérica ni por
+pertenecer al Milestone 11)*:
+
+| Tarea | Fase | Fundamento |
+|---|---|---|
+| **T053** Endpoint de declaración | **1** | `FR-088` rechaza **toda** solicitud de un módulo sin declaración. Sin esta tarea, Fase 1 sirve recomendaciones a cero usuarios y **US1 no se puede demostrar**. Es condición de US1, no funcionalidad adicional |
+| **T054** Herencia de tags | **1** | Parte del mismo flujo: sin ella, un usuario de ambos módulos declara dos veces desde cero y `FR-085` no se cumple en el único momento en que se ejerce |
+| **T055** Rechazo por módulo | **1** | Es la mitad observable de `FR-088`. Sin ella el rechazo no existe o se confunde con un estado de resultado, rompiendo la exhaustividad de `FR-056` (DEP-6) |
+| **T063** Popularidad por ventana | **1** | **Arrastrada por T038**, que está en Fase 1 por el hallazgo F2. T038 lee lo que T063 escribe; con T063 fuera, el batch corre sobre tabla vacía y `fallback` sigue inalcanzable |
+| **T051** Refresco de umbrales etarios | **2** | Corrige un derivado que se desactualiza **por el paso del tiempo**, sin escritura que lo dispare. En Fase 1 el dato recién ingresado es correcto por construcción; el problema aparece con el sistema en régimen |
+| **T052** Tests de ciclo de vida del ítem | **2** | Verifica el retiro, que lo produce el Data Transformer (T029, Fase 2). Un test no puede preceder al comportamiento que verifica |
+| **T056** Perfil vectorial derivado puro | **2** | `FR-087` prohíbe la actualización incremental. En Fase 1 el perfil se reconstruye completo cada vez; la garantía **estructural** de que no exista un camino incremental es endurecimiento |
+| **T057** Purga de señales | **2** | `FR-068a` exige retención finita, y el horizonte supera toda ventana operativa (`FR-068b`). No hay nada que purgar hasta que el sistema acumule historia |
+| **T060** Disparador por conteo | **2** | `FR-080a` optimiza **cuándo** se recalcula. En Fase 1 el recálculo se dispara por evento (T023): funciona, sin la economía del umbral |
+| **T061** Ponderación regional | **2** | `FR-090` la declara desactivable y `FR-090a` la arranca en intensidad mínima (`0,1`). Con factor neutro el resultado es idéntico a no segmentar, de modo que Fase 1 es demostrable sin ella. Cierra **US7** |
+| **T062** Señal de obsoleto | **2** | `FR-056a` **no agrega estado**: enriquece una respuesta que Fase 1 ya produce correctamente. Es mejora de contrato sobre comportamiento existente |
+| **T058** Supresión con aborto | **3** | Requiere que existan recálculos en curso que abortar y verificación registrada (`FR-095`). Depende de T057 y del régimen operativo completo |
+| **T059** Verificación de supresión | **3** | Depende de T058 y suma alerta (`FR-095a`), que exige la observabilidad de Fase 2 ya en pie |
+
+> ⚠️ **T058 y T059 en Fase 3 son la asignación más discutible de esta tabla.** La supresión de datos
+> a pedido puede ser una obligación con plazo, y en ese caso no es «optimización y cierre». Se ubican
+> por **dependencia técnica** —T057 y la observabilidad—, no por prioridad. Si existe un plazo
+> externo, esta asignación se revisa.
 
 > **Correcciones del análisis de consistencia (2026-09-08)**:
 > - **F1** — T023, T024 y T027 se movieron a Fase 1: `plan.md` §4 promete US2 y SC-005 en esa fase,
@@ -128,12 +152,44 @@ coinciden, y esta tabla manda sobre el encabezado de cada milestone.
 >   inalcanzable y T020 no puede testearse completa.
 > - **F8** — T036 confirmada en Fase 1: es lo que cierra el ciclo de US2.
 
+> **Corrección F9 (2026-09-22) — `item_vectors` no tenía quién la poblara en Fase 1**:
+> **T028, T029 y T030 se mueven a Fase 1.**
+>
+> El hallazgo: `item_vectors` tiene **un único escritor, T030**, que estaba en Fase 2. **T009**
+> (señal content-based) la **lee** y está en Fase 1, y **T012** depende de T009. Con la tabla vacía,
+> `α = 0,5` —la mitad del score— aporta cero y el ranking queda gobernado solo por β y γ.
+>
+> **Lo grave no era el error sino su forma**: el pipeline **corre sin fallar**. No hay excepción, no
+> hay test rojo, no hay alerta; hay recomendaciones peores. Un vertical slice que produce resultados
+> plausibles con la mitad del motor apagado es peor que uno que no arranca, porque se da por
+> demostrado.
+>
+> **La cadena arrastra**: T030 depende de T029, y T029 de T028. No se puede mover la reconciliación
+> de vectores sin mover el sincronizador que la alimenta. Los tres pasan a Fase 1.
+>
+> **Qué queda en Fase 2**: **T031** (freshness de sincronización) y **T032** (comportamiento ante
+> `api-general` no disponible). Es el corte correcto: lo que Fase 1 necesita es que la
+> sincronización **funcione**; lo que Fase 2 agrega es que **sobreviva a que falle**, que es la
+> definición del entregable de esa fase.
+>
+> **Costo declarado, sin atenuar**: Fase 1 crece de forma apreciable y deja de ser un slice
+> mínimo — absorbe el Data Transformer completo y con él la dependencia de `api-general`, que
+> **está incompleta** (RD-47). Se aceptaron las alternativas descartadas con conocimiento de eso:
+> partir T030 en dos (reconciliación en Fase 1, transición en Fase 2) dividía un job que
+> `data-model.md` sitúa entero en un lugar, y sembrar vectores por fixture dejaba el vertical slice
+> **sin ser end-to-end**, que es lo único que un vertical slice aporta.
+
 ---
 
 # FASE 1 — Vertical slice
 
 > **Objetivo**: servir top-N precomputado end-to-end **y cerrar el ciclo de recálculo**.
-> Cierra US1, US2, US5. Incluye T023, T024, T027 (Milestone 5), T033–T038 (Milestone 7).
+> Cierra US1, US2, US5. Incluye T023, T024, T027 (Milestone 5), **T028, T029, T030 (Milestone 6)**,
+> T033–T038 (Milestone 7) y **T053, T054, T055, T063 (Milestone 11)**.
+>
+> **«End-to-end» se toma literalmente**: el catálogo se sincroniza de verdad (T029) y los vectores
+> se pueblan de verdad (T030). Sin eso, `item_vectors` queda vacía, la señal content-based aporta
+> cero y el slice demuestra medio motor creyendo demostrarlo entero (corrección F9).
 
 ## Milestone 1 — Fundaciones
 
@@ -761,6 +817,10 @@ colateral del tráfico de lectura.
 # FASE 2 — Robustez operativa
 
 > **Objetivo**: que sobreviva a fallos reales. Cierra US3, US4, US6, US7.
+>
+> **No incluye T028–T030**, que se movieron a Fase 1 (corrección F9). De Milestone 6 quedan acá
+> **T031** y **T032**, que es el corte natural: lo que sobrevive a un fallo, no lo que produce el
+> dato.
 
 ## Milestone 5 — Worker de recálculo asíncrono
 
@@ -878,13 +938,20 @@ motivo quedan registrados (FR-010c).
 
 ## Milestone 6 — Data Transformer
 
-| ID | Tarea | Dep. | [P] | Est. |
-|---|---|---|---|---|
-| T028 | Cliente REST autenticado y de solo lectura | T002 | | M |
-| T029 | Materialización idempotente de usuarios, catálogo y actividad | T028, T003 | | L |
-| T030 | Derivación del vocabulario compartido versionado | T029, T007 | | M |
-| T031 | Registro de freshness de sincronización | T029 | [P] | S |
-| T032 | Comportamiento ante `api-general` no disponible | T028, T031 | | M |
+| ID | Tarea | Dep. | [P] | Est. | Fase |
+|---|---|---|---|---|---|
+| T028 | Cliente REST autenticado y de solo lectura | T002 | | M | **Fase 1** |
+| T029 | Materialización idempotente de usuarios, catálogo y actividad | T028, T003 | | L | **Fase 1** |
+| T030 | Vocabulario versionado y **reconciliación de vectores** | T029, T007 | | M | **Fase 1** |
+| T031 | Registro de freshness de sincronización | T029 | [P] | S | Fase 2 |
+| T032 | Comportamiento ante `api-general` no disponible | T028, T031 | | M | Fase 2 |
+
+> ⚠️ **Este milestone está partido entre fases** (corrección F9, 2026-09-22). T028, T029 y T030 son
+> **Fase 1**: sin ellos `item_vectors` queda vacía y la señal content-based —`α = 0,5`— aporta cero
+> sin que nada falle. T031 y T032 siguen en **Fase 2**: Fase 1 necesita que la sincronización
+> *funcione*, Fase 2 agrega que *sobreviva a que falle*.
+>
+> La tabla «Asignación de fases (autoritativa)» manda sobre este encabezado de milestone.
 
 > **Hallazgo F5**: T032 perdió su marca `[P]`. Compartía `transformer/pipeline.py` con T031, lo que
 > garantizaba conflicto de merge si se tomaban en paralelo. Ahora depende de T031 y su lógica de
@@ -923,8 +990,18 @@ re-ejecutar sobre los mismos datos no duplica ni altera el resultado.
 - [ ] Un ítem sin `age_rating` se materializa con el valor **más restrictivo** (FR-051)
 - [ ] La actividad conserva `signal_type` y `occurred_at` (FR-062, DEP-1, DEP-2)
 - [ ] Interrupción a mitad de camino deja estado consistente, no parcial e indistinguible
-- [ ] La popularidad se calcula sobre la ventana configurada (FR-033a1), restringida a **ítems
-      vigentes**
+- [ ] **El Data Transformer NO escribe `item_popularity`, `tag_modules` ni `vocab_*`** (DI-13).
+      Verificable por los módulos que el pipeline importa, que es la forma que DI-13 propone.
+      ⚠️ **Criterio eliminado el 2026-09-22**: esta tarea tenía un criterio sobre el cálculo de
+      popularidad. T029 **es** el Data Transformer, de modo que el criterio mandaba hacer
+      exactamente lo que DI-13 prohíbe — y la orden de corregirlo estaba en `data-model.md` §9
+      desde el 2026-09-10, sin aplicar. No se reformuló a Wilson: el defecto no era la fórmula
+      sino la **zona**. Una redacción relajada habría sonado compatible con FR-033a1 y vuelto la
+      violación más difícil de ver.
+      > **Tercera vez que un derivado se aloja en la zona de proyección**: RD-12 sacó
+      > `like_count_window` de `items`, RD-14 sacó `is_shared` de `tags`, y esto. El patrón está
+      > anunciado en §1.1 —«la zona proyectada tiende a alojar datos derivados»— y DI-13 existe
+      > precisamente para detectarlo
 - [ ] **El retiro se detecta por dos vías y se aplica por una sola rama** (FR-074, RD-91): señal
       explícita del origen (CR-7) y **ausencia** del ítem en el listado (CR-8). No hay modo
       degradado: Q31 descartó la opción de operar distinto según el origen pueda o no confirmar
@@ -939,11 +1016,26 @@ re-ejecutar sobre los mismos datos no duplica ni altera el resultado.
 
 ---
 
-### T030 — Derivación del vocabulario compartido versionado
+### T030 — Vocabulario versionado y **reconciliación de vectores**
 
-**Descripción**: derivar el vocabulario del catálogo sincronizado como **artefacto versionado propiedad
-de este repo** (FR-010e). La transición recalcula las representaciones afectadas **antes** de activar
-la versión nueva (FR-010g).
+**Descripción**: derivar el vocabulario del catálogo sincronizado como **artefacto versionado
+propiedad de este repo** (FR-010e), y **garantizar que todo ítem vigente con tags tenga vector** bajo
+la versión activa. Son dos responsabilidades del mismo job, no dos tareas: `data-model.md` ya sitúa
+ambas ahí —«tras cada sincronización de catálogo, en el mismo job que vectoriza (T030)»—.
+
+Es el **escritor de `item_vectors`**. T007 aporta la función de vectorización, que es pura y no
+escribe; T030 la usa y persiste.
+
+> **Agujero cerrado el 2026-09-22**: el disparador era **solo el cambio de hash del vocabulario**, y
+> el hash es función del conjunto de **tags**, no de ítems. Un ítem nuevo cuyos tags ya existen **no
+> cambia el hash, no dispara nada y quedaba sin vector de forma permanente** — no era un problema de
+> arranque sino de régimen. El poblado inicial sobre un catálogo ya sincronizado era el caso
+> particular en que lo que falta es todo.
+>
+> Importa porque **α = 0,5 es la mitad del score**, y porque la métrica `catalog_unvectorized_ratio`
+> alerta por encima del 10 % mandando «escalar al proveedor»: fue pensada para ítems que llegan
+> **sin tags**, culpa del origen. Con este agujero habría subido por ítems **con** tags que nadie
+> vectorizó, y la alerta habría apuntado a `api-general` por un defecto propio.
 
 **Archivos**: `src/recomendaciones/transformer/vocabulary_sync.py`
 
@@ -956,8 +1048,22 @@ la versión nueva (FR-010g).
 - [ ] El criterio de regeneración vive en configuración versionada (FR-010g)
 - [ ] Un vocabulario desactualizado degrada calidad, **nunca** corrección ni invariantes
 - [ ] No requiere aprobación de `api-general`: es interno (FR-010e)
+- [ ] **Reconciliación tras cada sincronización**: todo ítem **vigente**, **con al menos un tag** y
+      **sin vector bajo la versión activa** recibe uno. El disparador ya **no** es solo el cambio de
+      hash — un ítem nuevo con tags preexistentes no lo altera
+- [ ] **El arranque desde vacío es el caso degenerado del mismo procedimiento**, no un camino
+      aparte: sin versión activa se crea la primera y se vectoriza todo el catálogo vigente. Un
+      camino de arranque separado sería código que corre una vez y se pudre sin que nadie lo note
+- [ ] Un ítem vigente **sin tags** queda sin vector **deliberadamente** y cuenta para
+      `catalog_unvectorized_ratio`: ese es el caso que la métrica debe señalar al proveedor
+- [ ] Es **idempotente**: dos corridas seguidas sin cambios de catálogo no reescriben vectores
 
-**Tests**: `tests/integration/test_vocab_transition.py` — durante la transición no existe instante con vectores mezclados; interrumpir la transición no activa la versión nueva a medias.
+**Tests**: `tests/integration/test_vocab_transition.py` — durante la transición no existe instante con
+vectores mezclados; interrumpir la transición no activa la versión.
+`tests/integration/test_vector_reconciliation.py` — **ítem nuevo cuyos tags ya existen** (el caso que
+el disparador por hash no veía) obtiene vector tras el sync; arranque sobre catálogo ya sincronizado
+y sin versión activa vectoriza todo lo vigente con tags; ítem sin tags no obtiene vector y suma a
+`catalog_unvectorized_ratio`; segunda corrida sin cambios no reescribe nada nueva a medias.
 
 ---
 
@@ -1131,20 +1237,38 @@ tarea filtra, y su test no sería significativo)
 
 ### T038 [P] — Batch de top-N de respaldo
 
-**Descripción**: precomputar populares por módulo, **diversificados por MMR** (decisión Q5), sobre
-volumen de likes propio en ventana acotada (D10, FR-033a1). Global por módulo, nunca por usuario.
+**Descripción**: **consumidora** de `item_popularity`. Construye el conjunto de respaldo por módulo
+leyendo lo que **T063 ya calculó**, lo diversifica por MMR (decisión Q5) y lo publica en
+`fallback:v{cfg}:{module}`. Global por módulo, nunca por usuario.
+
+Esta tarea **no calcula popularidad**: la lee. El reparto quedó explícito el 2026-09-22 —T063
+produce, T038 consume—, tal como `data-model.md` §2.5 ya lo declaraba: «`popularity_score` →
+Consumidores: Batch de respaldo T038».
 
 **Archivos**: `src/recomendaciones/batch/fallback.py`
 
-**Dep.**: T012, T015, T003
+**Dep.**: T012, T015, T003, **T063** *(agregada el 2026-09-22: sin la productora, `item_popularity` está vacía y este batch no tiene qué leer)*
 
-> **Nota de fase (hallazgo F2)**: adelantada a Fase 1. Su dependencia original de T029 (sincronización
-> del catálogo, Fase 2) se sustituyó por T003: la popularidad se computa sobre `user_signals`, que ya
-> se puebla con el feedback de T036. La sincronización completa de T029 **enriquece** el catálogo en
-> Fase 2, pero no es condición para que el respaldo exista y sea testeable.
+> **Nota de fase (hallazgo F2, actualizada el 2026-09-22)**: adelantada a Fase 1 porque sin el batch
+> de respaldo el estado `fallback` de FR-056 es inalcanzable y T020 no puede testearse completa.
+>
+> Su dependencia original de T029 (Fase 2) se sustituyó por T003 con el argumento de que «la
+> popularidad se computa sobre `user_signals`». **Ese argumento caducó**: era válido cuando esta
+> tarea calculaba la popularidad, y ahora la calcula T063. La sustitución **sigue siendo correcta**
+> —T029 no es condición para que el respaldo exista—, pero el motivo real es otro: el respaldo
+> depende de `item_popularity`, que puebla **T063**, y por eso T063 se movió a Fase 1 con esta.
 
 **Criterios de aceptación**:
-- [ ] La popularidad sale de señal propia, sin campo externo (FR-033a)
+- [ ] **Lee `item_popularity` bajo la `config_version` activa**, vía `idx_popularity_ranking`
+      `(config_version, popularity_score DESC)`
+- [ ] **Ordena por `popularity_score`**, no por `like_count` (RD-12): ordenar por el conteo bruto
+      pondría arriba a los ítems con mucho volumen y mala conversión
+- [ ] Reúne con `items` filtrando `status = 'available'` y agrupando por `module`. Es el costo
+      declarado de RD-12, y **T050 lo perfila** en vez de asumirlo resuelto
+- [ ] **La cuota de ítems nuevos** reserva `floor(top_n × fallback_new_item_quota_ratio)`
+      posiciones, con ratio **0,20**, **sin mínimo absoluto** y **sin clamp a `top_n − 1`**
+      (RD-80, familia FR-033a6). *Criterio traído desde T063 el 2026-09-22: la cuota opera sobre
+      el resultado servido, no sobre el cálculo del puntaje*
 - [ ] **El batch se construye únicamente sobre ítems vigentes** (FR-033a1, FR-072, §4.4 punto 2):
       reunión con `item_popularity` bajo `WHERE status = 'available'` (RD-12). El respaldo es lo que
       recibe exactamente la población sin resultado propio; contaminarlo con retirados afecta a
@@ -1820,23 +1944,43 @@ exhaustividad acordada en DEP-6 y obligaría a renegociar el contrato de lectura
 
 ### T063 — Recálculo de popularidad por ventana
 
-**Descripción**: la popularidad se recalcula por ventana (RD-12, RD-13) y se guarda en
-`item_popularity` con PK `(item_id, config_version)`. El intervalo de confianza usa
-`popularity_confidence_z` = 1,96.
+**Descripción**: **productora** de `item_popularity`. Recalcula la popularidad por ventana
+(RD-12, RD-13) y la escribe con PK `(item_id, config_version)`. El puntaje es el **límite inferior
+del intervalo de confianza de Wilson** sobre la tasa de conversión a like entre quienes
+interactuaron (FR-033a3), con `popularity_confidence_z` = 1,96.
+
+Es el **único escritor** de `item_popularity` (DI-13). T038 la consume; T029 no la toca.
 
 **Archivos**: `src/recomendaciones/jobs/popularidad.py`
 
 **Dep.**: T003, T004
 
+> **Nota de fase (2026-09-22)**: **Fase 1**, no Fase 3. T038 está en Fase 1 por el hallazgo F2
+> —«sin el batch de respaldo, el estado `fallback` de FR-056 es inalcanzable y T020 no puede
+> testearse completa»— y al declararse que T038 **lee** lo que T063 escribe, dejar a T063 fuera de
+> Fase 1 haría que ese fundamento dejara de cumplirse: T038 correría sobre una tabla vacía y
+> `fallback` seguiría siendo inalcanzable. La dependencia arrastra la fase.
+
 **Criterios de aceptación**:
 - [ ] La ventana es parámetro de §4 y es **menor** que el horizonte de retención de FR-068b
 - [ ] El resultado se escribe por `config_version`; cambiar de versión no pisa la anterior
 - [ ] `popularity_confidence_z` se lee de configuración, no se codifica
-- [ ] La cuota de ítems nuevos usa `floor(top_n × fallback_new_item_quota_ratio)` con ratio 0,20,
-      sin mínimo absoluto y sin clamp a `top_n − 1` (RD-80)
+- [ ] El puntaje es el **límite inferior del intervalo de Wilson** sobre la tasa de conversión a
+      like entre quienes interactuaron (FR-033a3), no el volumen bruto de likes
+- [ ] Se respetan `FR-033a3a` y `FR-033a3b` (tratamiento del denominador y de los casos sin
+      interacción), `FR-033a4` y `FR-033a5`
+- [ ] `CHECK (popularity_score BETWEEN 0 AND 1)` y `CHECK (like_count <= engaged_user_count)`
+      (DI-26) se sostienen sobre todo lo escrito
+- [ ] `computed_at` se escribe por fila, de modo que un batch **parcialmente fallido** sea
+      detectable (RD-13) y alimente `catalog_popularity_last_success_timestamp`
+- [ ] ⚠️ **Sin criterio de cuota.** El criterio
+      `floor(top_n × fallback_new_item_quota_ratio)` se movió a **T038** el 2026-09-22: la cuota
+      opera sobre el **resultado servido**, no sobre el cálculo del puntaje. Estaba en la tarea
+      equivocada
 
-**Tests**: `tests/integration/test_popularidad.py` — ventana mayor que retención no arranca;
-`top_n`=10 → cuota 2; `top_n`=50 → cuota 10.
+**Tests**: `tests/integration/test_popularidad.py` — ventana mayor que retención no arranca; un
+ítem con 1 like de 1 interacción **no** supera a uno con 80 de 100 (es el caso que distingue Wilson
+del conteo bruto); batch interrumpido deja `computed_at` viejo en las filas no recalculadas.
 
 ---
 

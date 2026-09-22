@@ -329,7 +329,13 @@ el historial; acá protege la integridad del espacio vectorial.
 
 **Propósito**: señal content-based (FR-009) sin recomputar TF-IDF en cada recálculo.
 
-**Zona**: **datos derivados durables**. Escritor único: el vectorizador (T007/T030).
+**Zona**: **datos derivados durables**. Escritor único: el **job de vocabulario y reconciliación
+(T030)**, que **usa** el vectorizador de T007.
+
+> ✏️ Precisado el 2026-09-22: decía «el vectorizador (T007/T030)», que nombraba dos tareas como si
+> ambas escribieran. **T007 es una función pura —sin I/O, sin reloj— y no escribe**; T030 es el único
+> proceso que persiste en esta tabla, y desde 2026-09-22 lo hace tanto en la transición entre
+> versiones como en la **reconciliación** de ítems vigentes sin vector.
 
 > 🔄 **Revisado 2026-09-14 (RD-21..RD-26)**: la clave incorpora `vocab_version`; la columna deja de
 > declarar dimensionalidad fija. Ver §12.

@@ -43,7 +43,7 @@
 
 Servicio de recomendaciones **híbridas y precomputadas** para RecoMe. Expone una API de lectura que sirve
 top-N ya calculados; un worker asíncrono recalcula al recibir eventos de actividad; un Data Transformer
-sincroniza **unidireccionalmente** desde `api-general` y materializa perfiles, vectores y popularidad.
+sincroniza **unidireccionalmente** desde `api-general` y materializa la proyección del catálogo, los usuarios y la actividad. Los **derivados** —vectores, vocabulario, popularidad— los producen procesos propios, no el sincronizador (DI-13).
 
 El motor combina tres términos: `score = α·content + β·collaborative + γ·cross_module`, con
 `α = 0,5`, `β = 0,3`, `γ = 0,2`, `k = 20` vecinos y `λ_MMR = 0,7`.
@@ -126,8 +126,8 @@ src/
 | **API de escritura (declaración)** | **Única excepción**: persiste `user_declared_tags` | Valida y persiste; **no calcula** (FR-089b) |
 | **Engine (librería)** | TF-IDF, coseno, k-vecinos, cross-boost, combinación lineal, MMR | Sin estado propio; determinista dada la configuración |
 | **Worker** | Consume eventos, aplica idempotencia, dispara recálculo | Recálculo por umbral de interacciones (10) |
-| **Data Transformer** | Sincroniza desde `api-general`; materializa perfiles, vectores, popularidad | Unidireccional; proyecta, no crea |
-| **Procesos periódicos** | Purga de señales, recálculo de popularidad, recomposición de vocabulario | Operan sobre derivados; su error es reversible |
+| **Data Transformer** | Sincroniza desde `api-general`: usuarios, catálogo y actividad (T029) | Unidireccional; proyecta, no crea. **No escribe `item_popularity`, `tag_modules` ni `vocab_*`** (DI-13) |
+| **Procesos periódicos** | Purga de señales (T057), recálculo de popularidad (T063), vocabulario y **reconciliación de vectores** (T030), refresco de umbrales etarios (T051) | Operan sobre derivados; su error es reversible. Son los **únicos** escritores de sus tablas |
 
 ### Flujo de lectura (request path)
 
@@ -316,10 +316,22 @@ rechazar antes de la precedencia de estados.
 | Disparador por conteo | ✅ **T060** |
 | Ponderación regional | ✅ **T061** |
 | Señal de obsoleto disponible | ✅ **T062** |
-| **Siembra de vectores** | ⚠️ **Sigue sin tarea propia.** `T007` vectoriza y `T056` reconstruye el perfil del usuario, pero **el poblado inicial de `item_vectors` para un catálogo ya sincronizado no tiene tarea**. `T030` crea la versión de vocabulario y «recalcula todos los vectores antes de activarla» (FR-010g), que cubre la *transición* entre versiones, no el arranque desde vacío |
+| **Siembra de vectores** | ✅ **Cerrado el 2026-09-22 sin crear tarea**: se extendió **T030**. El agujero era **mayor que la siembra** — ver nota abajo |
 
-**Único pendiente**: la siembra de vectores. Se declara, no se resuelve acá — crear la tarea excede
-el alcance de este pase.
+**Sobre la siembra de vectores — cerrado el 2026-09-22, y era peor de lo declarado.**
+
+El pendiente se enunció como «falta el poblado inicial de `item_vectors`». La auditoría de la cadena
+de escritura mostró que el arranque era solo **el caso visible** de un defecto permanente: T030 se
+disparaba **únicamente al cambiar el hash del vocabulario**, y ese hash es función del conjunto de
+**tags**, no de ítems. Por lo tanto **todo ítem nuevo cuyos tags ya existieran quedaba sin vector de
+forma indefinida**, con el catálogo en régimen normal y sin que nada fallara.
+
+**Qué lo cerró**: T030 pasó de «transición entre versiones» a **vocabulario y reconciliación de
+vectores**. Tras cada sincronización, todo ítem vigente con tags y sin vector recibe uno; el arranque
+desde vacío es el caso degenerado del mismo procedimiento, no un camino aparte. No se creó tarea
+nueva: `data-model.md` ya situaba ambas responsabilidades en ese job.
+
+**No hay pendientes en esta sección.**
 
 ---
 
@@ -444,6 +456,28 @@ GitHub sigue **declarada y no ejecutada**.
 - **Tres FR nuevos citados** donde faltaban: FR-084 en T053, FR-086 en T054, FR-091 en T058/T059.
 - La sección «Tareas bloqueadas» pasó a ser **registro histórico de un bloqueo levantado**.
 - Total del backlog: **63 tareas**.
+
+**Tercer pase, 2026-09-22 — auditoría de la cadena de popularidad y de la escritura de vectores**:
+- **T029**: eliminado su criterio sobre popularidad — violaba **DI-13** («el Data Transformer no
+  escribe `item_popularity`»). Reemplazado por un criterio **negativo y verificable**. Es la
+  **tercera vez** que un derivado se aloja en la zona de proyección (RD-12, RD-14, y esta).
+- **T063 produce / T038 consume**: reparto explícito. T038 pasa a **leer** `item_popularity`,
+  ordenar por `popularity_score` —no por `like_count`— y recibe el criterio de **cuota** que estaba
+  en T063. **T063 se movió a Fase 1**, arrastrada por la dependencia de T038 (hallazgo F2).
+- **T030** extendida a **reconciliación de vectores**: cierra un agujero por el que todo ítem nuevo
+  con tags preexistentes quedaba sin vector de forma permanente.
+- **Tabla de fases completada T001–T063**, con fundamento por tarea.
+- **`data-model.md` §2.4** precisado: el escritor único de `item_vectors` es T030; T007 es una
+  función pura y no escribe.
+- **Corrección F9 — `T028`, `T029` y `T030` se mueven a Fase 1.** `item_vectors` tenía un único
+  escritor (T030) en Fase 2, mientras `T009` la leía desde Fase 1 y `T012` dependía de T009. Con la
+  tabla vacía, `α = 0,5` aportaba cero **y el pipeline corría sin fallar**: sin excepción, sin test
+  rojo y sin alerta, produciendo recomendaciones plausibles con medio motor apagado. La cadena
+  arrastra —T030 ← T029 ← T028—, de modo que los tres pasan. **T031** (freshness) y **T032**
+  (`api-general` caído) quedan en Fase 2: Fase 1 necesita que la sincronización *funcione*, Fase 2
+  que *sobreviva a que falle*.
+  **Costo declarado**: Fase 1 deja de ser un slice mínimo y absorbe el Data Transformer completo,
+  con él la dependencia de `api-general`, que está **incompleta** (RD-47).
 
 **Tareas actualizadas** (hecho): T003 (16 tablas de `data-model.md` §2, no 10 de `plan.md`), T004
 (inventario completo de §4 y rechazo de `tiebreak_criteria`), T017 (32 invariantes, DI-28 con test
