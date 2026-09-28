@@ -26,7 +26,7 @@ from recomendaciones.worker.requests_stream import RecomputeRequestConsumer
 from recomendaciones.worker.schemas import parse_eliminado
 from recomendaciones.worker.signals import SignalIngestor
 from recomendaciones.worker.suppression import SuppressionHandler, SuppressionProcedure, refresh_suppression_metrics
-from recomendaciones.worker.topology import actualizar_topology, eliminado_topology
+from recomendaciones.worker.topology import actualizar_topology, broker_limits, eliminado_topology
 from recomendaciones.worker.trigger import InteractionTrigger
 
 log = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def build_worker(runtime: Runtime) -> tuple[EventConsumer, RecomputeRequestConsu
     )
     events = EventConsumer(
         settings.amqp_url.get_secret_value(),
-        actualizar_topology(),
+        actualizar_topology(**broker_limits(settings)),
         handler,
         on_dead_letter=lambda reason: runtime.metrics.inc("reco_dlq_messages_total", reason=reason),
         retry=RetryPolicy(settings.retry_max_attempts, settings.retry_backoff_base_seconds),
@@ -79,7 +79,7 @@ def build_suppression_consumer(runtime: Runtime) -> EventConsumer:
     )
     return EventConsumer(
         settings.amqp_url.get_secret_value(),
-        eliminado_topology(),
+        eliminado_topology(**broker_limits(settings)),
         SuppressionHandler(procedure, idempotency),
         parser=parse_eliminado,
         on_dead_letter=lambda reason: runtime.metrics.inc("reco_dlq_messages_total", reason=reason),
