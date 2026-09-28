@@ -42,8 +42,12 @@ def _world(db_factory):  # noqa: ANN001, ANN202
 
 
 def _recomputer(db_factory, redis_client, metrics: Metrics | None = None) -> tuple[Recomputer, RecommendationRepository]:  # noqa: ANN001
-    repo = RecommendationRepository(CacheClient(redis_client), ttl_fresh=86_400, ttl_stale=604_800, ttl_fallback=21_600)
-    return Recomputer(db_factory, repo, CFG, metrics or Metrics()), repo
+    from recomendaciones.storage.cache.recompute import RecomputeStream
+
+    cache = CacheClient(redis_client)
+    repo = RecommendationRepository(cache, ttl_fresh=86_400, ttl_stale=604_800, ttl_fallback=21_600)
+    signaler = RecomputeStream(cache, maxlen=1_000, ttl_suppress=300)
+    return Recomputer(db_factory, repo, CFG, metrics or Metrics(), signaler=signaler), repo
 
 
 def _event(user: uuid.UUID, item: uuid.UUID, module: Module, kind: str = "like") -> ActualizarEvent:
@@ -170,8 +174,7 @@ def test_modules_are_independent_units(db_factory, redis_client, monkeypatch) ->
 
     monkeypatch.setattr(recomputer, "recompute", failing)
     _signal(db_factory, user, movies["conjuro"], "like")
-    with pytest.raises(RuntimeError):
-        recomputer.on_signal(_event(user, movies["conjuro"], Module.PELICULAS))
+    recomputer.on_signal(_event(user, movies["conjuro"], Module.PELICULAS))  # el opuesto se reencola (T025)
     assert repo.read_fresh(CFG.config_version, user, Module.PELICULAS) is not None
 
 
