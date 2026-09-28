@@ -74,3 +74,52 @@ def amqp_url(rabbit_container: object) -> str:
     host = rabbit_container.get_container_host_ip()  # type: ignore[attr-defined]
     port = rabbit_container.get_exposed_port(5672)  # type: ignore[attr-defined]
     return f"amqp://guest:guest@{host}:{port}/"
+
+
+def fresh_database(pg_url: str, name: str) -> str:
+    """Crea una base vacía y migrada; devuelve su URL."""
+    import sqlalchemy as sa
+    from alembic import command
+
+    admin = sa.create_engine(pg_url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(sa.text(f"DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
+        conn.execute(sa.text(f"CREATE DATABASE {name}"))
+    admin.dispose()
+    url = pg_url.rsplit("/", 1)[0] + f"/{name}"
+    command.upgrade(alembic_config(url), "head")
+    return url
+
+
+@pytest.fixture
+def db_factory(pg_url: str, request: pytest.FixtureRequest) -> Iterator[object]:
+    """Base migrada por test, con la configuración v1 registrada como activa."""
+    import re
+    from datetime import UTC, datetime
+
+    import sqlalchemy as sa
+
+    from recomendaciones.config.loader import ENGINE_CONFIG_DIR, load_engine_config
+    from recomendaciones.storage.db.config_registry import register_in_database
+    from recomendaciones.storage.db.session import session_factory
+
+    name = "t_" + re.sub(r"[^a-z0-9]", "_", request.node.name.lower())[:50]
+    url = fresh_database(pg_url, name)
+    engine = sa.create_engine(url)
+    factory = session_factory(engine)
+    with factory.begin() as s:
+        register_in_database(s, load_engine_config(ENGINE_CONFIG_DIR / "v1.yaml"), datetime(2026, 9, 1, tzinfo=UTC))
+    factory.url = url  # type: ignore[attr-defined]
+    yield factory
+    engine.dispose()
+
+
+@pytest.fixture
+def redis_client(redis_url: str) -> Iterator[object]:
+    import redis
+
+    client = redis.Redis.from_url(redis_url, decode_responses=True)
+    client.flushdb()
+    yield client
+    client.flushdb()
+    client.close()
