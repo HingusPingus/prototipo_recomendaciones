@@ -284,7 +284,7 @@ pertenecer al Milestone 11)*:
 - [X] T060 [US2] Disparador de recálculo por conteo e invalidación en el mismo acto en `src/recomendaciones/worker/trigger.py` (TDD)
 - [X] T061 Ponderación regional del término colaborativo en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [X] T062 [US6] Señal de resultado obsoleto como campo aparte en `src/recomendaciones/api/schemas/respuesta.py` (TDD)
-- [ ] T065 [US2] Cuota de novedades en el top-N personalizado en `src/recomendaciones/engine/postprocess.py` (TDD)
+- [X] T065 [US2] Cuota de novedades en el top-N personalizado en `src/recomendaciones/engine/postprocess.py` (TDD)
 
 ### Fase 3 — Optimización y cierre
 
@@ -2530,22 +2530,22 @@ una lista de longitud `top_n_max`. Así, truncar a cualquier `top_n` deja exacta
 **Dep.**: T016, T027, T063
 
 **Criterios de aceptación**:
-- [ ] La etapa corre **después** de MMR y solo reubica candidatos que ya superaron edad y exclusión: su
+- [X] La etapa corre **después** de MMR y solo reubica candidatos que ya superaron edad y exclusión: su
       salida es una permutación de un subconjunto de su entrada (FR-031)
-- [ ] Posiciones reservadas en `ceil(k / ratio)`; para todo `top_n ∈ [10, 50]`, el prefijo de longitud
+- [X] Posiciones reservadas en `ceil(k / ratio)`; para todo `top_n ∈ [10, 50]`, el prefijo de longitud
       `top_n` contiene exactamente `min(floor(top_n × ratio), emergentes disponibles)` emergentes en
       posiciones reservadas (FR-033a6a)
-- [ ] **Máximo, no mínimo**: si faltan emergentes, las posiciones reservadas se ocupan por el orden
+- [X] **Máximo, no mínimo**: si faltan emergentes, las posiciones reservadas se ocupan por el orden
       ordinario y ninguna queda vacía (FR-033a6)
-- [ ] El orden entre emergentes es la afinidad de contenido con el perfil, **no** el puntaje de
+- [X] El orden entre emergentes es la afinidad de contenido con el perfil, **no** el puntaje de
       popularidad (FR-033a6d, FR-033a6f1); sin aleatoriedad (FR-033a6f2)
-- [ ] El score de cada ítem no se altera (FR-033a7): cambia la posición, no el valor
-- [ ] Ningún ítem aparece dos veces; un emergente que ya estaba en el orden ordinario no se duplica
-- [ ] La colocación respeta el **tope de cluster** de FR-071a: un emergente que lo haría superar en su
+- [X] El score de cada ítem no se altera (FR-033a7): cambia la posición, no el valor
+- [X] Ningún ítem aparece dos veces; un emergente que ya estaba en el orden ordinario no se duplica
+- [X] La colocación respeta el **tope de cluster** de FR-071a: un emergente que lo haría superar en su
       posición se salta por el siguiente emergente
-- [ ] Se emite `fallback_new_item_share` (nombre histórico, RD-102) distinguiendo cuota **disponible** de
+- [X] Se emite `fallback_new_item_share` (nombre histórico, RD-102) distinguiendo cuota **disponible** de
       **ocupada** (FR-033a8)
-- [ ] Determinista ante empates (FR-070)
+- [X] Determinista ante empates (FR-070)
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_novelty_quota.py`, commit propio): property-based — para toda
 entrada y todo `top_n` en `[10, 50]`, conteo de emergentes reservados = `floor(top_n × 0,20)` cuando

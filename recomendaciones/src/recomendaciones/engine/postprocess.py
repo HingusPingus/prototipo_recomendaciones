@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 
 from recomendaciones.engine.scoring import Candidate, ScoredCandidate, ScoringResult, tiebreak_key
 from recomendaciones.shared.domain import ExclusionSet
@@ -137,6 +137,10 @@ class PostprocessRequest:
     max_cluster_share: float
     limit: int  # top_n_max en el personalizado; fallback_stored_size en el respaldo
     cluster_of: ClusterOf
+    # Cuota de novedades (T065): solo el personalizado; el respaldo no lleva cuota (RD-102).
+    emergent_items: frozenset[uuid.UUID] = frozenset()
+    affinity: Mapping[uuid.UUID, float] = field(default_factory=dict)
+    novelty_quota_ratio: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +157,8 @@ class PostprocessResult:
     config_version: str
     discarded: dict[str, int]
     relaxations: int
+    quota_available: int = 0  # posiciones reservadas dentro de la lista (FR-033a8)
+    quota_occupied: int = 0  # reservadas efectivamente ocupadas por emergentes
 
     @property
     def empty(self) -> bool:
@@ -179,6 +185,17 @@ class _Diversified:
     config_version: str
     discarded: dict[str, int]
     relaxations: int
+    pool: tuple[ScoredCandidate, ...]  # candidatos que superaron edad y exclusión (fuente de la cuota)
+
+
+@dataclass(frozen=True, slots=True)
+class _QuotaPlaced:
+    items: tuple[ScoredCandidate, ...]
+    config_version: str
+    discarded: dict[str, int]
+    relaxations: int
+    quota_available: int
+    quota_occupied: int
 
 
 def _filter_age(scoring: ScoringResult, req: PostprocessRequest) -> _AgeFiltered:
@@ -208,17 +225,99 @@ def _diversify(stage: _ExclusionFiltered, req: PostprocessRequest) -> _Diversifi
         cluster_of=req.cluster_of,
     )
     dropped = len(stage.items) - len(result.selected) - max(0, len(stage.items) - req.limit)
-    return _Diversified(result.selected, stage.config_version, {**stage.discarded, "mmr": dropped}, result.relaxations)
+    return _Diversified(result.selected, stage.config_version, {**stage.discarded, "mmr": dropped}, result.relaxations, stage.items)
+
+
+def reserved_positions(ratio: float, limit: int) -> tuple[int, ...]:
+    """Posiciones `ceil(k / ratio)` (1-based) dentro de una lista de `limit` (RD-102).
+
+    Truncar a cualquier `top_n` deja exactamente `floor(top_n × ratio)` de ellas en el prefijo, porque
+    `ceil(k/r) ≤ n ⟺ k ≤ n·r`: la cuota de FR-033a6a se cumple sin cálculo al servir.
+    """
+    positions = []
+    k = 1
+    while True:
+        position = math.ceil(k / ratio - 1e-9)
+        if position > limit:
+            return tuple(positions)
+        positions.append(position)
+        k += 1
+
+
+def _place_quota(stage: _Diversified, req: PostprocessRequest) -> _QuotaPlaced:
+    """Paso (4) de FR-028: coloca emergentes en posiciones reservadas, después de MMR (T065).
+
+    Solo reubica candidatos que ya superaron edad y exclusión: la salida es una permutación de un
+    subconjunto del conjunto filtrado (FR-031). Los emergentes se ordenan por afinidad de contenido con el
+    perfil —nunca por popularidad (FR-033a6d)— sin aleatoriedad (FR-033a6f2). La cuota es un máximo: una
+    reservada sin emergente que quepa se ocupa por el orden ordinario (FR-033a6). Un emergente que haría
+    superar el tope de cluster en su posición se salta (FR-071a). El score no se altera (FR-033a7).
+    """
+    if not isinstance(stage, _Diversified):
+        raise TypeError("la cuota corre después de MMR (FR-028 paso 4)")
+    ratio = req.novelty_quota_ratio
+    if not ratio or not req.emergent_items:
+        available = len(reserved_positions(ratio, req.limit)) if ratio else 0
+        return _QuotaPlaced(stage.items, stage.config_version, stage.discarded, stage.relaxations, available, 0)
+    reserved = set(reserved_positions(ratio, req.limit))
+    emergents = sorted(
+        (s for s in stage.pool if s.candidate.item_id in req.emergent_items),
+        key=lambda s: (-req.affinity.get(s.candidate.item_id, 0.0), str(s.candidate.item_id)),
+    )
+    ordinary = list(stage.items)
+    size = min(req.limit, len({s.candidate.item_id for s in (*ordinary, *emergents)}))
+    placed: list[ScoredCandidate] = []
+    used: set[uuid.UUID] = set()
+    counts: dict[str, int] = {}
+    occupied = 0
+
+    def take(s: ScoredCandidate) -> None:
+        placed.append(s)
+        used.add(s.candidate.item_id)
+        cluster = req.cluster_of(s.candidate)
+        if cluster is not None:
+            counts[cluster] = counts.get(cluster, 0) + 1
+
+    def next_ordinary() -> ScoredCandidate | None:
+        while ordinary:
+            candidate = ordinary.pop(0)
+            if candidate.candidate.item_id not in used:
+                return candidate
+        return None
+
+    while len(placed) < size:
+        position = len(placed) + 1
+        chosen = None
+        if position in reserved:
+            cap = math.ceil(req.max_cluster_share * position)
+            for emergent in emergents:
+                if emergent.candidate.item_id in used:
+                    continue
+                cluster = req.cluster_of(emergent.candidate)
+                if cluster is not None and counts.get(cluster, 0) + 1 > cap:
+                    continue  # se salta por el siguiente emergente
+                chosen = emergent
+                occupied += 1
+                break
+        if chosen is None:
+            chosen = next_ordinary()
+        if chosen is None:  # sin orden ordinario: quedan emergentes por fuera de las reservadas
+            chosen = next((e for e in emergents if e.candidate.item_id not in used), None)
+        if chosen is None:
+            break
+        take(chosen)
+    assert {s.candidate.item_id for s in placed} <= {s.candidate.item_id for s in stage.pool}, "la cuota reintrodujo un ítem (FR-031)"
+    return _QuotaPlaced(tuple(placed), stage.config_version, stage.discarded, stage.relaxations, len(reserved), occupied)
 
 
 def postprocess(scoring: ScoringResult, req: PostprocessRequest) -> PostprocessResult:
-    """Única entrada pública: scoring → edad → exclusión → MMR. Vacío tras filtrar ⟹ vacío explícito."""
-    final = _diversify(_exclude(_filter_age(scoring, req), req), req)
+    """Única entrada pública: scoring → edad → exclusión → MMR → cuota. Vacío tras filtrar ⟹ vacío explícito."""
+    final = _place_quota(_diversify(_exclude(_filter_age(scoring, req), req), req), req)
     items = tuple(
         RankedItem(s.candidate.item_id, rank, s.score, s.candidate.min_age_ordinal)
         for rank, s in enumerate(final.items, start=1)
     )
-    return PostprocessResult(items, final.config_version, final.discarded, final.relaxations)
+    return PostprocessResult(items, final.config_version, final.discarded, final.relaxations, final.quota_available, final.quota_occupied)
 
 
-__all__ = ["postprocess", "PostprocessRequest", "PostprocessResult", "RankedItem", "max_cluster_share"]
+__all__ = ["postprocess", "PostprocessRequest", "PostprocessResult", "RankedItem", "max_cluster_share", "reserved_positions"]

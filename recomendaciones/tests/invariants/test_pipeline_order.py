@@ -63,7 +63,7 @@ def test_output_satisfies_age_exclusion_and_subset_simultaneously(
 
 def test_stages_are_not_part_of_the_public_surface() -> None:
     public = {name for name in dir(pp) if not name.startswith("_")}
-    assert set(pp.__all__) == {"postprocess", "PostprocessRequest", "PostprocessResult", "RankedItem", "max_cluster_share"}
+    assert set(pp.__all__) == {"postprocess", "PostprocessRequest", "PostprocessResult", "RankedItem", "max_cluster_share", "reserved_positions"}
     assert not {n for n in public if "stage" in n.lower()}
 
 

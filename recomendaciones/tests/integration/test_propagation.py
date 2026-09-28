@@ -185,3 +185,25 @@ def test_recomputes_are_measured(db_factory, redis_client) -> None:  # noqa: ANN
     recomputer.recompute(user, Module.PELICULAS, "miss")
     assert metrics.value("reco_recompute_total", status="written", module="peliculas") == 1
     assert metrics.value("reco_recompute_duration_seconds", module="peliculas") == 1
+
+
+def test_personalized_list_carries_the_novelty_quota(db_factory, redis_client) -> None:  # noqa: ANN001
+    """T065: el recálculo coloca emergentes (sin promoción) en posiciones reservadas y mide la cuota."""
+    from recomendaciones.engine.postprocess import reserved_positions
+
+    user, movies, _ = _world(db_factory)
+    with db_factory.begin() as s:
+        extra = [seed.item(s, "peliculas", [f"relleno{i}", "drama"]) for i in range(20)]
+        promoted = [*extra, movies["hereditary"], movies["western"], movies["comedia"]]
+        for item in promoted:
+            s.execute(sa.text("INSERT INTO item_promotions VALUES (:i, now(), :c)"), {"i": item, "c": CFG.config_version})
+        seed.vectorize_all(s)
+    metrics = Metrics()
+    recomputer, repo = _recomputer(db_factory, redis_client, metrics)
+    recomputer.recompute(user, Module.PELICULAS, "miss")
+    entry = repo.read_fresh(CFG.config_version, user, Module.PELICULAS)
+    emergent = {movies["conjuro"], movies["musical"]}  # vigentes aptos sin promoción
+    reserved = [entry.items[p - 1].item_id for p in reserved_positions(CFG.fallback_new_item_quota_ratio, len(entry.items)) if p <= len(entry.items)]
+    assert emergent <= {i.item_id for i in entry.items}  # todo emergente apto llega a la lista
+    assert any(item in emergent for item in reserved)  # al menos uno por su posición reservada
+    assert metrics.value("fallback_new_item_share", module="peliculas", kind="occupied") > 0

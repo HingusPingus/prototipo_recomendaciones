@@ -111,8 +111,10 @@ def test_emergent_already_in_ordinary_order_is_not_duplicated() -> None:
 
 
 def test_emergent_that_would_exceed_the_cluster_cap_is_skipped() -> None:
-    ordinary = [_cand(i + 1, 0, 1 - i / 100) for i in range(60)]  # todo el orden ordinario en el cluster 0
-    emergents = [_cand(1000, 0, 0.001), _cand(1001, 5, 0.001)]  # el primero superaría el tope en p=5
+    # cluster 0 muy relevante y otros clusters (6–11) poco relevantes: con tope 0,4, MMR deja exactamente dos
+    # ítems del cluster 0 entre las cuatro primeras posiciones, y en p=5 el tope es ceil(0,4·5) = 2.
+    ordinary = [_cand(i + 1, 0, 1 - i / 100) for i in range(20)] + [_cand(100 + i, 6 + i % 6, 0.1 - i / 1000) for i in range(40)]
+    emergents = [_cand(1000, 0, 0.0001), _cand(1001, 5, 0.0001)]  # el primero superaría el tope en p=5
     result = _run(ordinary + emergents, emergent={1000, 1001}, affinity={1000: 0.9, 1001: 0.1}, share=0.4)
     assert [i.item_id.int for i in result.items][4] == 1001
 

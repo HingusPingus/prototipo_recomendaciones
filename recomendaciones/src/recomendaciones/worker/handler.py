@@ -312,8 +312,16 @@ class Recomputer:
                 max_cluster_share=self._cfg.diversity_max_cluster_share,
                 limit=self._cfg.top_n_max,
                 cluster_of=lambda c: c.vector.principal_tag(vocab) if c.vector is not None else None,
+                # Cuota de novedades (T065, RD-102): emergente = vigente sin promoción registrada (DI-27),
+                # ordenado por afinidad de contenido con el perfil (FR-033a6f1).
+                emergent_items=frozenset(c.item_id for c in candidates if c.item_id not in snapshot.promoted),
+                affinity=content,
+                novelty_quota_ratio=self._cfg.fallback_new_item_quota_ratio,
             ),
         )
+        if result.quota_available:  # FR-033a8: disponible vs. ocupada
+            self._metrics.set("fallback_new_item_share", result.quota_available / self._cfg.top_n_max, module=module.value, kind="available")
+            self._metrics.set("fallback_new_item_share", result.quota_occupied / self._cfg.top_n_max, module=module.value, kind="occupied")
         if result.relaxations:
             self._metrics.inc("diversity_cap_relaxed_total", result.relaxations, module=module.value)
         return RecommendationEntry(

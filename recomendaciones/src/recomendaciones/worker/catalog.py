@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from recomendaciones.engine.vocabulary import TagVector, Vocabulary
-from recomendaciones.storage.db.models import Item, ItemPopularity, ItemTag, ItemVector, VocabVersion, VocabVersionTag
+from recomendaciones.storage.db.models import Item, ItemPopularity, ItemPromotion, ItemTag, ItemVector, VocabVersion, VocabVersionTag
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +35,7 @@ class CatalogSnapshot:
     items: dict[uuid.UUID, CatalogItemRow]
     popularity: dict[uuid.UUID, float]
     shared_tags: frozenset[str]
+    promoted: frozenset[uuid.UUID] = frozenset()  # conjunto general (DI-27); el resto vigente es emergente
 
     def seed_items(self, modules: tuple[str, ...]) -> dict[uuid.UUID, frozenset[str]]:
         """Ítems de los módulos dados con vector: fuente de los centroides de la declaración (T008).
@@ -57,7 +58,8 @@ _FINGERPRINT_SQL = sa.text(
            (SELECT count(*) FROM items WHERE status = 'retired'),
            (SELECT max(computed_at) FROM item_popularity WHERE config_version = :cfg),
            (SELECT max(computed_at) FROM tag_modules),
-           (SELECT count(*) FROM tag_modules)
+           (SELECT count(*) FROM tag_modules),
+           (SELECT count(*) FROM item_promotions)
     """
 )
 
@@ -98,7 +100,8 @@ def load_snapshot(s: Session, config_version: str) -> CatalogSnapshot | None:
     shared = frozenset(
         s.scalars(sa.text("SELECT tag_name FROM tag_modules GROUP BY tag_name HAVING count(*) > 1"))
     )
-    return CatalogSnapshot(vocab, vectors, items, popularity, shared)
+    promoted = frozenset(s.scalars(sa.select(ItemPromotion.item_id)))
+    return CatalogSnapshot(vocab, vectors, items, popularity, shared, promoted)
 
 
 class CatalogCache:
