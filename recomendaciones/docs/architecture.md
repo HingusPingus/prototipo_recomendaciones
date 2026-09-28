@@ -51,6 +51,15 @@ espacio TF-IDF** para ambos módulos (`vocabulary.py`, `content.py`). El perfil 
 incremental (FR-087). El colaborativo pondera por región sin excluir (`collaborative.py`, FR-081). El
 desempate es fijo y determinista (`scoring.py`).
 
+## Broker
+
+El broker lo opera `notificaciones`. El worker declara al arrancar sus exchanges (`recomendacion.actualizar`,
+`usuario.eliminado`) y sus colas, con la convención de ese broker: **quorum**, la principal con
+`x-message-ttl` = `RECO_EVENT_REDELIVERY_WINDOW_HOURS`, `x-delivery-limit` = `RECO_RETRY_MAX_ATTEMPTS` y
+dead-letter a una DLQ propia sin TTL (`worker/topology.py`). Los reintentos con backoff van por una cola de
+espera (`.retry`). La profundidad de la cola y de la DLQ se exportan como `reco_queue_depth` y
+`reco_dead_letter_depth`.
+
 ## Datos
 
 18 tablas (`storage/db/models.py`, migración `migrations/versions/0001_initial.py`) y 8 familias de claves

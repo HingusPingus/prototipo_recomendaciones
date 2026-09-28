@@ -176,5 +176,5 @@ Lo que no depende de este repositorio queda `[ ]` con su motivo. No se marca por
 | Documento de campos requeridos publicado | [ ] | Redactado (`docs/contracts/required-fields.md`); publicarlo en `api-general` es acción humana (T049) |
 | Ningún FR carece de tarea | [ ] | No se recorrieron los 167 FR contra `tasks.md` en esta implementación; queda para la revisión de cierre |
 | Constitución v1.1.1 aprobada por PR | [ ] | Pendiente de aprobación (gobernanza de la constitución, RD-98) |
-| `event_redelivery_window_hours` copiado del broker real | [ ] | `.env.example` lleva un valor provisional; el real lo fija la configuración de `notificaciones` |
+| `event_redelivery_window_hours` copiado del broker real | [x] | `.env.example` (24 h, `RABBITMQ_MESSAGE_TTL_MS` del broker de `notificaciones`)<br>`tests/integration/test_topology.py::test_every_queue_is_quorum_and_the_main_one_carries_ttl_delivery_limit_and_dead_letter`<br>`tests/integration/test_topology.py::test_message_never_consumed_expires_into_our_dead_letter_queue` |
 | Evento de baja publicado por `api-general` | [ ] | Schema propuesto en `specs/001-recomendaciones-precomputadas/contracts/usuario-eliminado.schema.json`; la publicación es de `api-general` (DEP-12) |

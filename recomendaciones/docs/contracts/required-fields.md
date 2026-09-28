@@ -40,6 +40,14 @@ distingue un listado completo de uno truncado y **un listado parcial retiraría 
 | Interacción | `signal_type` (`like` \| `dislike` \| `consumo`) | sí | DEP-1, FR-062 | El perfil no puede construirse |
 | Interacción | `occurred_at` | sí | DEP-2, CR-12, FR-029d | No se resuelve el conflicto entre señales contradictorias |
 
+### Dónde publicar los eventos
+
+Ambos eventos se publican en un exchange *fanout* con el nombre del evento: **`recomendacion.actualizar`** y
+**`usuario.eliminado`** (nombre propuesto). El worker de este repositorio declara al arrancar esos exchanges y
+sus propias colas quorum, con la convención del broker de `notificaciones`: TTL de 24 h y `x-delivery-limit`
+de 5. `api-general` no necesita crear colas: solo publicar en el exchange. Si se acuerdan otros nombres, se
+cambian en un único lugar de este repositorio.
+
 ### Evento `recomendacion.actualizar` — `recomendacion-actualizar.schema.json`
 
 | Campo | Obligatorio | Requisito | Si falta |
