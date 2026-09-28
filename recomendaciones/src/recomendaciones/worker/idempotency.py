@@ -22,6 +22,9 @@ from recomendaciones.storage.cache.client import CacheClient
 from recomendaciones.storage.db.models import ProcessedEvent
 from recomendaciones.storage.db.session import SessionFactory
 
+_LOCK = sa.text("SELECT pg_advisory_lock(hashtextextended(:k, 0))")
+_UNLOCK = sa.text("SELECT pg_advisory_unlock(hashtextextended(:k, 0))")
+
 
 class EventIdempotency:
     def __init__(
@@ -62,9 +65,22 @@ class EventIdempotency:
         self._cache.set_json(keys.dedupe_key(event_id), 1, self._ttl)
 
     def process_once(self, event_id: uuid.UUID, work: Callable[[], str]) -> str | None:
-        """Ejecuta `work` una sola vez por evento vigente; `None` si ya estaba procesado (ACK sin recomputar)."""
-        if self.seen(event_id):
+        """Ejecuta `work` una sola vez por evento vigente; `None` si ya estaba procesado (ACK sin recomputar).
+
+        El consumidor procesa en paralelo: dos entregas simultáneas del mismo evento pasarían ambas el chequeo.
+        Un advisory lock de Postgres por `event_id` hace atómicos chequeo, trabajo y registro; el acierto de
+        la marca caliente en Redis no lo necesita.
+        """
+        if self._cache.exists(keys.dedupe_key(event_id)):
             return None
-        result = work()
-        self.record(event_id, result)
-        return result
+        lock = {"k": f"event:{event_id}"}
+        with self._factory() as s:
+            s.execute(_LOCK, lock)
+            try:
+                if self.seen(event_id):
+                    return None
+                result = work()
+                self.record(event_id, result)
+                return result
+            finally:
+                s.execute(_UNLOCK, lock)
