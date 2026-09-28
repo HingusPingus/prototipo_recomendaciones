@@ -235,7 +235,7 @@ pertenecer al Milestone 11)*:
 - [X] T007 Vectorización TF-IDF sobre vocabulario compartido en `src/recomendaciones/engine/content.py` (TDD)
 - [X] T008 Similitud coseno y construcción de perfil en `src/recomendaciones/engine/similarity.py` (TDD)
 - [X] T009 [P] Señal content-based en `src/recomendaciones/engine/content.py` (TDD)
-- [ ] T010 [P] Señal colaborativa (k vecinos) en `src/recomendaciones/engine/collaborative.py` (TDD)
+- [X] T010 [P] Señal colaborativa (k vecinos) en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [ ] T011 [P] [US4] Señal cross-module en `src/recomendaciones/engine/cross_module.py` (TDD)
 - [ ] T012 Combinación lineal y desempate determinista en `src/recomendaciones/engine/scoring.py` (TDD)
 - [ ] T013 [US5] Filtro de edad por `age_rating` (fail-closed) en `src/recomendaciones/engine/postprocess.py` (TDD)
@@ -645,17 +645,17 @@ que exista código que pueda contradecirla.
 **Dep.**: T008
 
 **Criterios de aceptación**:
-- [ ] `k` proviene de configuración versionada, no de constante (FR-025)
-- [ ] Menos de `k` usuarios disponibles → usa los que hay, sin fallar
-- [ ] Cero vecinos → señal neutra, no error
-- [ ] La selección de vecinos es determinista ante empates de similitud (FR-070)
-- [ ] Función pura: recibe la matriz de perfiles, no la consulta
-- [ ] **Un vecino con similitud ≤ 0 nunca eleva el score de un ítem** (edge case «sin invertir el
+- [X] `k` proviene de configuración versionada, no de constante (FR-025)
+- [X] Menos de `k` usuarios disponibles → usa los que hay, sin fallar
+- [X] Cero vecinos → señal neutra, no error
+- [X] La selección de vecinos es determinista ante empates de similitud (FR-070)
+- [X] Función pura: recibe la matriz de perfiles, no la consulta
+- [X] **Un vecino con similitud ≤ 0 nunca eleva el score de un ítem** (edge case «sin invertir el
       sentido de la recomendación»). *Regresión verificada en el prototipo: cuando todos los vecinos
       tienen similitud negativa, normalizar por el máximo invierte el signo y un ítem likeado por
       usuarios de gustos opuestos recibe +3,23 (`recommenders.py`, `CollaborativeRecommender`).* Los
       vecinos con similitud ≤ 0 **se excluyen** del vecindario (RD-105, FR-023)
-- [ ] La señal colaborativa queda acotada a `[-1, 1]`, comparable con las otras dos (T012)
+- [X] La señal colaborativa queda acotada a `[-1, 1]`, comparable con las otras dos (T012)
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_collaborative.py`): con k=3 y solo 2 usuarios no falla; cero
 vecinos → señal neutra; empate de similitud resuelve idéntico en 100 ejecuciones con orden barajado;
