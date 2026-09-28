@@ -12,6 +12,7 @@ from prometheus_client import start_http_server
 from recomendaciones.bootstrap import Runtime, build_runtime
 from recomendaciones.config.settings import Settings
 from recomendaciones.shared.errors import CacheUnavailable
+from recomendaciones.transformer.freshness import refresh_sync_metrics
 from recomendaciones.storage.cache.filters import FiltersCache
 from recomendaciones.storage.db.exclusions import ExclusionResolver
 from recomendaciones.storage.db.filters_source import DbFiltersSource
@@ -72,8 +73,13 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
     await events.start()
     log.info("worker en marcha", extra={"config_version": runtime.config.config_version})
     backoff = 0.1
+    last_refresh = 0.0
     try:
         while not stop.is_set():
+            if loop.time() - last_refresh > 30:  # SC-014: la frescura se expone aunque el Data Transformer no corra
+                last_refresh = loop.time()
+                with runtime.factory() as s:
+                    await asyncio.to_thread(refresh_sync_metrics, s, runtime.metrics)
             try:
                 handled = await asyncio.to_thread(requests.poll_once)
                 backoff = 0.1

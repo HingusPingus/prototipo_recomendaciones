@@ -26,6 +26,7 @@ Una corrida:
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -48,6 +49,7 @@ from recomendaciones.storage.db.exclusions import ExclusionResolver, ResolveResu
 from recomendaciones.storage.db.models import Item, ItemTag, SyncRun, Tag, User, UserSignal, UserSuppression
 from recomendaciones.storage.db.session import SessionFactory
 from recomendaciones.transformer.client import ApiGeneralClient, Listing
+from recomendaciones.transformer.freshness import refresh_sync_metrics
 from recomendaciones.transformer.regions import is_valid_region
 
 log = logging.getLogger(__name__)
@@ -188,6 +190,15 @@ class SyncPipeline:
 
     # --- corrida ----------------------------------------------------------------------------
     def run(self) -> SyncReport:
+        started = time.monotonic()
+        try:
+            return self._run()
+        finally:
+            self._metrics.observe("reco_sync_duration_seconds", time.monotonic() - started)
+            with self._factory() as s:
+                refresh_sync_metrics(s, self._metrics)
+
+    def _run(self) -> SyncReport:
         run_id = self._start()
         try:
             users, catalog, activity = self._client.list_users(), self._client.list_catalog(), None
@@ -195,6 +206,7 @@ class SyncPipeline:
         except UpstreamError as exc:
             self._finish(run_id, "failed", f"api-general no disponible: {exc.message}", None)
             return SyncReport(run_id, "failed", exc.message)
+        self._emit_volume("users", len(users.rows))
         abort = self._completeness_problem(catalog)
         if abort:
             self._finish(run_id, "failed", abort, {"items": len(catalog.rows)})
@@ -227,6 +239,11 @@ class SyncPipeline:
             if ratio < self._ratio:
                 return f"volumen anómalo del catálogo: ratio {ratio:.2f} < {self._ratio} (FR-074)"
         return None
+
+    def _emit_volume(self, entity: str, received: int) -> None:
+        last = self._last_success_counts()
+        if last and last.get(entity):
+            self._metrics.set("sync_volume_delta_ratio", received / last[entity], entity=entity)
 
     def _after_commit(self, resolved: ResolveResult, changed_age: set[uuid.UUID]) -> None:
         self._resolver.after_commit(resolved)

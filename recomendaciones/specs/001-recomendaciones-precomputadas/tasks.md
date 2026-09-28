@@ -270,7 +270,7 @@ pertenecer al Milestone 11)*:
 
 - [X] T025 [US2] Reintentos con backoff y DLQ en `src/recomendaciones/worker/retry.py` (TDD)
 - [X] T026 [US2] Manejo de payload inválido sin bloquear la cola en `src/recomendaciones/worker/dlq.py` (TDD)
-- [ ] T031 [P] [US3] Registro de freshness de sincronización en `src/recomendaciones/transformer/pipeline.py` (TDD)
+- [X] T031 [P] [US3] Registro de freshness de sincronización en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T032 [US3] Comportamiento ante `api-general` no disponible en `src/recomendaciones/transformer/resilience.py` (TDD)
 - [ ] T039 [US7] Métricas Prometheus en `src/recomendaciones/observability/metrics.py` (TDD)
 - [ ] T040 [P] [US7] Logging estructurado con correlation ID en `src/recomendaciones/observability/logging.py` (TDD)
@@ -1372,12 +1372,12 @@ sincronización que `data-model.md` §7 define con umbral y responsable.
 **Dep.**: T029
 
 **Criterios de aceptación**:
-- [ ] Cada corrida registra inicio, fin, estado y volumen
-- [ ] La métrica de freshness refleja el **último éxito**, no el último intento
-- [ ] Una corrida fallida no actualiza el timestamp de éxito
-- [ ] La antigüedad es consultable operativamente sin entrar a la DB
-- [ ] **SC-014** — la antigüedad de la última sincronización exitosa está disponible como métrica
-- [ ] Emite, con los nombres de `data-model.md` §7: `sync_volume_delta_ratio{entity}`,
+- [X] Cada corrida registra inicio, fin, estado y volumen
+- [X] La métrica de freshness refleja el **último éxito**, no el último intento
+- [X] Una corrida fallida no actualiza el timestamp de éxito
+- [X] La antigüedad es consultable operativamente sin entrar a la DB
+- [X] **SC-014** — la antigüedad de la última sincronización exitosa está disponible como métrica
+- [X] Emite, con los nombres de `data-model.md` §7: `sync_volume_delta_ratio{entity}`,
       `catalog_unrated_ratio`, `catalog_retired_total`, `projection_field_anomalies_total{field}`,
       `contract_violations_total{field}` (`birth_date`, `region`, `origin_interaction_id`),
       `signal_ingest_lag_seconds{source}`, `signal_duplicate_rejections_total{source}` y
