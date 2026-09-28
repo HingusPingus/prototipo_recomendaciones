@@ -251,7 +251,7 @@ pertenecer al Milestone 11)*:
 - [X] T023 [US2] Consumo de `recomendacion.actualizar` en `src/recomendaciones/worker/consumer.py` (TDD)
 - [X] T024 [US2] Idempotencia por `event_id` en `src/recomendaciones/worker/idempotency.py` (TDD)
 - [X] T027 [US2] Recálculo y propagación cross-module condicional en `src/recomendaciones/worker/handler.py` (TDD)
-- [ ] T028 [US3] Cliente REST autenticado y de solo lectura en `src/recomendaciones/transformer/client.py` (TDD)
+- [X] T028 [US3] Cliente REST autenticado y de solo lectura en `src/recomendaciones/transformer/client.py` (TDD)
 - [ ] T029 [US3] Materialización idempotente de usuarios, catálogo y actividad en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T030 [US3] Vocabulario versionado y reconciliación de vectores en `src/recomendaciones/transformer/vocabulary_sync.py` (TDD)
 - [X] T033 [US1] Endpoint de lectura del top-N en `src/recomendaciones/api/routes/recommendations.py` (TDD)
@@ -1227,10 +1227,10 @@ cliente no expone verbos de mutación.
 **Dep.**: T002
 
 **Criterios de aceptación**:
-- [ ] El cliente **no expone** POST/PUT/PATCH/DELETE — restricción estructural, no convención
-- [ ] Envía la API key interna; timeouts explícitos y configurables
-- [ ] `INV-4`: no hay conexión directa a la DB de `api-general`
-- [ ] Los errores HTTP se traducen a errores tipados de T005
+- [X] El cliente **no expone** POST/PUT/PATCH/DELETE — restricción estructural, no convención
+- [X] Envía la API key interna; timeouts explícitos y configurables
+- [X] `INV-4`: no hay conexión directa a la DB de `api-general`
+- [X] Los errores HTTP se traducen a errores tipados de T005
 
 **Tests**: `tests/unit/test_transformer_client.py` — la superficie pública no tiene verbos de mutación. `tests/integration/test_no_external_writes.py` — contra un doble, cero requests no-GET.
 
