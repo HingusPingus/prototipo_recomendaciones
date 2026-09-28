@@ -69,10 +69,18 @@ class EventConsumer(Generic[E]):
         await queue.consume(self._on_message)
 
     async def queue_depth(self) -> int:
-        """Mensajes listos en la cola principal (`reco_queue_depth`, FR-043)."""
-        assert self._channel is not None
-        queue = await self._channel.declare_queue(self._topology.queue, passive=True)
-        return int(queue.declaration_result.message_count or 0)
+        """Mensajes listos en la cola principal (`reco_queue_depth`, FR-043).
+
+        En un canal propio: la declaración pasiva sobre el canal que ya declaró la cola devuelve el conteo de
+        aquella primera declaración, y la métrica quedaba congelada (QueueDepthGrowth nunca disparaba).
+        """
+        assert self._connection is not None
+        channel = await self._connection.channel()
+        try:
+            queue = await channel.declare_queue(self._topology.queue, passive=True)
+            return int(queue.declaration_result.message_count or 0)
+        finally:
+            await channel.close()
 
     async def stop(self) -> None:
         if self._connection is not None:
