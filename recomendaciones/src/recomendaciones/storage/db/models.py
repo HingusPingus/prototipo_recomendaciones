@@ -131,6 +131,8 @@ class Item(Base):
             "min_age_ordinal",
             postgresql_where=text("status = 'available'"),
         ),
+        # 0003: repoblado de `retired:{module}` acotado por la ventana, no por el catálogo (T050).
+        Index("idx_items_retired", "module", "retired_at", postgresql_where=text("status = 'retired'")),
         Index("idx_items_synced_at", "synced_at"),
     )
 
