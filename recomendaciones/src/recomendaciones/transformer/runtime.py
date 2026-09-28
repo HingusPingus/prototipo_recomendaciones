@@ -10,6 +10,7 @@ from recomendaciones.storage.cache.filters import FiltersCache
 from recomendaciones.storage.db.filters_source import DbFiltersSource
 from recomendaciones.transformer.client import ApiGeneralClient
 from recomendaciones.transformer.pipeline import SyncPipeline
+from recomendaciones.transformer.resilience import run_with_retries
 from recomendaciones.transformer.vocabulary_sync import VocabularySync
 
 log = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ def run_once(settings: Settings, *, transport=None) -> int:  # noqa: ANN001 — 
         transport=transport,
     )
     try:
-        report = SyncPipeline(
+        pipeline = SyncPipeline(
             runtime.factory,
             client,
             FiltersCache(runtime.cache, DbFiltersSource(runtime.factory), runtime.ttls.filters),
@@ -33,7 +34,10 @@ def run_once(settings: Settings, *, transport=None) -> int:  # noqa: ANN001 — 
             runtime.metrics,
             volume_delta_ratio=settings.sync_volume_delta_ratio,
             redelivery_window_hours=settings.event_redelivery_window_hours,
-        ).run()
+        )
+        report = run_with_retries(
+            pipeline, max_attempts=settings.retry_max_attempts, backoff_base_seconds=settings.retry_backoff_base_seconds
+        )
     finally:
         client.close()
     if report.counts:  # hubo datos materializados: el vocabulario y los vectores se reconcilian a continuación

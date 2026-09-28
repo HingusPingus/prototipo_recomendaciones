@@ -1401,9 +1401,9 @@ comparte `pipeline.py` con T031)
 **Dep.**: T028, T031
 
 **Criterios de aceptación**:
-- [ ] `api-general` caído → la sincronización falla de forma limpia y registrada
-- [ ] La API de lectura **sigue respondiendo** con los datos ya materializados
-- [ ] No se corrompe ni se vacía el estado materializado
+- [X] `api-general` caído → la sincronización falla de forma limpia y registrada
+- [X] La API de lectura **sigue respondiendo** con los datos ya materializados
+- [X] No se corrompe ni se vacía el estado materializado
 - [ ] Reintento con backoff; se alerta si la freshness supera el umbral
 
 **Tests**: `tests/integration/test_api_general_down.py` — con el doble caído, la lectura sigue en 200 y el estado materializado queda intacto.
