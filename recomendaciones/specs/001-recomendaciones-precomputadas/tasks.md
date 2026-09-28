@@ -277,10 +277,10 @@ pertenecer al Milestone 11)*:
 - [X] T041 [P] [US7] Health, readiness y liveness por servicio en `src/recomendaciones/observability/health.py` (TDD)
 - [X] T042 [US7] Alertas operativas en `ops/alerts.yaml` (TDD)
 - [ ] T046 [US7] Documentación operativa mínima en `docs/runbook.md`
-- [ ] T051 [US5] Job `age_threshold_refresh` (refresco de derivados etarios) en `src/recomendaciones/batch/age_threshold_refresh.py` (TDD)
-- [ ] T052 [US3] Tests de ciclo de vida del ítem en `tests/invariants/test_item_lifecycle.py` (TDD)
-- [ ] T056 Perfil vectorial derivado puro en `src/recomendaciones/engine/profile.py` (TDD)
-- [ ] T057 Purga de señales de actividad con guarda de exclusión en `src/recomendaciones/batch/purga_senales.py` (TDD)
+- [X] T051 [US5] Job `age_threshold_refresh` (refresco de derivados etarios) en `src/recomendaciones/batch/age_threshold_refresh.py` (TDD)
+- [X] T052 [US3] Tests de ciclo de vida del ítem en `tests/invariants/test_item_lifecycle.py` (TDD)
+- [X] T056 Perfil vectorial derivado puro en `src/recomendaciones/engine/profile.py` (TDD)
+- [X] T057 Purga de señales de actividad con guarda de exclusión en `src/recomendaciones/batch/purga_senales.py` (TDD)
 - [X] T060 [US2] Disparador de recálculo por conteo e invalidación en el mismo acto en `src/recomendaciones/worker/trigger.py` (TDD)
 - [X] T061 Ponderación regional del término colaborativo en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [X] T062 [US6] Señal de resultado obsoleto como campo aparte en `src/recomendaciones/api/schemas/respuesta.py` (TDD)
@@ -1735,10 +1735,10 @@ ingeniero sin contexto puede seguirlo" no se declara: se **demuestra** con una e
 **Dep.**: T042 (alertas ya probadas), T022 (procedimiento de reconstrucción existente)
 
 **Criterios de aceptación**:
-- [ ] Runbook: cómo diagnosticar cada alerta de T042
-- [ ] Procedimiento de reconstrucción tras pérdida de Redis (T022)
-- [ ] Procedimiento de cambio de `config_version` y de regeneración de vocabulario
-- [ ] Procedimiento de reproceso desde DLQ
+- [X] Runbook: cómo diagnosticar cada alerta de T042
+- [X] Procedimiento de reconstrucción tras pérdida de Redis (T022)
+- [X] Procedimiento de cambio de `config_version` y de regeneración de vocabulario
+- [X] Procedimiento de reproceso desde DLQ
 - [ ] **Ejecución de prueba realizada** del procedimiento de reconstrucción por alguien ajeno a la
       feature, con registro de cada punto donde se trabó o tuvo que preguntar
 - [ ] **Los puntos registrados fueron corregidos** en el runbook antes de cerrar la tarea
@@ -2025,14 +2025,14 @@ Unificarlos perdería el caso A, que no deja rastro de escritura.
 **Dep.**: T003, T023, T039
 
 **Criterios de aceptación**:
-- [ ] Los dos criterios de selección se consultan por separado y se registran por separado
-- [ ] El cruce de umbral se calcula contra `birth_date`, nunca contra un campo de edad materializado
-- [ ] Un usuario que cruza el umbral sin ninguna escritura queda seleccionado por el criterio A
-- [ ] El job invalida la caché del usuario afectado en el mismo acto (FR-080, FR-080c: Redis primero)
-- [ ] Emite la métrica de **liveness** `age_refresh_last_success_timestamp` al completar cada corrida,
+- [X] Los dos criterios de selección se consultan por separado y se registran por separado
+- [X] El cruce de umbral se calcula contra `birth_date`, nunca contra un campo de edad materializado
+- [X] Un usuario que cruza el umbral sin ninguna escritura queda seleccionado por el criterio A
+- [X] El job invalida la caché del usuario afectado en el mismo acto (FR-080, FR-080c: Redis primero)
+- [X] Emite la métrica de **liveness** `age_refresh_last_success_timestamp` al completar cada corrida,
       más `age_stale_config_users_total` y `age_threshold_crossings_total` (`data-model.md` §7.5.1)
-- [ ] Es idempotente: dos corridas seguidas no producen recálculos duplicados
-- [ ] La señalización de recálculo por usuario usa el mismo canal que T020: `XADD` a
+- [X] Es idempotente: dos corridas seguidas no producen recálculos duplicados
+- [X] La señalización de recálculo por usuario usa el mismo canal que T020: `XADD` a
       `recompute:requests` con `reason = 'age_threshold'`, respetando `recompute:lock` (RD-100)
 
 **Tests**: `tests/integration/test_age_threshold_refresh.py` — usuario que cumple años sin escritura
@@ -2058,28 +2058,28 @@ otra cosa mientras estuvo vacante, que era exactamente el punto.
 
 **Criterios de aceptación**:
 
-- [ ] **El retiro lógico preserva señales** (FR-073, DI-11): retirar un ítem con señales registradas
+- [X] **El retiro lógico preserva señales** (FR-073, DI-11): retirar un ítem con señales registradas
       deja intactas las filas de `user_signals` y **no altera ningún perfil vectorial**. Se verifica
       comparando el perfil antes y después, no solo la presencia de las filas: conservar la señal y
       dejar de usarla tendría el mismo efecto observable que borrarla
-- [ ] **El ítem retirado no es servible por ninguno de los tres caminos** (FR-072, DI-10, §4.4).
+- [X] **El ítem retirado no es servible por ninguno de los tres caminos** (FR-072, DI-10, §4.4).
       Un solo test no alcanza; hacen falta tres, porque son tres mecanismos distintos:
       - selección de candidatos → `WHERE status = 'available'` (T012)
       - construcción del respaldo → reunión bajo el mismo filtro (T038)
       - guarda del request path → diferencia contra `retired:{module}` (T037)
       El caso crítico es el tercero: un ítem retirado **después** de precomputarse el resultado.
       Los dos primeros filtros ya pasaron y no lo detienen
-- [ ] **La desaparición del origen equivale a retiro** (FR-074, RD-91): un ítem ausente del listado
+- [X] **La desaparición del origen equivale a retiro** (FR-074, RD-91): un ítem ausente del listado
       sincronizado, sin señal explícita, queda `retired`
-- [ ] **La corrida aborta sin marcar retiros** si no puede confirmar que el listado es completo
+- [X] **La corrida aborta sin marcar retiros** si no puede confirmar que el listado es completo
       (CR-9), y cuando `sync_volume_delta_ratio < 0,9`. Test obligatorio: listado truncado al 50 % →
       **cero** ítems marcados como retirados y corrida abortada con causa registrada
-- [ ] **La lista reducida se sirve sin relleno** (FR-075): un top-N que queda en 7 de 20 tras
+- [X] **La lista reducida se sirve sin relleno** (FR-075): un top-N que queda en 7 de 20 tras
       excluir retirados se sirve con 7, y el estado sigue siendo el que corresponde a su frescura.
       Solo la lista **vacía** es `empty_no_candidates` (FR-056, RD-42)
-- [ ] **Un ítem retirado y repuesto vuelve a ser recomendable**, y las señales previas siguen
+- [X] **Un ítem retirado y repuesto vuelve a ser recomendable**, y las señales previas siguen
       aplicando — es el corolario de que el retiro sea lógico y de que FR-074 sea revocable
-- [ ] Verificación de poder de detección: **mutar la guarda de vigencia debe hacer fallar la suite**.
+- [X] Verificación de poder de detección: **mutar la guarda de vigencia debe hacer fallar la suite**.
       Si la mutación pasa, la suite no afirma lo que dice afirmar
 
 > **No incluye caso de modo degradado.** Q31 descartó la opción (c) —operar distinto según el origen
@@ -2218,10 +2218,10 @@ fallo sino como recomendaciones levemente peores, que es el modo de fallo más d
 **Dep.**: T053, T017
 
 **Criterios de aceptación**:
-- [ ] La única operación pública es **reconstruir desde los insumos**; no existe `update_partial`
-- [ ] Reconstruir dos veces sobre los mismos insumos da el mismo vector (determinismo)
-- [ ] El perfil no se persiste como fuente de verdad; si se cachea, se puede descartar sin pérdida
-- [ ] Los insumos son la declaración (FR-082) y las señales vigentes, no señales purgadas
+- [X] La única operación pública es **reconstruir desde los insumos**; no existe `update_partial`
+- [X] Reconstruir dos veces sobre los mismos insumos da el mismo vector (determinismo)
+- [X] El perfil no se persiste como fuente de verdad; si se cachea, se puede descartar sin pérdida
+- [X] Los insumos son la declaración (FR-082) y las señales vigentes, no señales purgadas
 
 **Tests**: `tests/unit/test_user_profile_derivado.py` — reconstrucción idempotente; test que falla si
 se agrega un método de actualización incremental.
@@ -2240,17 +2240,17 @@ origen haya sido purgada** (FR-068d), por reconstrucción aditiva, no por depend
 **Dep.**: T003, T023
 
 **Criterios de aceptación**:
-- [ ] Retención y horizonte son parámetros **obligatorios con valor explícito**, sin default oculto
-- [ ] El arranque falla si el horizonte no supera estrictamente la ventana operativa mayor
-- [ ] La guarda de FR-068c se evalúa **antes** de cada purga de señal de consumo
-- [ ] Purgar la señal de origen **no** elimina la exclusión derivada: `user_exclusions` no tiene FK hacia
+- [X] Retención y horizonte son parámetros **obligatorios con valor explícito**, sin default oculto
+- [X] El arranque falla si el horizonte no supera estrictamente la ventana operativa mayor
+- [X] La guarda de FR-068c se evalúa **antes** de cada purga de señal de consumo
+- [X] Purgar la señal de origen **no** elimina la exclusión derivada: `user_exclusions` no tiene FK hacia
       `user_signals`, y la reconstrucción es aditiva (FR-068d, DI-20). *(Decía «RESTRICT»: esa política
       es la de `user_exclusions → items`, no protege frente a la purga de señales.)*
-- [ ] Cada corrida **registra el valor vigente** de `signal_retention_days`, para que una reducción no
+- [X] Cada corrida **registra el valor vigente** de `signal_retention_days`, para que una reducción no
       aprobada sea detectable después (ceremonia asimétrica, RD-54)
-- [ ] Emite `signals_purge_deferred_total` (consumos no purgados por faltarles la exclusión
+- [X] Emite `signals_purge_deferred_total` (consumos no purgados por faltarles la exclusión
       materializada, FR-068c), con alerta si es > 0 sostenido (`data-model.md` §7.10)
-- [ ] Emite `exclusions_orphaned_permanent_total` como medida **informativa y sin umbral de alerta**
+- [X] Emite `exclusions_orphaned_permanent_total` como medida **informativa y sin umbral de alerta**
       (FR-068d1) — y T042 verifica que **no** exista alerta asociada
 
 **Tests**: `tests/integration/test_purga_senales.py` — exclusión sobrevive a la purga de su señal;
