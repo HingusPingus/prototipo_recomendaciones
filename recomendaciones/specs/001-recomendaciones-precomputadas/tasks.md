@@ -257,7 +257,7 @@ pertenecer al Milestone 11)*:
 - [X] T033 [US1] Endpoint de lectura del top-N en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [X] T034 [US1] Autenticación por API key interna y no alcanzabilidad desde frontends en `src/recomendaciones/api/deps.py` (TDD)
 - [X] T035 [US1] Errores tipados y contrato estable en `src/recomendaciones/api/errors.py` (TDD)
-- [ ] T037 [US6] Filtrado de salida sobre el respaldo (acotado) en `src/recomendaciones/api/services/read_service.py` (TDD)
+- [X] T037 [US6] Filtrado de salida sobre el respaldo (acotado) en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [X] T038 [P] [US6] Batch de top-N de respaldo en `src/recomendaciones/batch/fallback.py` (TDD)
 - [ ] T049 Definir `contracts/` primero (OpenAPI + JSON Schema) en `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
 - [X] T053 [P] [US4] Endpoint de declaración de gustos en `src/recomendaciones/api/routes/declaraciones.py` (TDD)
@@ -1525,21 +1525,21 @@ recomputación de scores, sin reordenamiento, sin diversificación.
 tarea filtra, y su test no sería significativo)
 
 **Criterios de aceptación**:
-- [ ] Se aplican edad y exclusión sobre el respaldo antes de responder (FR-036, FR-049)
-- [ ] **No** hay cálculo de similitud, recomputación, reordenamiento ni diversificación (FR-033d)
-- [ ] El costo es lineal sobre una lista acotada por `top_n_max`
-- [ ] Respaldo que queda vacío tras filtrar → `empty_no_candidates` (FR-056)
-- [ ] Conjunto de exclusión no disponible → se rechaza, no se sirve sin filtrar (FR-050)
-- [ ] **Guarda de vigencia** (§4.4 punto 3, FR-072): diferencia contra el set `retired:{module}`
+- [X] Se aplican edad y exclusión sobre el respaldo antes de responder (FR-036, FR-049)
+- [X] **No** hay cálculo de similitud, recomputación, reordenamiento ni diversificación (FR-033d)
+- [X] El costo es lineal sobre una lista acotada por `top_n_max`
+- [X] Respaldo que queda vacío tras filtrar → `empty_no_candidates` (FR-056)
+- [X] Conjunto de exclusión no disponible → se rechaza, no se sirve sin filtrar (FR-050)
+- [X] **Guarda de vigencia** (§4.4 punto 3, FR-072): diferencia contra el set `retired:{module}`
       antes de responder. Es el tercero de los tres puntos donde se aplica la regla, y el único que
       alcanza a un resultado **ya precomputado**: sin él, un ítem retirado se sigue sirviendo desde
       caché durante toda la vigencia de la entrada
-- [ ] La guarda es **diferencia de conjuntos sobre ≤ `top_n_max`**, no cálculo: FR-003 prohíbe
+- [X] La guarda es **diferencia de conjuntos sobre ≤ `top_n_max`**, no cálculo: FR-003 prohíbe
       computar recomendaciones, no ejecutar guardas de corrección (RD-8)
-- [ ] **Lista reducida tras las guardas → se sirve tal cual** (FR-075), con el estado que
+- [X] **Lista reducida tras las guardas → se sirve tal cual** (FR-075), con el estado que
       corresponda a su frescura. **No** se rellena con sustitutos: reponer exige seleccionar
       candidatos, que es cómputo prohibido. Solo la lista **vacía** es `empty_no_candidates`
-- [ ] **SC-026** y **SC-027** — 0 % de respaldos servidos viola el filtro de edad o de exclusión, y
+- [X] **SC-026** y **SC-027** — 0 % de respaldos servidos viola el filtro de edad o de exclusión, y
       100 % se marca como no personalizado *(había una línea duplicada de SC-026)*
 
 **Tests**: `tests/invariants/test_fallback_filtering.py` — menor de edad nunca recibe contenido adulto vía respaldo. `tests/unit/test_fallback_bounded.py` — el módulo no importa `engine/` ni funciones de similitud.

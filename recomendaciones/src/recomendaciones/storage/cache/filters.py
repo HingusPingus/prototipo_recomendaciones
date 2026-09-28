@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from recomendaciones.shared.domain import ExclusionSet, Module
+from recomendaciones.shared.errors import ExclusionSetUnavailable, RecoError
 from recomendaciones.storage.cache import keys
 from recomendaciones.storage.cache.client import CacheClient
 
@@ -72,7 +73,12 @@ class FiltersCache:
         return self.repopulate(user_id)
 
     def repopulate(self, user_id: uuid.UUID) -> UserFilters | None:
-        fresh = self._source.load_user_filters(user_id)
+        try:
+            fresh = self._source.load_user_filters(user_id)
+        except RecoError:
+            raise
+        except Exception as exc:  # fail-closed: sin filtros no se sirve nada (FR-049, FR-050)
+            raise ExclusionSetUnavailable() from exc
         if fresh is not None:
             self._cache.set_json(keys.filters_key(user_id), fresh.to_json(), self._ttl)
         return fresh
@@ -91,6 +97,11 @@ class RetiredCache:
         cached = self._cache.get_members(key)
         if cached is not None:
             return frozenset(uuid.UUID(m) for m in cached)
-        fresh = self._source.load_retired(Module(module), self._window)
+        try:
+            fresh = self._source.load_retired(Module(module), self._window)
+        except RecoError:
+            raise
+        except Exception as exc:  # sin la guarda de vigencia no se sirve (FR-072)
+            raise ExclusionSetUnavailable() from exc
         self._cache.set_members(key, (str(i) for i in fresh), self._ttl)
         return fresh
