@@ -1,0 +1,58 @@
+# Configuración versionada del motor — v1 (T004). Inventario autoritativo: data-model.md §4.
+# `config_version` es el hash del contenido; cambiar cualquier valor es una versión nueva.
+# El rollback es HACIA ADELANTE: nueva versión con otro `version_label` (RD-94, DI-24).
+# Parámetros operativos (TTLs, retención, umbral de recálculo, MAXLEN…) NO van acá (RD-46).
+
+version_label: v1
+
+# Pesos de la combinación lineal (D4). alpha+beta+gamma = 1.
+alpha: 0.5
+beta: 0.3
+gamma: 0.2
+
+# Vecinos colaborativos (D4) y mínimo de vecinos con peso no despreciable (RD-84, FR-096).
+k: 20
+collab_min_neighbors: 10
+
+# Diversificación MMR (D4) y tope de cluster en la selección (FR-071a, RD-108).
+lambda_mmr: 0.7
+diversity_max_cluster_share: 0.4
+
+# Dominio del tamaño de resultado (FR-006a, RD-73, RD-78).
+top_n_min: 10
+top_n_default: 20
+top_n_max: 50
+
+# Ponderación de señales sobre el perfil (FR-022a). Sin peso de consumo: RD-99 (FR-022b).
+peso_like: 1.0
+peso_dislike: -1.0
+
+# Popularidad: límite inferior de Wilson sobre ventana (RD-44, RD-53, RD-108).
+popularity_window_days: 90
+popularity_confidence_z: 1.96
+
+# Respaldo precalculado: 2 × top_n_max (FR-033f, RD-111).
+fallback_stored_size: 100
+
+# Cuota de novedades del top-N PERSONALIZADO; el prefijo `fallback_` es histórico (RD-102).
+fallback_new_item_quota_ratio: 0.20
+emergent_evidence_threshold: 20
+
+# Declaración de gustos: mínimo de tags propios por módulo (FR-083, RD-68).
+declared_tags_min: 5
+
+# Intensidad de la segmentación regional del término colaborativo (FR-081b, FR-090a, RD-79).
+# 0 es el neutro; v1 arranca activo en su intensidad mínima.
+region_weight_factor: 0.1
+
+# Criterio de regeneración del vocabulario y transición (FR-010g).
+vocab_regeneration_policy:
+  trigger: tag_set_hash_change
+  transition: recompute_all_before_activate
+
+# Escala etaria propia de RecoMe: única fuente del mapeo ordinal (FR-053, §4.1, RD-47).
+# Los literales son los que viajan por el contrato, incluido el `+` (CR-15).
+age_rating_catalog:
+  - { rating: ATP, ordinal: 0, min_age: 0 }
+  - { rating: "+13", ordinal: 1, min_age: 13 }
+  - { rating: "+18", ordinal: 2, min_age: 18 }

@@ -229,7 +229,7 @@ pertenecer al Milestone 11)*:
 - [ ] T001 Estructura del paquete y entrypoints en `src/recomendaciones/{api,engine,config,worker,transformer,batch,storage,observability,shared}/`
 - [X] T002 Configuración por entorno y gestión de la API key interna en `src/recomendaciones/config/settings.py` (TDD)
 - [X] T003 Esquema DB Recomendaciones + Alembic en `src/recomendaciones/storage/db/models.py` (TDD)
-- [ ] T004 [P] Configuración versionada del motor + loader validante en `src/recomendaciones/config/engine_config/v1.yaml` (TDD)
+- [X] T004 [P] Configuración versionada del motor + loader validante en `src/recomendaciones/config/engine_config/v1.yaml` (TDD)
 - [ ] T005 [P] Modelo de dominio compartido y errores tipados en `src/recomendaciones/shared/domain.py` (TDD)
 - [ ] T006 [P] Test de arquitectura: `api/` no importa `engine/` en `tests/unit/test_architecture.py`
 - [ ] T007 Vectorización TF-IDF sobre vocabulario compartido en `src/recomendaciones/engine/content.py` (TDD)
@@ -439,38 +439,38 @@ valor del top-N, solo **cuándo** se lo recomputa; **`recompute_requests_maxlen`
 RD-108); y **`event_redelivery_window_hours`** (RD-110), copiado de la configuración real del broker.
 
 **Criterios de aceptación**:
-- [ ] `alpha+beta+gamma` fuera de `1.0±ε` → fallo de arranque con mensaje que nombra el campo (FR-027)
-- [ ] `alpha`, `beta`, `gamma` y `lambda_mmr` fuera de `[0,1]` → fallo de arranque. `peso_like > 0` y
+- [X] `alpha+beta+gamma` fuera de `1.0±ε` → fallo de arranque con mensaje que nombra el campo (FR-027)
+- [X] `alpha`, `beta`, `gamma` y `lambda_mmr` fuera de `[0,1]` → fallo de arranque. `peso_like > 0` y
       `peso_dislike < 0`: el like refuerza y el dislike penaliza (FR-022a). *(Decía «cualquier peso
       fuera de `[0,1]`», que rechazaba el propio `peso_dislike: -1.0` de `v1`.)*
-- [ ] `popularity_confidence_z > 0` **estricto**: `0` se rechaza explícitamente porque degenera el
+- [X] `popularity_confidence_z > 0` **estricto**: `0` se rechaza explícitamente porque degenera el
       estimador de Wilson en la proporción cruda (FR-033a3, RD-44)
-- [ ] Una clave que intente desactivar el filtro de edad o de exclusión → fallo de arranque (FR-054)
-- [ ] `age_rating_catalog` es la **única** fuente de valores válidos (FR-053); no hay constantes de rating en código
-- [ ] `age_rating_catalog`: ordinal **único, contiguo y creciente** con `min_age`; si no, fallo de
+- [X] Una clave que intente desactivar el filtro de edad o de exclusión → fallo de arranque (FR-054)
+- [X] `age_rating_catalog` es la **única** fuente de valores válidos (FR-053); no hay constantes de rating en código
+- [X] `age_rating_catalog`: ordinal **único, contiguo y creciente** con `min_age`; si no, fallo de
       arranque (`data-model.md` §4.1)
-- [ ] **El loader RECHAZA `tiebreak_criteria`** si aparece: fue eliminado del esquema por RD-10.
+- [X] **El loader RECHAZA `tiebreak_criteria`** si aparece: fue eliminado del esquema por RD-10.
       El desempate sigue sin depender del orden de iteración (FR-070), pero por diseño fijo, no por
       configuración
-- [ ] `region_weight_factor` valida `0 <= x < 1` — **límite inferior INCLUSIVO** (FR-081b, corregido por
+- [X] `region_weight_factor` valida `0 <= x < 1` — **límite inferior INCLUSIVO** (FR-081b, corregido por
       RD-76: excluirlo volvía **irrepresentable** el valor neutro y la configuración de `v1` no habría
       podido cargarse) y superior **estricto** (equivale al filtro duro que FR-081a prohíbe)
-- [ ] `0 < fallback_new_item_quota_ratio < 1` y `10 <= top_n_min <= top_n_default <= top_n_max`
-- [ ] `declared_tags_min` y `collab_min_neighbors` son enteros positivos y están presentes
-- [ ] `emergent_evidence_threshold` es entero positivo y está presente (RD-102)
-- [ ] `0 < diversity_max_cluster_share ≤ 1` (FR-071)
-- [ ] `fallback_stored_size` (**100**) presente y `≥ top_n_max` (FR-033f, RD-111); el operativo
+- [X] `0 < fallback_new_item_quota_ratio < 1` y `10 <= top_n_min <= top_n_default <= top_n_max`
+- [X] `declared_tags_min` y `collab_min_neighbors` son enteros positivos y están presentes
+- [X] `emergent_evidence_threshold` es entero positivo y está presente (RD-102)
+- [X] `0 < diversity_max_cluster_share ≤ 1` (FR-071)
+- [X] `fallback_stored_size` (**100**) presente y `≥ top_n_max` (FR-033f, RD-111); el operativo
       `recompute_requests_max_deliveries` (**5**) presente y positivo
-- [ ] **FR-068b con lista cerrada** (RD-110): `signal_retention_days` debe superar estrictamente a
+- [X] **FR-068b con lista cerrada** (RD-110): `signal_retention_days` debe superar estrictamente a
       **las tres** ventanas —`popularity_window_days`, la retención de idempotencia y
       `event_redelivery_window_hours`—; si alguna falta o no se cumple, el arranque falla nombrándola
-- [ ] **Una clave de peso de consumo se rechaza** si aparece (RD-99): un parámetro sin consumidor es una
+- [X] **Una clave de peso de consumo se rechaza** si aparece (RD-99): un parámetro sin consumidor es una
       invitación a conectarlo
-- [ ] **Una versión desactivada no puede reactivarse** (DI-24): si el hash del archivo coincide con una
+- [X] **Una versión desactivada no puede reactivarse** (DI-24): si el hash del archivo coincide con una
       versión desactivada, el arranque falla con un mensaje que indica que el rollback se hace
       **hacia adelante** —versión nueva con otro `version_label`— (RD-94)
-- [ ] `config_version` es determinista: mismo archivo → mismo hash, en cualquier máquina
-- [ ] **Deuda del prototipo resuelta**: no queda ninguna constante del motor hardcodeada
+- [X] `config_version` es determinista: mismo archivo → mismo hash, en cualquier máquina
+- [X] **Deuda del prototipo resuelta**: no queda ninguna constante del motor hardcodeada
 
 **Tests**: `tests/unit/test_config_loader.py` — tabla de configuraciones inválidas (suma ≠ 1, `alpha` fuera de `[0,1]`, `peso_dislike ≥ 0`, `popularity_confidence_z = 0`, catálogo etario con ordinal repetido o salteado, filtro desactivado, rating fuera de catálogo, **`tiebreak_criteria` presente**), cada una debe fallar; hash reproducible entre dos cargas; archivo idéntico a una versión desactivada → fallo con mensaje de rollback hacia adelante.
 
