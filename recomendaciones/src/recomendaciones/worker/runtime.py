@@ -15,7 +15,8 @@ from recomendaciones.shared.errors import CacheUnavailable
 from recomendaciones.storage.cache.filters import FiltersCache
 from recomendaciones.storage.db.exclusions import ExclusionResolver
 from recomendaciones.storage.db.filters_source import DbFiltersSource
-from recomendaciones.worker.consumer import EventConsumer
+from recomendaciones.storage.cache.recompute import RecomputeStream
+from recomendaciones.worker.consumer import EventConsumer, RetryPolicy
 from recomendaciones.worker.handler import ActualizarHandler, Recomputer
 from recomendaciones.worker.idempotency import EventIdempotency
 from recomendaciones.worker.requests_stream import RecomputeRequestConsumer
@@ -27,7 +28,8 @@ log = logging.getLogger(__name__)
 
 def build_worker(runtime: Runtime) -> tuple[EventConsumer, RecomputeRequestConsumer]:
     settings = runtime.settings
-    recomputer = Recomputer(runtime.factory, runtime.repository, runtime.config, runtime.metrics)
+    signaler = RecomputeStream(runtime.cache, maxlen=settings.recompute_requests_maxlen, ttl_suppress=runtime.ttls.suppress)
+    recomputer = Recomputer(runtime.factory, runtime.repository, runtime.config, runtime.metrics, signaler=signaler)
     filters = FiltersCache(runtime.cache, DbFiltersSource(runtime.factory), runtime.ttls.filters)
     handler = ActualizarHandler(
         idempotency=EventIdempotency(
@@ -42,6 +44,7 @@ def build_worker(runtime: Runtime) -> tuple[EventConsumer, RecomputeRequestConsu
         actualizar_topology(),
         handler,
         on_dead_letter=lambda reason: runtime.metrics.inc("reco_dlq_messages_total", reason=reason),
+        retry=RetryPolicy(settings.retry_max_attempts, settings.retry_backoff_base_seconds),
     )
     requests = RecomputeRequestConsumer(
         runtime.cache,

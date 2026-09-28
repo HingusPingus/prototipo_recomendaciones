@@ -117,7 +117,9 @@ class Recomputer:
         metrics: Metrics,
         *,
         catalog: CatalogCache | None = None,
+        signaler=None,  # noqa: ANN001 — RecomputeSignaler: reencola el módulo opuesto que falló (T025)
     ) -> None:
+        self._signaler = signaler
         self._factory = factory
         self._repository = repository
         self._cfg = config
@@ -335,6 +337,16 @@ class Recomputer:
         )
         self._metrics.inc("reco_cross_module_propagation_total", propagated="true" if shared else "false")
         if shared:
-            self.recompute(event.user_id, event.module.opposite, "signal")  # unidad independiente (FR-067)
+            try:
+                self.recompute(event.user_id, event.module.opposite, "signal")  # unidad independiente (FR-067)
+            except Exception:  # noqa: BLE001 — éxito parcial: el principal ya está persistido y no se revierte
+                log.warning(
+                    "recálculo del módulo opuesto fallido; se reencola solo el opuesto",
+                    extra={"event_id": str(event.event_id), "user_id": str(event.user_id), "reco_module": event.module.opposite.value},
+                )
+                self._metrics.inc("reco_recompute_total", status="opposite_requeued", module=event.module.opposite.value)
+                if self._signaler is None:
+                    raise
+                self._signaler.request(event.user_id, event.module.opposite, "opposite_retry")
             return "recomputed"
         return "skipped_no_shared_tag"

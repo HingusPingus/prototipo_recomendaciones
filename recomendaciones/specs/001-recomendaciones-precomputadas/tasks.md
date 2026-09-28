@@ -268,7 +268,7 @@ pertenecer al Milestone 11)*:
 
 ### Fase 2 — Robustez operativa
 
-- [ ] T025 [US2] Reintentos con backoff y DLQ en `src/recomendaciones/worker/retry.py` (TDD)
+- [X] T025 [US2] Reintentos con backoff y DLQ en `src/recomendaciones/worker/retry.py` (TDD)
 - [ ] T026 [US2] Manejo de payload inválido sin bloquear la cola en `src/recomendaciones/worker/dlq.py` (TDD)
 - [ ] T031 [P] [US3] Registro de freshness de sincronización en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T032 [US3] Comportamiento ante `api-general` no disponible en `src/recomendaciones/transformer/resilience.py` (TDD)
@@ -1128,10 +1128,10 @@ expirar la marca debe poder reprocesarse sin corromper estado.
 **Dep.**: T023
 
 **Criterios de aceptación**:
-- [ ] Fallo transitorio → reintento con backoff; máximo configurable (FR-068)
-- [ ] Agotados los intentos → DLQ con la causa registrada
-- [ ] Fallo en el módulo opuesto no revierte el módulo principal (FR-067)
-- [ ] Los mensajes en DLQ conservan el payload íntegro para reproceso manual
+- [X] Fallo transitorio → reintento con backoff; máximo configurable (FR-068)
+- [X] Agotados los intentos → DLQ con la causa registrada
+- [X] Fallo en el módulo opuesto no revierte el módulo principal (FR-067)
+- [X] Los mensajes en DLQ conservan el payload íntegro para reproceso manual
 
 **Tests**: `tests/integration/test_retry_dlq.py` — inyectar fallo transitorio → reintenta; fallo permanente → DLQ tras 5; fallo del opuesto → principal persistido.
 

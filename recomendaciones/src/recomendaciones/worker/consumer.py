@@ -11,17 +11,31 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
 import aio_pika
 
-from recomendaciones.shared.errors import InvalidEventPayload
+from recomendaciones.shared.errors import ContractViolation, InvalidEventPayload
 from recomendaciones.worker.schemas import extract_event_id, parse_actualizar
 from recomendaciones.worker.topology import Topology
 
 log = logging.getLogger(__name__)
 
 E = TypeVar("E")
+
+RETRY_HEADER = "x-retry-count"
+
+
+@dataclass(frozen=True, slots=True)
+class RetryPolicy:
+    """Backoff exponencial con máximo configurable de intentos (FR-013, FR-068; constitución: 5)."""
+
+    max_attempts: int
+    backoff_base_seconds: float
+
+    def delay_seconds(self, attempt: int) -> float:
+        return self.backoff_base_seconds * 2 ** (attempt - 1)
 
 
 class EventConsumer(Generic[E]):
@@ -34,6 +48,7 @@ class EventConsumer(Generic[E]):
         parser: Callable[[bytes], E] = parse_actualizar,  # type: ignore[assignment]
         prefetch: int = 16,
         on_dead_letter: Callable[[str], None] | None = None,
+        retry: RetryPolicy | None = None,
     ) -> None:
         self._url = url
         self._topology = topology
@@ -41,6 +56,7 @@ class EventConsumer(Generic[E]):
         self._parser = parser
         self._prefetch = prefetch
         self._on_dead_letter = on_dead_letter
+        self._retry = retry
         self._connection: aio_pika.abc.AbstractRobustConnection | None = None
         self._channel: aio_pika.abc.AbstractChannel | None = None
 
@@ -80,6 +96,27 @@ class EventConsumer(Generic[E]):
             return
         try:
             await asyncio.to_thread(self._handler, event)
-        except Exception as exc:  # noqa: BLE001 — T025 agrega reintentos con backoff antes de la DLQ
-            await self.dead_letter(message, "processing_error", f"{exc.__class__.__name__}: {exc}")
+        except (InvalidEventPayload, ContractViolation) as exc:  # nunca va a ser válido: sin reintento (T026)
+            await self.dead_letter(message, "contract_violation", exc.message)
+        except Exception as exc:  # noqa: BLE001 — fallo transitorio: backoff y, agotado, DLQ (T025)
+            await self._retry_or_dead_letter(message, f"{exc.__class__.__name__}: {exc}")
         await message.ack()
+
+    async def _retry_or_dead_letter(self, message: aio_pika.abc.AbstractIncomingMessage, cause: str) -> None:
+        attempt = int((message.headers or {}).get(RETRY_HEADER, 0)) + 1
+        if self._retry is None or self._topology.retry_queue is None or attempt >= self._retry.max_attempts:
+            await self.dead_letter(message, "retries_exhausted", cause)
+            return
+        assert self._channel is not None
+        headers = {**(message.headers or {}), RETRY_HEADER: attempt}
+        delay_ms = max(1, int(self._retry.delay_seconds(attempt) * 1000))
+        await self._channel.default_exchange.publish(
+            aio_pika.Message(
+                message.body,
+                headers=headers,
+                expiration=delay_ms / 1000,
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            ),
+            routing_key=self._topology.retry_queue,  # al expirar vuelve a la cola principal (DLX)
+        )
+        log.info("reintento programado", extra={"event_id": extract_event_id(message.body), "attempt": attempt, "delay_ms": delay_ms})
