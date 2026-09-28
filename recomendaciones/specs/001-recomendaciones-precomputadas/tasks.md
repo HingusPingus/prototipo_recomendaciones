@@ -261,7 +261,7 @@ pertenecer al Milestone 11)*:
 - [ ] T038 [P] [US6] Batch de top-N de respaldo en `src/recomendaciones/batch/fallback.py` (TDD)
 - [ ] T049 Definir `contracts/` primero (OpenAPI + JSON Schema) en `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
 - [X] T053 [P] [US4] Endpoint de declaración de gustos en `src/recomendaciones/api/routes/declaraciones.py` (TDD)
-- [ ] T054 [US4] Herencia de tags entre módulos en `src/recomendaciones/api/services/declaracion.py` (TDD)
+- [X] T054 [US4] Herencia de tags entre módulos en `src/recomendaciones/api/services/declaracion.py` (TDD)
 - [ ] T055 [US4] Rechazo por módulo sin declaración en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [ ] T063 [US6] Recálculo de popularidad por ventana en `src/recomendaciones/batch/popularidad.py` (TDD)
 - [ ] T064 [US2] Persistencia de la señal del evento y materialización de su exclusión en `src/recomendaciones/worker/signals.py` (TDD)
@@ -2157,19 +2157,19 @@ para validar e informar.
 **Dep.**: T053, T008
 
 **Criterios de aceptación**:
-- [ ] Los tags heredables se resuelven vía `tag_modules` (declarados en el otro módulo ∩ compartidos),
+- [X] Los tags heredables se resuelven vía `tag_modules` (declarados en el otro módulo ∩ compartidos),
       no por copia ciega
-- [ ] Los heredados **no** se escriben en `user_declared_tags`: toda fila de la tabla es propia (RD-97)
-- [ ] Los heredados **sí** forman parte del insumo del perfil del módulo nuevo (T008)
-- [ ] El mínimo de FR-083 se cuenta **solo** sobre los tags declarados en ese módulo: un usuario con
+- [X] Los heredados **no** se escriben en `user_declared_tags`: toda fila de la tabla es propia (RD-97)
+- [X] Los heredados **sí** forman parte del insumo del perfil del módulo nuevo (T008)
+- [X] El mínimo de FR-083 se cuenta **solo** sobre los tags declarados en ese módulo: un usuario con
       5 heredados y 0 propios **no** satisface FR-083 y su declaración se rechaza
-- [ ] Si el usuario declara en el otro módulo un tag compartido **nuevo**, el insumo heredado lo
+- [X] Si el usuario declara en el otro módulo un tag compartido **nuevo**, el insumo heredado lo
       refleja en el siguiente recálculo sin escritura adicional (consecuencia de derivar)
-- [ ] **El feedback no altera la pertenencia del tag a la declaración** (FR-086): un dislike reduce
+- [X] **El feedback no altera la pertenencia del tag a la declaración** (FR-086): un dislike reduce
       la **contribución** de sus tags al perfil y **nunca** borra ni hace caducar una fila de
       `user_declared_tags`. Se verifica sobre la tabla, no sobre el perfil: la declaración es un
       enunciado del usuario, no una inferencia del sistema, y el sistema no revoca enunciados ajenos
-- [ ] Un usuario que acumula dislikes sobre todos sus tags declarados **sigue declarado** y sigue
+- [X] Un usuario que acumula dislikes sobre todos sus tags declarados **sigue declarado** y sigue
       satisfaciendo FR-083 — de lo contrario FR-088 lo expulsaría por haber usado el producto
 
 **Tests**: `tests/unit/test_herencia_tags.py` — el caso 5 heredados / 0 propios debe ser rechazo; tras
