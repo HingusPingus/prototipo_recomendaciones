@@ -265,7 +265,9 @@ def test_di_11_retirement_keeps_signals_and_profiles(db_factory, redis_client) -
 
 # Escritor único por tabla (§1.1): módulo(s) de src/ autorizados a escribirla.
 WRITERS: dict[str, set[str]] = {
-    "User": {"transformer/pipeline.py"},
+    # §7.5 manda al refresco etario (T051) actualizar el derivado `max_age_ordinal` —la edad cambia sin que
+    # nadie escriba—; solo esas columnas, lo que fija el test siguiente. El resto de la fila es proyección.
+    "User": {"transformer/pipeline.py", "batch/age_threshold_refresh.py"},
     "Item": {"transformer/pipeline.py"},
     "Tag": {"transformer/pipeline.py"},
     "ItemTag": {"transformer/pipeline.py"},
@@ -296,6 +298,13 @@ def test_di_13_single_writer_per_table() -> None:
             if model in WRITERS and rel not in WRITERS[model]:
                 offenders.append(f"{rel} escribe {model}")
     assert not offenders, offenders
+
+
+def test_age_refresh_writes_only_the_age_derivatives_of_users() -> None:
+    source = (SRC / "batch/age_threshold_refresh.py").read_text(encoding="utf-8")
+    written = set(re.findall(r"\.values\(([^)]*)\)", source.split("sa.update(User)", 1)[1])[0].replace(" ", "").split(","))
+    columns = {w.split("=")[0] for w in written}
+    assert columns == {"max_age_ordinal", "age_config_version", "age_derived_at"}
 
 
 def test_di_16_tag_with_assignments_cannot_be_deleted(db_factory) -> None:  # noqa: ANN001
