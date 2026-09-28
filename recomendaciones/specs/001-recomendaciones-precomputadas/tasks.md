@@ -233,7 +233,7 @@ pertenecer al Milestone 11)*:
 - [X] T005 [P] Modelo de dominio compartido y errores tipados en `src/recomendaciones/shared/domain.py` (TDD)
 - [X] T006 [P] Test de arquitectura: `api/` no importa `engine/` en `tests/unit/test_architecture.py`
 - [X] T007 Vectorización TF-IDF sobre vocabulario compartido en `src/recomendaciones/engine/content.py` (TDD)
-- [ ] T008 Similitud coseno y construcción de perfil en `src/recomendaciones/engine/similarity.py` (TDD)
+- [X] T008 Similitud coseno y construcción de perfil en `src/recomendaciones/engine/similarity.py` (TDD)
 - [ ] T009 [P] Señal content-based en `src/recomendaciones/engine/content.py` (TDD)
 - [ ] T010 [P] Señal colaborativa (k vecinos) en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [ ] T011 [P] [US4] Señal cross-module en `src/recomendaciones/engine/cross_module.py` (TDD)
@@ -579,21 +579,21 @@ y dislikes construyen el perfil; el consumo no lo altera** (FR-022b, corrige P1 
 **Dep.**: T007
 
 **Criterios de aceptación**:
-- [ ] El coseno nunca sale de `[-1,1]`, incluso con error de punto flotante
-- [ ] Vector nulo → similitud 0, sin división por cero
-- [ ] El perfil queda L2-normalizado (FR-022c)
-- [ ] Una señal de tipo `consumo` **no modifica** el vector de perfil (FR-022b)
-- [ ] `like` refuerza y `dislike` penaliza, con magnitudes de configuración (FR-029a-d)
-- [ ] Ante señales contradictorias, gana la más reciente por `occurred_at` (FR-029d)
-- [ ] El perfil `general` se construye agregando pesos por tag sobre ambos módulos
-- [ ] **Los insumos del perfil son la declaración de gustos y las señales vigentes** (FR-087, RD-68):
+- [X] El coseno nunca sale de `[-1,1]`, incluso con error de punto flotante
+- [X] Vector nulo → similitud 0, sin división por cero
+- [X] El perfil queda L2-normalizado (FR-022c)
+- [X] Una señal de tipo `consumo` **no modifica** el vector de perfil (FR-022b)
+- [X] `like` refuerza y `dislike` penaliza, con magnitudes de configuración (FR-029a-d)
+- [X] Ante señales contradictorias, gana la más reciente por `occurred_at` (FR-029d)
+- [X] El perfil `general` se construye agregando pesos por tag sobre ambos módulos
+- [X] **Los insumos del perfil son la declaración de gustos y las señales vigentes** (FR-087, RD-68):
       la declaración se traduce a señales sintéticas de tipo `like` sobre los ítems que contienen los
       tags declarados —mecanismo de `cli_preferencias.py`—, que **no** se persisten en `user_signals`.
       Un usuario con declaración y sin señales tiene perfil no vacío
-- [ ] Los tags **heredados** del otro módulo (compartidos según `tag_modules`) se incorporan al insumo
+- [X] Los tags **heredados** del otro módulo (compartidos según `tag_modules`) se incorporan al insumo
       **derivándolos** en la construcción, no leyéndolos de una tabla (FR-085, RD-97)
-- [ ] Las señales sobre ítems **retirados** siguen alimentando el perfil (FR-073)
-- [ ] **FR-086b**: dislikes suficientes llevan el peso de un tag declarado a cero o a negativo; la
+- [X] Las señales sobre ítems **retirados** siguen alimentando el perfil (FR-073)
+- [X] **FR-086b**: dislikes suficientes llevan el peso de un tag declarado a cero o a negativo; la
       declaración no se toca y un like posterior lo vuelve a subir
 
 > *Agregado el 2026-09-27: la siembra por declaración estaba solo en T056 (Fase 2), mientras T053–T055
