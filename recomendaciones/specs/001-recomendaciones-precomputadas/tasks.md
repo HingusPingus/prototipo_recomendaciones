@@ -243,7 +243,7 @@ pertenecer al Milestone 11)*:
 - [X] T015 Diversificación MMR en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [X] T016 [US5] Pipeline de post-proceso con orden garantizado en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T017 [US5] Batería exhaustiva de invariantes en `tests/invariants/` (TDD)
-- [ ] T018 Cliente Redis y esquema de claves en `src/recomendaciones/storage/cache/keys.py` (TDD)
+- [X] T018 Cliente Redis y esquema de claves en `src/recomendaciones/storage/cache/keys.py` (TDD)
 - [ ] T019 Escritura del top-N con score y `config_version` en `src/recomendaciones/storage/cache/repository.py` (TDD)
 - [ ] T020 [US6] Política de cache miss y señalización de recálculo en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [ ] T021 [P] [US6] Comportamiento ante Redis caído en `src/recomendaciones/storage/cache/client.py` (TDD)
@@ -922,30 +922,30 @@ modo que resultados de versiones distintas conviven sin colisionar.
 **Dep.**: T002, T004
 
 **Criterios de aceptación**:
-- [ ] Las claves se construyen por función tipada; **no hay concatenación de strings ad-hoc**
-- [ ] `config_version` está en la clave de `reco:` **y también en la de `reco:stale:`** (hallazgo F3):
+- [X] Las claves se construyen por función tipada; **no hay concatenación de strings ad-hoc**
+- [X] `config_version` está en la clave de `reco:` **y también en la de `reco:stale:`** (hallazgo F3):
       un resultado de una configuración anterior nunca se sirve **rotulado** con la versión vigente
-- [ ] **Versiones legibles** (RD-103): al arrancar se calcula la lista de versiones desactivadas hace
+- [X] **Versiones legibles** (RD-103): al arrancar se calcula la lista de versiones desactivadas hace
       menos de `TTL_STALE` **con catálogo etario idéntico** al activo; una versión con catálogo etario
       distinto **nunca** es legible
-- [ ] Existe la familia **`recompute:requests`** (Stream, sin TTL, `MAXLEN` aproximado desde
+- [X] Existe la familia **`recompute:requests`** (Stream, sin TTL, `MAXLEN` aproximado desde
       `recompute_requests_maxlen`) con productor `XADD` y lectura por grupo de consumidores (RD-100)
-- [ ] Los TTL vienen de configuración (FR-068), no de constantes
-- [ ] `filters:{user_id}` tiene TTL **más corto** que `reco:` — corrige P4 del prototipo, donde compartían 7 días
-- [ ] **Deuda del prototipo resuelta**: caché en memoria reemplazada por Redis persistente
-- [ ] `INV-2`: no hay dato cuya única copia esté en Redis
-- [ ] Existe la familia **`retired:{module}`** (§3.1), usada como guarda del request path por T037
-- [ ] Ese set contiene **solo los ítems retirados en los últimos `TTL_STALE` + 1 día** (RD-39), no
+- [X] Los TTL vienen de configuración (FR-068), no de constantes
+- [X] `filters:{user_id}` tiene TTL **más corto** que `reco:` — corrige P4 del prototipo, donde compartían 7 días
+- [X] **Deuda del prototipo resuelta**: caché en memoria reemplazada por Redis persistente
+- [X] `INV-2`: no hay dato cuya única copia esté en Redis
+- [X] Existe la familia **`retired:{module}`** (§3.1), usada como guarda del request path por T037
+- [X] Ese set contiene **solo los ítems retirados en los últimos `TTL_STALE` + 1 día** (RD-39), no
       el histórico completo. La cota no es heurística: un ítem retirado hace más de `TTL_STALE` no
       puede estar en ninguna entrada de caché viva
-- [ ] La ventana **se deriva de `TTL_STALE`**, no es constante independiente. **DI-25** verifica el
+- [X] La ventana **se deriva de `TTL_STALE`**, no es constante independiente. **DI-25** verifica el
       acoplamiento: subir `TTL_STALE` sin subir la ventana haría fallar la guarda **en silencio**
-- [ ] `filters:{user_id}` porta **`declared_modules`** además de edad y exclusiones, y se repuebla
+- [X] `filters:{user_id}` porta **`declared_modules`** además de edad y exclusiones, y se repuebla
       desde `users`, `user_exclusions` y `user_declared_tags` ante miss (RD-96)
-- [ ] Existe una operación de **invalidación de `filters:{user_id}`**, usada por el resolutor de
+- [X] Existe una operación de **invalidación de `filters:{user_id}`**, usada por el resolutor de
       exclusiones (T014) y por el endpoint de declaración (T053), siempre **antes** de la escritura en
       Postgres (FR-080c)
-- [ ] **SC-022** — un cambio de versión de configuración provoca 0 invalidaciones masivas: la
+- [X] **SC-022** — un cambio de versión de configuración provoca 0 invalidaciones masivas: la
       versión en la clave hace que las entradas viejas expiren solas, y mientras viven **se siguen
       leyendo** por la lista de versiones legibles (RD-103, FR-025c). *(Movido desde T060; el conflicto
       con FR-025c quedó resuelto por RD-103.)*
