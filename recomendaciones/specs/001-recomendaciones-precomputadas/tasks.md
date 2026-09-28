@@ -232,7 +232,7 @@ pertenecer al Milestone 11)*:
 - [X] T004 [P] Configuración versionada del motor + loader validante en `src/recomendaciones/config/engine_config/v1.yaml` (TDD)
 - [X] T005 [P] Modelo de dominio compartido y errores tipados en `src/recomendaciones/shared/domain.py` (TDD)
 - [X] T006 [P] Test de arquitectura: `api/` no importa `engine/` en `tests/unit/test_architecture.py`
-- [ ] T007 Vectorización TF-IDF sobre vocabulario compartido en `src/recomendaciones/engine/content.py` (TDD)
+- [X] T007 Vectorización TF-IDF sobre vocabulario compartido en `src/recomendaciones/engine/content.py` (TDD)
 - [ ] T008 Similitud coseno y construcción de perfil en `src/recomendaciones/engine/similarity.py` (TDD)
 - [ ] T009 [P] Señal content-based en `src/recomendaciones/engine/content.py` (TDD)
 - [ ] T010 [P] Señal colaborativa (k vecinos) en `src/recomendaciones/engine/collaborative.py` (TDD)
@@ -545,16 +545,16 @@ producido registra la `vocab_version` con la que se generó (FR-010f).
 **Dep.**: T004, T005
 
 **Criterios de aceptación**:
-- [ ] El vocabulario es único: un vector de película y uno de juego son comparables (FR-010d)
-- [ ] **No existe** camino de código que construya un espacio por módulo (corrige P5 del prototipo)
-- [ ] Todo vector emitido lleva `vocab_version`; comparar vectores de versiones distintas lanza error (FR-010f)
-- [ ] El vocabulario es determinista: mismo catálogo → mismo espacio, mismo orden de dimensiones
-- [ ] Función pura: sin I/O, sin reloj
-- [ ] **Ninguna ponderación IDF es negativa**: un tag presente en todos los ítems no puede invertir el
+- [X] El vocabulario es único: un vector de película y uno de juego son comparables (FR-010d)
+- [X] **No existe** camino de código que construya un espacio por módulo (corrige P5 del prototipo)
+- [X] Todo vector emitido lleva `vocab_version`; comparar vectores de versiones distintas lanza error (FR-010f)
+- [X] El vocabulario es determinista: mismo catálogo → mismo espacio, mismo orden de dimensiones
+- [X] Función pura: sin I/O, sin reloj
+- [X] **Ninguna ponderación IDF es negativa**: un tag presente en todos los ítems no puede invertir el
       sentido de su pertenencia. *El prototipo usa `log(N / (1 + df))`, que da `−0,405` para un tag
       presente en todo el catálogo.* La fórmula es **`ln((1 + N) / (1 + df)) + 1`** (RD-105, FR-022):
       un tag en todo el catálogo pesa exactamente 1
-- [ ] Los ítems **retirados** no participan de la ponderación del corpus (RD-25)
+- [X] Los ítems **retirados** no participan de la ponderación del corpus (RD-25)
 
 > *SC-016 (propagación al módulo opuesto) estaba atribuido acá; es comportamiento del worker y se
 > movió a T027 el 2026-09-27.*
