@@ -238,7 +238,7 @@ pertenecer al Milestone 11)*:
 - [X] T010 [P] Señal colaborativa (k vecinos) en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [X] T011 [P] [US4] Señal cross-module en `src/recomendaciones/engine/cross_module.py` (TDD)
 - [X] T012 Combinación lineal y desempate determinista en `src/recomendaciones/engine/scoring.py` (TDD)
-- [ ] T013 [US5] Filtro de edad por `age_rating` (fail-closed) en `src/recomendaciones/engine/postprocess.py` (TDD)
+- [X] T013 [US5] Filtro de edad por `age_rating` (fail-closed) en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T014 [US5] Filtro de exclusión en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T015 Diversificación MMR en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T016 [US5] Pipeline de post-proceso con orden garantizado en `src/recomendaciones/engine/postprocess.py` (TDD)
@@ -746,11 +746,11 @@ directamente P2 del prototipo, donde un rating desconocido se trataba como apto 
 **Dep.**: T004, T005
 
 **Criterios de aceptación**:
-- [ ] `age_rating` ausente, nulo, vacío o **fuera del catálogo** → ítem **no apto** (FR-051)
-- [ ] El catálogo de ratings viene de configuración versionada (FR-053) — sin `dict` hardcodeado
-- [ ] **No existe** parámetro, flag ni rama que desactive el filtro (FR-054)
-- [ ] Un rating desconocido nuevo (p. ej. `"NC-17"` sin declarar) se filtra, no se admite
-- [ ] **SC-002** — 0 % de ítems que violen el filtro de edad. Acá se implementa; T017 y T052 lo ejercitan de forma exhaustiva
+- [X] `age_rating` ausente, nulo, vacío o **fuera del catálogo** → ítem **no apto** (FR-051)
+- [X] El catálogo de ratings viene de configuración versionada (FR-053) — sin `dict` hardcodeado
+- [X] **No existe** parámetro, flag ni rama que desactive el filtro (FR-054)
+- [X] Un rating desconocido nuevo (p. ej. `"NC-17"` sin declarar) se filtra, no se admite
+- [X] **SC-002** — 0 % de ítems que violen el filtro de edad. Acá se implementa; T017 y T052 lo ejercitan de forma exhaustiva
 
 **🔴 Paso 1 — Rojo** (`tests/invariants/test_age_filter.py`, commit propio): producto cartesiano
 `age_rating` × franja etaria (FR-055); property-based — para todo usuario menor, ningún ítem para
