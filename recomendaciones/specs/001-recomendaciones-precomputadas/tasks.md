@@ -264,7 +264,7 @@ pertenecer al Milestone 11)*:
 - [X] T054 [US4] Herencia de tags entre módulos en `src/recomendaciones/api/services/declaracion.py` (TDD)
 - [X] T055 [US4] Rechazo por módulo sin declaración en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [ ] T063 [US6] Recálculo de popularidad por ventana en `src/recomendaciones/batch/popularidad.py` (TDD)
-- [ ] T064 [US2] Persistencia de la señal del evento y materialización de su exclusión en `src/recomendaciones/worker/signals.py` (TDD)
+- [X] T064 [US2] Persistencia de la señal del evento y materialización de su exclusión en `src/recomendaciones/worker/signals.py` (TDD)
 
 ### Fase 2 — Robustez operativa
 
@@ -2485,23 +2485,23 @@ proyecta.
 **Dep.**: T003, T014, T018, T023, T024
 
 **Criterios de aceptación**:
-- [ ] Persiste en `user_signals` con `source = 'evento'`, `occurred_at` **del origen** y `received_at`
+- [X] Persiste en `user_signals` con `source = 'evento'`, `occurred_at` **del origen** y `received_at`
       local (CR-12, RD-32)
-- [ ] Deduplica por `origin_interaction_id` (DI-21) con la comparación de `data-model.md` §7.10:
+- [X] Deduplica por `origin_interaction_id` (DI-21) con la comparación de `data-model.md` §7.10:
       idéntica → reentrega, se descarta e incrementa `signal_duplicate_rejections_total{source="evento"}`;
       **distinta** → incumplimiento de contrato (FR-029e1): no se persiste, incrementa
       `contract_violations_total{field="origin_interaction_id"}` y el evento va a **DLQ** con la causa
       (FR-012) — nunca se absorbe en silencio
-- [ ] Invoca al resolutor de exclusiones (T014), que materializa la exclusión e **invalida
+- [X] Invoca al resolutor de exclusiones (T014), que materializa la exclusión e **invalida
       `filters:{user_id}` antes de escribir en Postgres** (FR-080c): la exclusión es efectiva en la
       **siguiente lectura** (RD-96, SC-003, SC-018)
-- [ ] Usuario o ítem **aún no materializados** → no se persiste, se registra como
+- [X] Usuario o ítem **aún no materializados** → no se persiste, se registra como
       `skipped_not_materialized` en `processed_events`, **sin reintento ni DLQ**: la sincronización la
       incorporará y la deduplicación impedirá contarla dos veces (edge cases de `spec.md`)
-- [ ] Un evento que no alcanza el umbral de FR-080a termina como `signal_recorded`; el que lo alcanza
+- [X] Un evento que no alcanza el umbral de FR-080a termina como `signal_recorded`; el que lo alcanza
       delega el recálculo en T027
-- [ ] `INV-4`: no llama a `api-general` ni escribe fuera de su DB; **no publica** ningún evento
-- [ ] Reprocesar el mismo evento deja una sola señal y la misma exclusión (FR-011, FR-011a)
+- [X] `INV-4`: no llama a `api-general` ni escribe fuera de su DB; **no publica** ningún evento
+- [X] Reprocesar el mismo evento deja una sola señal y la misma exclusión (FR-011, FR-011a)
 
 **🔴 Paso 1 — Rojo** (`tests/integration/test_event_signals.py`, commit propio): evento válido →
 una fila con `source='evento'`; el mismo evento dos veces → una fila; la misma interacción llegada
