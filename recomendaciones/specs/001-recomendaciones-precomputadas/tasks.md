@@ -253,7 +253,7 @@ pertenecer al Milestone 11)*:
 - [X] T027 [US2] Recálculo y propagación cross-module condicional en `src/recomendaciones/worker/handler.py` (TDD)
 - [X] T028 [US3] Cliente REST autenticado y de solo lectura en `src/recomendaciones/transformer/client.py` (TDD)
 - [X] T029 [US3] Materialización idempotente de usuarios, catálogo y actividad en `src/recomendaciones/transformer/pipeline.py` (TDD)
-- [ ] T030 [US3] Vocabulario versionado y reconciliación de vectores en `src/recomendaciones/transformer/vocabulary_sync.py` (TDD)
+- [X] T030 [US3] Vocabulario versionado y reconciliación de vectores en `src/recomendaciones/transformer/vocabulary_sync.py` (TDD)
 - [X] T033 [US1] Endpoint de lectura del top-N en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [X] T034 [US1] Autenticación por API key interna y no alcanzabilidad desde frontends en `src/recomendaciones/api/deps.py` (TDD)
 - [X] T035 [US1] Errores tipados y contrato estable en `src/recomendaciones/api/errors.py` (TDD)
@@ -1324,26 +1324,26 @@ escribe; T030 la usa y persiste.
 **Dep.**: T029, T007
 
 **Criterios de aceptación**:
-- [ ] El vocabulario se versiona; la versión activa es explícita y consultable
-- [ ] Regenerar el vocabulario **recalcula todos los vectores afectados antes** de activar la versión (FR-010g)
-- [ ] Durante la transición nunca se comparan vectores de versiones distintas (FR-010f)
-- [ ] El criterio de regeneración vive en configuración versionada (FR-010g)
-- [ ] Un vocabulario desactualizado degrada calidad, **nunca** corrección ni invariantes
-- [ ] No requiere aprobación de `api-general`: es interno (FR-010e)
-- [ ] **Reconciliación tras cada sincronización**: todo ítem **vigente**, **con al menos un tag** y
+- [X] El vocabulario se versiona; la versión activa es explícita y consultable
+- [X] Regenerar el vocabulario **recalcula todos los vectores afectados antes** de activar la versión (FR-010g)
+- [X] Durante la transición nunca se comparan vectores de versiones distintas (FR-010f)
+- [X] El criterio de regeneración vive en configuración versionada (FR-010g)
+- [X] Un vocabulario desactualizado degrada calidad, **nunca** corrección ni invariantes
+- [X] No requiere aprobación de `api-general`: es interno (FR-010e)
+- [X] **Reconciliación tras cada sincronización**: todo ítem **vigente**, **con al menos un tag** y
       **sin vector bajo la versión activa** recibe uno. El disparador ya **no** es solo el cambio de
       hash — un ítem nuevo con tags preexistentes no lo altera
-- [ ] **El arranque desde vacío es el caso degenerado del mismo procedimiento**, no un camino
+- [X] **El arranque desde vacío es el caso degenerado del mismo procedimiento**, no un camino
       aparte: sin versión activa se crea la primera y se vectoriza todo el catálogo vigente. Un
       camino de arranque separado sería código que corre una vez y se pudre sin que nadie lo note
-- [ ] **Calcula `tag_modules` solo sobre ítems vigentes** (`data-model.md` §2.12, RD-20, DI-15), después
+- [X] **Calcula `tag_modules` solo sobre ítems vigentes** (`data-model.md` §2.12, RD-20, DI-15), después
       de aplicar retiros: es el escritor único de esa tabla, de `vocab_versions` y de
       `vocab_version_tags` (DI-13)
-- [ ] Emite `vector_recompute_lag_seconds` (solo versión activa), `vocab_transition_progress` y
+- [X] Emite `vector_recompute_lag_seconds` (solo versión activa), `vocab_transition_progress` y
       `catalog_unvectorized_ratio` (§7.9). Tras RD-60 no existen ítems vigentes sin tags, de modo que
       `catalog_unvectorized_ratio` mide **rezago propio de vectorización**, no un defecto del origen
-- [ ] Es **idempotente**: dos corridas seguidas sin cambios de catálogo no reescriben vectores
-- [ ] Emite **`declarable_tags_total{module}`**: tags elegibles para declarar por módulo, según
+- [X] Es **idempotente**: dos corridas seguidas sin cambios de catálogo no reescriben vectores
+- [X] Emite **`declarable_tags_total{module}`**: tags elegibles para declarar por módulo, según
       `tag_modules` sobre ítems vigentes (DEP-10, RD-110). T042 alerta si baja de `declared_tags_min`
 
 > *Corregido el 2026-09-27: un criterio decía que «un ítem vigente sin tags queda sin vector
