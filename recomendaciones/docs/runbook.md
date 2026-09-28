@@ -330,3 +330,18 @@ pendientes (FR-091) y se reprocesan siempre.
 **Reducir `RECO_SIGNAL_RETENTION_DAYS` exige aprobación registrada** (RD-54): la purga es irreversible. Cada
 corrida registra en el log el valor vigente (`reco_signal_retention_days`), de modo que una reducción no
 aprobada sea detectable después. Aumentarlo es configuración normal.
+
+### CI
+
+`.github/workflows/ci.yml` (en la raíz del repositorio git) corre ocho gates —configuración, arquitectura,
+unitarios con cobertura de `engine/` ≥ 95 %, mutación de `postprocess`, invariantes, contratos, casos
+críticos e integración— y un job agregado `gates` que falla salvo que los ocho terminen en verde.
+
+**Configuración obligatoria en GitHub** (no la puede hacer este archivo): en *Settings → Branches →
+Branch protection rules* de `main`, activar *Require status checks to pass before merging* y marcar como
+requerido el check **`gates`**, con *Require branches to be up to date*. Sin esa regla un gate rojo no
+impide el merge, y un commit con `[skip ci]` deja el PR sin checks: con la regla, el check requerido queda
+pendiente y el merge sigue bloqueado.
+
+Mutante sobreviviente en el job `mutation`: los tests de invariantes dejaron de detectar una rotura del
+filtro de edad o de exclusión. No se «arregla» el mutante: se escribe el test que lo mata.
