@@ -8,10 +8,9 @@ import uuid
 from datetime import UTC, datetime
 
 import aio_pika
-import recomendaciones.worker.suppression as suppression_module
 import sqlalchemy as sa
-from recomendaciones.worker.suppression import SuppressionHandler, SuppressionProcedure
 
+import recomendaciones.worker.suppression as suppression_module
 from recomendaciones.observability.metrics import Metrics
 from recomendaciones.shared.domain import Module
 from recomendaciones.shared.errors import TransientError
@@ -21,6 +20,7 @@ from recomendaciones.storage.cache.recompute import RecomputeStream
 from recomendaciones.worker.consumer import EventConsumer, RetryPolicy
 from recomendaciones.worker.idempotency import EventIdempotency
 from recomendaciones.worker.schemas import EliminadoEvent, parse_eliminado
+from recomendaciones.worker.suppression import SuppressionHandler, SuppressionProcedure
 from recomendaciones.worker.topology import Topology
 from tests.integration import seed
 from tests.integration.test_propagation import CFG, _recomputer, _signal, _world
@@ -251,11 +251,11 @@ def test_worker_wires_the_deletion_queue_with_retries_and_dlq(valid_env, db_fact
     from recomendaciones.bootstrap import build_runtime
     from recomendaciones.config.settings import load_settings
     from recomendaciones.worker.runtime import build_suppression_consumer
-    from recomendaciones.worker.topology import eliminado_topology
+    from recomendaciones.worker.topology import broker_limits, eliminado_topology
 
     runtime = build_runtime(load_settings(), "worker", factory=db_factory, cache=CacheClient(redis_client))
     consumer = build_suppression_consumer(runtime)
-    assert consumer._topology == eliminado_topology()
+    assert consumer._topology == eliminado_topology(**broker_limits(runtime.settings))
     assert consumer._parser is parse_eliminado
     assert consumer._retry is not None and consumer._retry.max_attempts == runtime.settings.retry_max_attempts
     assert CFG.config_version == runtime.config.config_version
