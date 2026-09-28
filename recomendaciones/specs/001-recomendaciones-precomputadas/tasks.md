@@ -274,7 +274,7 @@ pertenecer al Milestone 11)*:
 - [ ] T032 [US3] Comportamiento ante `api-general` no disponible en `src/recomendaciones/transformer/resilience.py` (TDD)
 - [X] T039 [US7] Métricas Prometheus en `src/recomendaciones/observability/metrics.py` (TDD)
 - [X] T040 [P] [US7] Logging estructurado con correlation ID en `src/recomendaciones/observability/logging.py` (TDD)
-- [ ] T041 [P] [US7] Health, readiness y liveness por servicio en `src/recomendaciones/observability/health.py` (TDD)
+- [X] T041 [P] [US7] Health, readiness y liveness por servicio en `src/recomendaciones/observability/health.py` (TDD)
 - [ ] T042 [US7] Alertas operativas en `ops/alerts.yaml` (TDD)
 - [ ] T046 [US7] Documentación operativa mínima en `docs/runbook.md`
 - [ ] T051 [US5] Job `age_threshold_refresh` (refresco de derivados etarios) en `src/recomendaciones/batch/age_threshold_refresh.py` (TDD)
@@ -351,7 +351,7 @@ entorno, nunca en repo**. La credencial es válida en un único entorno (FR-059)
 - [X] Arranque falla si la API key no está presente — no hay default (FR-054)
 - [X] La key incluye el identificador de entorno; una key de otro entorno se rechaza (FR-059)
 - [X] El rechazo devuelve `401` genérico, sin revelar si la key es inválida o de otro entorno
-- [ ] Ningún valor de credencial aparece en logs ni en la respuesta de `/health`
+- [X] Ningún valor de credencial aparece en logs ni en la respuesta de `/health`
 - [X] `INV-4`: no existe cadena de conexión a DB fuera de DB Recomendaciones
 
 **Tests**: `tests/unit/test_settings.py` — ausencia de key → fallo de arranque; key de otro entorno → rechazo; `repr()` del settings enmascara secretos.
@@ -1665,11 +1665,11 @@ Consumidores: Batch de respaldo T038».
 **Dep.**: T033, T023, T028
 
 **Criterios de aceptación**:
-- [ ] `liveness` no depende de dependencias externas — solo indica que el proceso vive
-- [ ] `readiness` verifica Redis y Postgres; Redis caído → not ready
-- [ ] `/health` expone `config_version` activa (trazabilidad de Q4) — **SC-023** *(movido desde T049)*
-- [ ] Ningún endpoint de salud expone secretos ni detalles internos
-- [ ] Los tres entrypoints tienen su propio health
+- [X] `liveness` no depende de dependencias externas — solo indica que el proceso vive
+- [X] `readiness` verifica Redis y Postgres; Redis caído → not ready
+- [X] `/health` expone `config_version` activa (trazabilidad de Q4) — **SC-023** *(movido desde T049)*
+- [X] Ningún endpoint de salud expone secretos ni detalles internos
+- [X] Los tres entrypoints tienen su propio health
 
 **Tests**: `tests/integration/test_health.py` — con Redis caído readiness falla y liveness no; `/health` no filtra secretos.
 

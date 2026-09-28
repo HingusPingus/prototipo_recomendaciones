@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     metrics_port: int = 9100
+    health_port: int = 8081  # worker: salud por HTTP propio (T041)
 
     @model_validator(mode="after")
     def _check_consistency(self) -> Settings:

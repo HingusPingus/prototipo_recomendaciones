@@ -35,6 +35,9 @@ def stack_env(valid_env, monkeypatch, db_factory, redis_url, amqp_url) -> dict[s
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         monkeypatch.setenv("RECO_METRICS_PORT", str(sock.getsockname()[1]))
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        monkeypatch.setenv("RECO_HEALTH_PORT", str(sock.getsockname()[1]))
     return valid_env
 
 

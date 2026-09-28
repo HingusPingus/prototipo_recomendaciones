@@ -40,7 +40,7 @@ def test_valid_declaration_is_confirmed_synchronously(api, contract, valid_env, 
     schema = {"$ref": "#/components/schemas/DeclarationResponse", "components": contract["components"]}
     Draft202012Validator(schema).validate(response.json())
     assert _rows(db_factory, user) == sorted(("peliculas", t) for t in MOVIE_TAGS[:5])  # persistido antes de responder
-    requests = [e[1] for e in redis_client.xrange(keys.RECOMPUTE_STREAM)]
+    requests = [{k: v for k, v in e[1].items() if k != "correlation_id"} for e in redis_client.xrange(keys.RECOMPUTE_STREAM)]
     assert requests == [{"user_id": str(user), "module": "peliculas", "reason": "declaration"}]
 
 

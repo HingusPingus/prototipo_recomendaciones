@@ -133,5 +133,5 @@ def test_opposite_module_failure_keeps_primary_and_requeues_only_the_opposite(db
     _signal(db_factory, user, movies["conjuro"], "like")
     assert recomputer.on_signal(_event(user, movies["conjuro"], Module.PELICULAS)) == "recomputed"
     assert repo.read_fresh(CFG.config_version, user, Module.PELICULAS) is not None
-    requests = [e[1] for e in redis_client.xrange(keys.RECOMPUTE_STREAM)]
+    requests = [{k: v for k, v in e[1].items() if k != "correlation_id"} for e in redis_client.xrange(keys.RECOMPUTE_STREAM)]
     assert requests == [{"user_id": str(user), "module": "juegos", "reason": "opposite_retry"}]

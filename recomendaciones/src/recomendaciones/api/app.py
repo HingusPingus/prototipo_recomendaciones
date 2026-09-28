@@ -108,7 +108,7 @@ def build_services(
 
 
 def create_app(settings: Settings, services: ApiServices | None = None) -> FastAPI:
-    from recomendaciones.api.routes import declaraciones, recommendations
+    from recomendaciones.api.routes import declaraciones, health, recommendations
 
     services = services or build_services(settings)
     app = FastAPI(
@@ -133,6 +133,7 @@ def create_app(settings: Settings, services: ApiServices | None = None) -> FastA
         endpoint = getattr(route, "path", "sin-ruta")
         services.metrics.observe("reco_request_duration_seconds", time.perf_counter() - started, endpoint=endpoint)
         return response
+    app.include_router(health.router)  # única superficie pública (FR-060)
     app.include_router(recommendations.router, dependencies=[Depends(require_api_key)])
     app.include_router(declaraciones.router, dependencies=[Depends(require_api_key)])
     return app

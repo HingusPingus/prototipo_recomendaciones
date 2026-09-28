@@ -11,6 +11,7 @@ from prometheus_client import start_http_server
 
 from recomendaciones.bootstrap import Runtime, build_runtime
 from recomendaciones.config.settings import Settings
+from recomendaciones.observability.health import start_health_server, worker_health
 from recomendaciones.shared.errors import CacheUnavailable
 from recomendaciones.transformer.freshness import refresh_sync_metrics
 from recomendaciones.storage.cache.filters import FiltersCache
@@ -62,6 +63,15 @@ def build_worker(runtime: Runtime) -> tuple[EventConsumer, RecomputeRequestConsu
 async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> None:
     runtime = build_runtime(settings, "worker")
     start_http_server(settings.metrics_port, registry=runtime.metrics.registry)
+    health = start_health_server(
+        settings.health_port,
+        lambda: worker_health(
+            cache=runtime.cache,
+            factory=runtime.factory,
+            amqp_url=settings.amqp_url.get_secret_value(),
+            config_version=runtime.config.config_version,
+        ),
+    )
     events, requests = build_worker(runtime)
     stop = stop or asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -93,3 +103,4 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
                 await asyncio.sleep(0.1)
     finally:
         await events.stop()
+        health.shutdown()
