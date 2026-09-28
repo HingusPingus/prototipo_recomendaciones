@@ -289,7 +289,7 @@ pertenecer al Milestone 11)*:
 ### Fase 3 — Optimización y cierre
 
 - [ ] T043 Contract testing contra `api-general` como gate de CI en `tests/contract/`
-- [ ] T044 Suite de casos críticos obligatorios en `tests/integration/test_critical_scenarios.py`
+- [X] T044 Suite de casos críticos obligatorios en `tests/integration/test_critical_scenarios.py`
 - [ ] T045 Pipeline de CI con gates bloqueantes en `.github/workflows/ci.yml`
 - [ ] T047 [P] Documento de campos requeridos a `api-general` en `docs/contracts/required-fields.md`
 - [ ] T048 Validación final contra el checklist y DoD en `docs/validation/traceability-matrix.md`
@@ -1862,19 +1862,19 @@ de gustos. Ninguno es opcional. *(Decía «los nueve que el plan declara»; la l
 **Dep.**: T017, T027, T032, T038
 
 **Criterios de aceptación** — un test por escenario, cada uno con aserción explícita:
-- [ ] **Menor de edad** → cero contenido no apto en los cinco `result_type`
-- [ ] **Exclusión estricta** → cero ítems excluidos en cualquier respuesta
-- [ ] **Usuario sin declaración en el módulo** → rechazo por precondición, sin sexto estado (FR-088)
-- [ ] **Usuario recién declarado, sin top-N calculado** → respaldo diversificado marcado como no
+- [X] **Menor de edad** → cero contenido no apto en los cinco `result_type`
+- [X] **Exclusión estricta** → cero ítems excluidos en cualquier respuesta
+- [X] **Usuario sin declaración en el módulo** → rechazo por precondición, sin sexto estado (FR-088)
+- [X] **Usuario recién declarado, sin top-N calculado** → respaldo diversificado marcado como no
       personalizado, o `empty_no_candidates` si no hay datos; tras el recálculo, personalizado (US4-2, US4-5)
-- [ ] **Cold start cruzado** → actividad solo en películas **y declaración en juegos** produce juegos
+- [X] **Cold start cruzado** → actividad solo en películas **y declaración en juegos** produce juegos
       no triviales (SC-010)
-- [ ] **Cache miss** → estado correcto por precedencia + una sola señal de recálculo
-- [ ] **Evento duplicado** → un solo recálculo
-- [ ] **Payload inválido** → DLQ sin bloquear la cola
-- [ ] **Catálogo sin candidatos** → vacío explícito, nunca relleno con no aptos
-- [ ] **Dependencia externa caída** → Redis: 503 sin fallback a DB; broker: la lectura sigue; `api-general`: se degrada la frescura, no la disponibilidad
-- [ ] **SC-019** y **SC-020** — un dislike reduce de forma medible el score de los ítems que comparten sus tags, y un like posterior revierte el efecto
+- [X] **Cache miss** → estado correcto por precedencia + una sola señal de recálculo
+- [X] **Evento duplicado** → un solo recálculo
+- [X] **Payload inválido** → DLQ sin bloquear la cola
+- [X] **Catálogo sin candidatos** → vacío explícito, nunca relleno con no aptos
+- [X] **Dependencia externa caída** → Redis: 503 sin fallback a DB; broker: la lectura sigue; `api-general`: se degrada la frescura, no la disponibilidad
+- [X] **SC-019** y **SC-020** — un dislike reduce de forma medible el score de los ítems que comparten sus tags, y un like posterior revierte el efecto
 
 **Tests**: es la tarea de test. Cada escenario debe ser identificable por nombre en el reporte de CI.
 
