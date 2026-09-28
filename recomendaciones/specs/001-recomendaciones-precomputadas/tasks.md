@@ -293,7 +293,7 @@ pertenecer al Milestone 11)*:
 - [ ] T045 Pipeline de CI con gates bloqueantes en `.github/workflows/ci.yml`
 - [X] T047 [P] Documento de campos requeridos a `api-general` en `docs/contracts/required-fields.md`
 - [ ] T048 Validación final contra el checklist y DoD en `docs/validation/traceability-matrix.md`
-- [ ] T050 [P] [US1] Pruebas de carga y verificación de SC-001 en `tests/performance/test_read_latency.py`
+- [X] T050 [P] [US1] Pruebas de carga y verificación de SC-001 en `tests/performance/test_read_latency.py`
 - [X] T058 Supresión verificada con aborto del recálculo en curso en `src/recomendaciones/worker/suppression.py` (TDD)
 - [X] T059 Verificación ejecutable de supresión, observador y escalamiento (TDD)
 
@@ -1814,16 +1814,16 @@ servicio (RD-105), con el catálogo a 10×. **Hallazgo F7**: era el único Succe
 **Dep.**: T033, T038
 
 **Criterios de aceptación**:
-- [ ] Existe un generador reproducible de catálogo a 1× (**10 000 ítems por módulo**, línea base de
+- [X] Existe un generador reproducible de catálogo a 1× (**10 000 ítems por módulo**, línea base de
       SC-001, RD-111), 10× (100 000) y volumen de usuarios equivalente
-- [ ] La latencia de lectura a 10× permanece en **p95 ≤ 50 ms** (SC-001, RD-105) sobre el hardware
+- [X] La latencia de lectura a 10× permanece en **p95 ≤ 50 ms** (SC-001, RD-105) sobre el hardware
       declarado en el reporte
-- [ ] Se mide con caché **poblada** y con caché **fría**, y ambos escenarios se reportan por separado
-- [ ] Se verifica que la latencia no depende del tamaño del catálogo — si dependiera, habría cómputo
+- [X] Se mide con caché **poblada** y con caché **fría**, y ambos escenarios se reportan por separado
+- [X] Se verifica que la latencia no depende del tamaño del catálogo — si dependiera, habría cómputo
       en el request path y sería violación de INV-1
-- [ ] El resultado queda versionado en `docs/validation/performance-report.md` con la configuración
+- [X] El resultado queda versionado en `docs/validation/performance-report.md` con la configuración
       de hardware usada
-- [ ] **No es gate bloqueante de CI** (sería demasiado lento): corre bajo demanda y antes de release
+- [X] **No es gate bloqueante de CI** (sería demasiado lento): corre bajo demanda y antes de release
 
 **Tests**: es la tarea de test. La aserción clave es la **independencia respecto del tamaño del
 catálogo**, no el valor absoluto de latencia, que depende del hardware.
