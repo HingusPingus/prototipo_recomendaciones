@@ -236,7 +236,7 @@ pertenecer al Milestone 11)*:
 - [X] T008 Similitud coseno y construcción de perfil en `src/recomendaciones/engine/similarity.py` (TDD)
 - [X] T009 [P] Señal content-based en `src/recomendaciones/engine/content.py` (TDD)
 - [X] T010 [P] Señal colaborativa (k vecinos) en `src/recomendaciones/engine/collaborative.py` (TDD)
-- [ ] T011 [P] [US4] Señal cross-module en `src/recomendaciones/engine/cross_module.py` (TDD)
+- [X] T011 [P] [US4] Señal cross-module en `src/recomendaciones/engine/cross_module.py` (TDD)
 - [ ] T012 Combinación lineal y desempate determinista en `src/recomendaciones/engine/scoring.py` (TDD)
 - [ ] T013 [US5] Filtro de edad por `age_rating` (fail-closed) en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T014 [US5] Filtro de exclusión en `src/recomendaciones/engine/postprocess.py` (TDD)
@@ -678,10 +678,10 @@ señal que sostiene el cold start cruzado (US4).
 **Dep.**: T008
 
 **Criterios de aceptación**:
-- [ ] El boost está normalizado a `[-1,1]`, comparable con las otras señales
-- [ ] Usuario sin actividad en el módulo opuesto → boost 0, no error
-- [ ] El boost se calcula sobre el vocabulario compartido (posible gracias a T007)
-- [ ] Un usuario con solo actividad en películas recibe recomendaciones no triviales en juegos (SC-010)
+- [X] El boost está normalizado a `[-1,1]`, comparable con las otras señales
+- [X] Usuario sin actividad en el módulo opuesto → boost 0, no error
+- [X] El boost se calcula sobre el vocabulario compartido (posible gracias a T007)
+- [X] Un usuario con solo actividad en películas recibe recomendaciones no triviales en juegos (SC-010)
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_cross_module.py`): usuario con likes de terror en películas
 obtiene juegos de terror por encima del ordenamiento base; sin actividad en el módulo opuesto → 0;
