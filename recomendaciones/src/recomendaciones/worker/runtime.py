@@ -120,8 +120,9 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
                 with runtime.factory() as s:
                     await asyncio.to_thread(refresh_sync_metrics, s, runtime.metrics)
                     await asyncio.to_thread(refresh_suppression_metrics, s, runtime.metrics)  # FR-095a: observador
-                runtime.metrics.set("reco_queue_depth", await events.queue_depth(), queue=actualizar_topology().queue)
-                runtime.metrics.set("reco_queue_depth", await suppressions.queue_depth(), queue=eliminado_topology().queue)
+                for consumer, topology in ((events, actualizar_topology()), (suppressions, eliminado_topology())):
+                    runtime.metrics.set("reco_queue_depth", await consumer.queue_depth(), queue=topology.queue)
+                    runtime.metrics.set("reco_dead_letter_depth", await consumer.dead_letter_depth(), queue=topology.dead_letter_queue)
             try:
                 handled = await asyncio.to_thread(requests.poll_once)
                 backoff = 0.1

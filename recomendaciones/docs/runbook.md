@@ -52,12 +52,26 @@ created_at DESC LIMIT 3;` — una versión creada sin `activated_at` es la trans
 **Acción**: re-ejecutar el Data Transformer; la transición es transaccional y se reintenta desde cero.
 
 ### DeadLetterGrowth
-**Qué significa**: la DLQ crece de forma sostenida.
+**Qué significa**: el worker manda a la DLQ más de 5 mensajes en 30 minutos, de forma sostenida.
 **Primer paso**: inspeccionar los encabezados `x-dlq-reason` y `x-dlq-cause` de los últimos mensajes de
 `recomendaciones.recomendacion-actualizar.dlq`.
 **Acción**: `invalid_payload`/`contract_violation` → escalar a `api-general` con la causa;
 `retries_exhausted` → revisar la salud del worker (Postgres/Redis). Reproceso: ver
 [Reproceso desde DLQ](#reproceso-desde-dlq).
+**Punto ciego**: esta alerta cuenta lo que manda el worker. Lo que el broker vence por TTL o por
+`x-delivery-limit` llega a la DLQ sin pasar por él; se ve en `reco_dead_letter_depth{queue}`. Para las bajas
+de cuenta eso tiene alerta propia: [DeletionEventsDeadLettered](#deletioneventsdeadlettered).
+
+### DeletionEventsDeadLettered
+**Qué significa**: hay eventos de baja de cuenta en `recomendaciones.usuario-eliminado.dlq`. Cada uno es una
+supresión que **no se ejecutó**: estamos reteniendo datos de alguien que pidió ser eliminado (FR-091).
+**Primer paso**: mirar los mensajes sin consumirlos (consola de RabbitMQ → la DLQ → *Get messages* con
+*Nack message requeue true*). Si llevan `x-dlq-reason`, los mandó el worker; si llevan `x-death` con
+`reason: expired`, vencieron sin que el worker los consumiera en `RECO_EVENT_REDELIVERY_WINDOW_HOURS` (worker
+caído); con `reason: delivery_limit`, el worker se cayó al procesarlos `RECO_RETRY_MAX_ATTEMPTS` veces.
+**Acción**: restablecer el worker y **reprocesar siempre** (ver [Reproceso desde DLQ](#reproceso-desde-dlq)): el
+procedimiento es idempotente. Un `delivery_limit` repetido es un mensaje que tumba al proceso: capturar el
+`event_id` y el log del worker antes de reprocesarlo. **Severidad alta**: responsable del repo en el día.
 
 ### QueueDepthGrowth
 **Qué significa**: la cola de eventos crece sin drenarse.
@@ -293,7 +307,10 @@ Colas (prefijo según entorno): `recomendaciones.recomendacion-actualizar.dlq` y
 `recomendaciones.usuario-eliminado.dlq`.
 
 1. **Clasificar** por el encabezado `x-dlq-reason` (consola de RabbitMQ → la cola DLQ → *Get messages* con
-   *Ack mode: Nack message requeue true*, que no los consume):
+   *Ack mode: Nack message requeue true*, que no los consume). Los que no lo tienen los mandó el **broker** y
+   llevan `x-death`: `reason: expired` (nadie los consumió dentro de `RECO_EVENT_REDELIVERY_WINDOW_HOURS`) o
+   `reason: delivery_limit` (el worker se cayó al procesarlos `RECO_RETRY_MAX_ATTEMPTS` veces). Ambos son
+   reprocesables una vez que el worker está sano; el segundo, después de capturar su `event_id` y el log:
    - `invalid_payload` / `contract_violation`: el productor envió algo que el contrato no admite. **No
      reprocesar**: escalar a `api-general` con `x-dlq-cause` y el `event_id`. Si el productor reemite el
      evento corregido, llega por la cola normal. Los mensajes de la DLQ se descartan después de registrarlos.
@@ -309,6 +326,17 @@ Colas (prefijo según entorno): `recomendaciones.recomendacion-actualizar.dlq` y
    mezcla motivos, mover primero a mano los inválidos a una cola aparte (o descartarlos tras registrarlos).
 4. **Seguir**: `reco_dlq_messages_total` no debe crecer y `reco_queue_depth` vuelve a su régimen. Mensajes
    que regresan a la DLQ con el mismo motivo indican que la causa sigue: parar y volver al paso 2.
+
+**Topología de las colas.** El worker declara al arrancar sus colas como *quorum*, con la convención del
+broker de `notificaciones`: la principal lleva `x-message-ttl` = `RECO_EVENT_REDELIVERY_WINDOW_HOURS`,
+`x-delivery-limit` = `RECO_RETRY_MAX_ATTEMPTS` y dead-letter a su DLQ; la DLQ no tiene TTL. **Los argumentos de
+una cola quorum no se pueden cambiar en caliente**: si cambia alguno de esos dos valores, el worker falla al
+arrancar con `PRECONDITION_FAILED`. Para aplicarlo: detener los workers, esperar que la cola principal quede en
+0, borrarla (`rabbitmqctl delete_queue recomendaciones.recomendacion-actualizar`, y lo mismo con
+`recomendaciones.usuario-eliminado`) y arrancar con el valor nuevo;
+la DLQ no se toca. Mientras tanto `api-general` puede seguir publicando: el exchange sin cola descarta, y la
+sincronización diaria trae esas interacciones (los eventos de baja no: hacerlo fuera de horario y con el
+productor de bajas avisado).
 
 **Cuánto esperar**: los eventos tienen valor mientras la señal es útil; más allá de
 `RECO_EVENT_REDELIVERY_WINDOW_HOURS` la sincronización diaria ya trajo la misma interacción desde

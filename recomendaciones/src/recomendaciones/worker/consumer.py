@@ -68,19 +68,25 @@ class EventConsumer(Generic[E]):
         queue = await self._topology.declare(self._channel)
         await queue.consume(self._on_message)
 
-    async def queue_depth(self) -> int:
-        """Mensajes listos en la cola principal (`reco_queue_depth`, FR-043).
-
-        En un canal propio: la declaración pasiva sobre el canal que ya declaró la cola devuelve el conteo de
-        aquella primera declaración, y la métrica quedaba congelada (QueueDepthGrowth nunca disparaba).
-        """
+    async def _depth(self, queue_name: str) -> int:
+        # En un canal propio: la declaración pasiva sobre el canal que ya declaró la cola devuelve el conteo de
+        # aquella primera declaración, y la métrica quedaba congelada (QueueDepthGrowth nunca disparaba).
         assert self._connection is not None
         channel = await self._connection.channel()
         try:
-            queue = await channel.declare_queue(self._topology.queue, passive=True)
+            queue = await channel.declare_queue(queue_name, passive=True)
             return int(queue.declaration_result.message_count or 0)
         finally:
             await channel.close()
+
+    async def queue_depth(self) -> int:
+        """Mensajes listos en la cola principal (`reco_queue_depth`, FR-043)."""
+        return await self._depth(self._topology.queue)
+
+    async def dead_letter_depth(self) -> int:
+        """Mensajes en la DLQ (`reco_dead_letter_depth`): incluye los que el broker vence por TTL o por
+        `x-delivery-limit`, que no pasan por `dead_letter` y por eso no cuentan en `reco_dlq_messages_total`."""
+        return await self._depth(self._topology.dead_letter_queue)
 
     async def stop(self) -> None:
         if self._connection is not None:

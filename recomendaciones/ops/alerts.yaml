@@ -64,6 +64,14 @@ groups:
           summary: Crecimiento sostenido de la dead-letter
           justification: "Un mensaje aislado en DLQ es un payload inválido puntual y queda auditado; más de 5 en 30 minutos sostenidos durante 15 es un productor roto o un fallo permanente del worker, que exige intervención antes de que la cola de reproceso manual se vuelva inmanejable."
           runbook: docs/runbook.md#deadlettergrowth
+      - alert: DeletionEventsDeadLettered
+        expr: max(reco_dead_letter_depth{queue=~".*usuario-eliminado\\.dlq"}) > 0
+        for: 15m
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: Hay eventos de baja de cuenta en dead-letter
+          justification: "Cada mensaje en esa DLQ es una supresión que no se ejecutó (FR-091): retener datos de quien pidió ser eliminado no admite umbral mayor que cero. El broker también manda ahí los vencidos por TTL o por x-delivery-limit sin pasar por el consumidor, así que reco_dlq_messages_total no alcanza. Los 15 minutos cubren un reproceso manual en curso."
+          runbook: docs/runbook.md#deletioneventsdeadlettered
       - alert: QueueDepthGrowth
         expr: max by (queue) (reco_queue_depth) > 1000
         for: 15m

@@ -36,6 +36,7 @@ SPECS: dict[str, MetricSpec] = {
     "reco_recompute_duration_seconds": MetricSpec("histogram", ("module",), "Latencia de recálculo"),
     "reco_dlq_messages_total": MetricSpec("counter", ("reason",), "Mensajes derivados a dead-letter"),
     "reco_queue_depth": MetricSpec("gauge", ("queue",), "Profundidad de cola"),
+    "reco_dead_letter_depth": MetricSpec("gauge", ("queue",), "Mensajes en la DLQ, los mande el consumidor o el broker (TTL, delivery-limit)"),
     "reco_cross_module_propagation_total": MetricSpec("counter", ("propagated",), "Decisión de propagar al módulo opuesto (FR-010c)"),
     "recompute_requests_pending": MetricSpec("gauge", (), "Pendientes de recompute:requests (RD-111)"),
     "recompute_requests_dropped_total": MetricSpec("counter", (), "Solicitudes descartadas al agotar entregas (RD-111)"),
