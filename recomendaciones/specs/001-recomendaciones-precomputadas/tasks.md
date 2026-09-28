@@ -242,7 +242,7 @@ pertenecer al Milestone 11)*:
 - [X] T014 [US5] Filtro de exclusión en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [X] T015 Diversificación MMR en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [X] T016 [US5] Pipeline de post-proceso con orden garantizado en `src/recomendaciones/engine/postprocess.py` (TDD)
-- [ ] T017 [US5] Batería exhaustiva de invariantes en `tests/invariants/` (TDD)
+- [X] T017 [US5] Batería exhaustiva de invariantes en `tests/invariants/` (TDD)
 - [X] T018 Cliente Redis y esquema de claves en `src/recomendaciones/storage/cache/keys.py` (TDD)
 - [X] T019 Escritura del top-N con score y `config_version` en `src/recomendaciones/storage/cache/repository.py` (TDD)
 - [X] T020 [US6] Política de cache miss y señalización de recálculo en `src/recomendaciones/api/services/read_service.py` (TDD)
@@ -785,7 +785,7 @@ el test de valores basura escrito primero hace estructuralmente imposible reintr
       `ORDER BY occurred_at DESC, id DESC` (DI-22)
 - [X] **Invalida `filters:{user_id}` antes de escribir** cada exclusión nueva o revertida (RD-96,
       FR-080c)
-- [ ] **SC-003** y **SC-018** — 0 % de ítems del conjunto de exclusión y 0 % de ítems con señal registrada en el top-N
+- [X] **SC-003** y **SC-018** — 0 % de ítems del conjunto de exclusión y 0 % de ítems con señal registrada en el top-N
 
 > *Criterios del resolutor agregados el 2026-09-27: `data-model.md` §9 se los asignaba a «T009», que en
 > este backlog es la señal content-based; el archivo del resolutor ya era de esta tarea.*
@@ -866,31 +866,31 @@ diseño estructural del orden; escrito después, se habría aceptado el orden co
 **Dep.**: T016
 
 **Criterios de aceptación**:
-- [ ] Cubre el producto cartesiano `age_rating` × franja etaria
-- [ ] Cubre cada uno de los cuatro orígenes de exclusión
-- [ ] Cubre los cinco `result_type` (FR-056) — incluido el respaldo y el obsoleto. **El rechazo por
+- [X] Cubre el producto cartesiano `age_rating` × franja etaria
+- [X] Cubre cada uno de los cuatro orígenes de exclusión
+- [X] Cubre los cinco `result_type` (FR-056) — incluido el respaldo y el obsoleto. **El rechazo por
       falta de declaración NO es un sexto estado** (FR-088): es precondición incumplida y se verifica
       como tal, antes de la precedencia
-- [ ] **Cubre los 34 invariantes vigentes de `data-model.md` §6** (DI-1→DI-29, contando `DI-2a'`…`DI-2e`),
+- [X] **Cubre los 34 invariantes vigentes de `data-model.md` §6** (DI-1→DI-29, contando `DI-2a'`…`DI-2e`),
       o declara por escrito cuáles quedan fuera y por qué. **DI-29** (lápida de supresión) se verifica con
       T029 y T058. *(Decía «32, DI-1→DI-28», anterior a RD-101.)*
-- [ ] **DI-28 incluido y con test propio**: un usuario con módulo declarado tiene al menos
+- [X] **DI-28 incluido y con test propio**: un usuario con módulo declarado tiene al menos
       `declared_tags_min` filas **propias** en `user_declared_tags` —sin contar las heredadas por
       FR-085—. Es el **único invariante que el esquema no sostiene**: no hay restricción de tabla que
       exprese un mínimo de filas, de modo que su cumplimiento depende **enteramente** de este test
-- [ ] **DI-10 con test propio**: retirar un ítem presente en `reco:*` **y** en `fallback:*` → la
+- [X] **DI-10 con test propio**: retirar un ítem presente en `reco:*` **y** en `fallback:*` → la
       lectura siguiente no lo contiene. Debe cubrir **los tres puntos de §4.4** —selección, respaldo
       y guarda del request path—, no uno: cada uno es un camino distinto por el que el ítem llega al
       usuario, y verificar solo el primero deja vivos los otros dos (FR-072)
-- [ ] **DI-11 con test propio**: retirar un ítem con señales → `user_signals` conserva las filas y
+- [X] **DI-11 con test propio**: retirar un ítem con señales → `user_signals` conserva las filas y
       los perfiles **no cambian**. El retiro es lógico (FR-073); si el perfil cambiara, un hecho
       ajeno al usuario estaría alterando sus recomendaciones
-- [ ] Incluye valores límite: exactamente la edad mínima, un día antes, un día después
-- [ ] Es property-based, no solo por ejemplos
-- [ ] **SC-002 y SC-003 quedan verificados acá**: 0 % de violaciones del filtro de edad y 0 % de
+- [X] Incluye valores límite: exactamente la edad mínima, un día antes, un día después
+- [X] Es property-based, no solo por ejemplos
+- [X] **SC-002 y SC-003 quedan verificados acá**: 0 % de violaciones del filtro de edad y 0 % de
       ítems del conjunto de exclusión, en cualquier respuesta emitida. Son los dos invariantes de
       seguridad de US5 y esta es la tarea que los hace demostrables
-- [ ] **SC-018** verificado acá: 0 % de ítems con like, dislike o consumo aparece en el top-N
+- [X] **SC-018** verificado acá: 0 % de ítems con like, dislike o consumo aparece en el top-N
 - [ ] Corre en CI como **gate bloqueante**: si falla, no hay merge
 
 **Tests**: es la tarea de test — consolida y extiende las suites de T013–T016. Verificación de poder

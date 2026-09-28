@@ -249,8 +249,8 @@ def test_di_11_retirement_keeps_signals_and_profiles(db_factory, redis_client) -
 
     def profile() -> tuple[np.ndarray, int]:
         with db_factory() as s:
-            row = s.execute(sa.text("SELECT vector, signal_count FROM user_profiles WHERE user_id = :u AND scope = 'peliculas'"), {"u": adult}).one()
-        return np.asarray(row[0]), row[1]
+            row = s.execute(sa.text("SELECT vector::text, signal_count FROM user_profiles WHERE user_id = :u AND scope = 'peliculas'"), {"u": adult}).one()
+        return np.asarray(json.loads(row[0]), dtype=float), row[1]
 
     before_vec, before_count = profile()
     with db_factory.begin() as s:
