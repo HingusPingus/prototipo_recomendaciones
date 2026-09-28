@@ -248,7 +248,7 @@ pertenecer al Milestone 11)*:
 - [X] T020 [US6] Política de cache miss y señalización de recálculo en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [X] T021 [P] [US6] Comportamiento ante Redis caído en `src/recomendaciones/storage/cache/client.py` (TDD)
 - [ ] T022 [US6] Reconstrucción total tras pérdida de Redis en `src/recomendaciones/batch/warmup.py` (TDD)
-- [ ] T023 [US2] Consumo de `recomendacion.actualizar` en `src/recomendaciones/worker/consumer.py` (TDD)
+- [X] T023 [US2] Consumo de `recomendacion.actualizar` en `src/recomendaciones/worker/consumer.py` (TDD)
 - [ ] T024 [US2] Idempotencia por `event_id` en `src/recomendaciones/worker/idempotency.py` (TDD)
 - [ ] T027 [US2] Recálculo y propagación cross-module condicional en `src/recomendaciones/worker/handler.py` (TDD)
 - [ ] T028 [US3] Cliente REST autenticado y de solo lectura en `src/recomendaciones/transformer/client.py` (TDD)
@@ -1087,11 +1087,11 @@ misma interacción recibida por sincronización.)*
 **Dep.**: T003, T005, **T049** (el schema del evento se define antes de consumirlo)
 
 **Criterios de aceptación**:
-- [ ] Valida contra el schema antes de tocar el dominio
-- [ ] `signal_type` es **obligatorio**: sin él, el evento va a DLQ — no se infiere (FR-064)
-- [ ] `origin_interaction_id` es **obligatorio**: sin él, el evento va a DLQ (FR-061, DEP-8)
-- [ ] Módulo desconocido → DLQ sin alterar ningún top-N
-- [ ] `INV-4`: el worker no llama a `api-general` ni escribe fuera de su DB
+- [X] Valida contra el schema antes de tocar el dominio
+- [X] `signal_type` es **obligatorio**: sin él, el evento va a DLQ — no se infiere (FR-064)
+- [X] `origin_interaction_id` es **obligatorio**: sin él, el evento va a DLQ (FR-061, DEP-8)
+- [X] Módulo desconocido → DLQ sin alterar ningún top-N
+- [X] `INV-4`: el worker no llama a `api-general` ni escribe fuera de su DB
 
 **Tests**: `tests/integration/test_consumer.py` (testcontainers RabbitMQ) — evento válido se procesa; falta `signal_type` → DLQ; módulo desconocido → DLQ y ningún top-N cambia.
 

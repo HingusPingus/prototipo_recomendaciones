@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.recome.internal/events/usuario.eliminado/1.0.0",
+  "title": "usuario.eliminado",
+  "description": "Propuesta derivada (T049, CR-19, DEP-12). Nombre propuesto; el nombre y el schema definitivos los fija api-general PRIMERO (Principio II, RD-101). Dispara la supresión a pedido (FR-091a). Debe publicarse en api-general antes de implementar T058 (RD-111).",
+  "x-contract-origin": {"status": "propuesta-no-publicada", "drafted": "2026-09-28", "source": "specs/001-recomendaciones-precomputadas (T049)"},
+  "type": "object",
+  "required": ["event_id", "user_id", "occurred_at"],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid", "description": "Identificador único del evento: idempotencia (FR-091a)"},
+    "user_id": {"type": "string", "format": "uuid"},
+    "occurred_at": {"type": "string", "format": "date-time", "description": "Marca temporal de la baja según el origen (user_suppressions.requested_at)"},
+    "correlation_id": {"type": "string"}
+  },
+  "additionalProperties": true
+}
