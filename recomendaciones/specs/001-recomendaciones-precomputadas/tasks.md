@@ -269,7 +269,7 @@ pertenecer al Milestone 11)*:
 ### Fase 2 — Robustez operativa
 
 - [X] T025 [US2] Reintentos con backoff y DLQ en `src/recomendaciones/worker/retry.py` (TDD)
-- [ ] T026 [US2] Manejo de payload inválido sin bloquear la cola en `src/recomendaciones/worker/dlq.py` (TDD)
+- [X] T026 [US2] Manejo de payload inválido sin bloquear la cola en `src/recomendaciones/worker/dlq.py` (TDD)
 - [ ] T031 [P] [US3] Registro de freshness de sincronización en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T032 [US3] Comportamiento ante `api-general` no disponible en `src/recomendaciones/transformer/resilience.py` (TDD)
 - [ ] T039 [US7] Métricas Prometheus en `src/recomendaciones/observability/metrics.py` (TDD)
@@ -1147,11 +1147,11 @@ que nunca va a ser válido solo bloquea la cola.
 **Dep.**: T025
 
 **Criterios de aceptación**:
-- [ ] Payload inválido → DLQ sin reintento, con la causa de validación
-- [ ] El consumo continúa: el mensaje siguiente se procesa normalmente
-- [ ] Una ráfaga de mensajes inválidos no detiene el procesamiento de los válidos
-- [ ] El log incluye el `event_id` cuando es extraíble
-- [ ] **SC-007** — 100 % de los eventos con payload inválido termina en dead-letter con causa registrada
+- [X] Payload inválido → DLQ sin reintento, con la causa de validación
+- [X] El consumo continúa: el mensaje siguiente se procesa normalmente
+- [X] Una ráfaga de mensajes inválidos no detiene el procesamiento de los válidos
+- [X] El log incluye el `event_id` cuando es extraíble
+- [X] **SC-007** — 100 % de los eventos con payload inválido termina en dead-letter con causa registrada
 
 **Tests**: `tests/integration/test_invalid_payload.py` — intercalar 5 inválidos entre 5 válidos: los 5 válidos se procesan, los 5 inválidos están en DLQ, cero reintentos.
 
