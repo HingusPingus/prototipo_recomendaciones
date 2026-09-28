@@ -226,7 +226,7 @@ pertenecer al Milestone 11)*:
 
 ### Fase 1 — Vertical slice
 
-- [ ] T001 Estructura del paquete y entrypoints en `src/recomendaciones/{api,engine,config,worker,transformer,batch,storage,observability,shared}/`
+- [X] T001 Estructura del paquete y entrypoints en `src/recomendaciones/{api,engine,config,worker,transformer,batch,storage,observability,shared}/`
 - [X] T002 Configuración por entorno y gestión de la API key interna en `src/recomendaciones/config/settings.py` (TDD)
 - [X] T003 Esquema DB Recomendaciones + Alembic en `src/recomendaciones/storage/db/models.py` (TDD)
 - [X] T004 [P] Configuración versionada del motor + loader validante en `src/recomendaciones/config/engine_config/v1.yaml` (TDD)
@@ -330,7 +330,7 @@ pertenecer al Milestone 11)*:
 `pyproject.toml`, `tests/{unit,integration,contract,invariants}/`
 
 **Criterios de aceptación**:
-- [ ] Los tres entrypoints arrancan de forma independiente y fallan con error explícito si falta configuración
+- [X] Los tres entrypoints arrancan de forma independiente y fallan con error explícito si falta configuración
 - [X] `engine/` no declara dependencias de red, DB ni reloj: verificable por inspección de imports
 - [X] `pip install -e .` + `pytest --collect-only` termina sin error de importación
 
