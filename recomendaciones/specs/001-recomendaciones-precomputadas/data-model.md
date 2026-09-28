@@ -1,10 +1,10 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-27 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-27 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
-[constitution v1.1.0](../../.specify/memory/constitution.md) (enmendada el 2026-09-27, RD-98).
+[constitution v1.1.1](../../.specify/memory/constitution.md) (enmendada el 2026-09-27, RD-98; aclarada el 2026-09-28, RD-111).
 
 **Regla de lectura**: este documento especifica **qué datos existen y por qué**, no con qué ORM se
 acceden. Los tipos son lógicos; su mapeo concreto es decisión de T003.
@@ -972,7 +972,8 @@ la constancia de FR-095— y funcionar como **lápida**: la sincronización no r
 
 **Índices**: PK — el worker consulta la marca por `user_id` inmediatamente antes de escribir
 (FR-092a), y la ingesta la consulta como lápida · `idx_suppressions_open (requested_at) WHERE state <>
-'completed'` — sirve la métrica de supresiones sin constancia (FR-095a), cuyo valor esperado es 0.
+'completed'` — sirve la métrica de supresiones sin constancia, **`suppressions_unverified_total`**
+(FR-095a, nombrada en RD-111), cuyo valor esperado es 0.
 
 **Integridad**: `CHECK ((state = 'completed') = (verified_at IS NOT NULL))`. La fila **no se borra**:
 es la constancia, y solo contiene el identificador y marcas temporales, que es exactamente lo que
@@ -1019,7 +1020,7 @@ claves de recomendación llevan **usuario y módulo**.
 | `retired:{module}` | **Set** de `item_id` retirados **en los últimos 8 días** (RD-39) | `TTL_FILTERS` (1 h) | Desde `items WHERE status='retired' AND retired_at > now() - interval '8 days'` |
 | `recompute:lock:{user_id}:{module}` | marca | `TTL_SUPPRESS` (5 min) | No requiere |
 | `dedupe:event:{event_id}` | marca | `TTL_DEDUPE` (24 h) | Desde `processed_events` |
-| `recompute:requests` | **Stream** de solicitudes de recálculo `{user_id, module, reason}`, consumido por el worker con grupo de consumidores (RD-100) | Sin TTL; longitud acotada por `MAXLEN` aproximado (parámetro operativo `recompute_requests_maxlen`) | **No requiere**: una solicitud perdida la vuelve a emitir el siguiente miss |
+| `recompute:requests` | **Stream** de solicitudes de recálculo `{user_id, module, reason}`, consumido por el worker con grupo de consumidores (RD-100). Una entrada entregada `recompute_requests_max_deliveries` (5) veces sin confirmarse se confirma y se descarta, contándola en `recompute_requests_dropped_total`; la cola pendiente se mide con `recompute_requests_pending` (RD-111) | Sin TTL; longitud acotada por `MAXLEN` aproximado (parámetro operativo `recompute_requests_maxlen`) | **No requiere**: una solicitud perdida la vuelve a emitir el siguiente miss |
 
 #### Criterio de dimensión de clave
 
@@ -1102,6 +1103,11 @@ No hay caso conservador que aprovechar, y por eso se cierra en vez de degradar.
 }
 ```
 
+**Longitud de `items`** (RD-102, RD-111): en `reco:` es `min(top_n_max, candidatos)` —la lista se guarda
+completa hasta 50 para que el truncado a cualquier `top_n` conserve la cuota y el tope de cluster—; en
+`fallback:` es `min(fallback_stored_size, candidatos)` —100, con margen para el filtrado por usuario
+(FR-033f)—. La lectura recorta a `top_n` **después** de las guardas.
+
 **Atributos obligatorios por elemento**: `item_id`, `score`, `rank`. **Obligatorio por entrada**:
 `config_version` — es lo que se propaga a la respuesta y hace trazable con qué pesos se generó (Q4).
 
@@ -1157,7 +1163,8 @@ en cada archivo; es lo que hace posible el rollback hacia adelante, RD-94) · **
 que RD-66 ya suponía al fijar la cuota), `top_n_max` · **`peso_like` = 1,0**, **`peso_dislike` = −1,0**,
 ~~peso de consumo = 0,3~~ **eliminado por RD-99**: el consumo no modifica el perfil (FR-022b), de modo que
 el parámetro no tendría consumidor · `age_rating_catalog` (mapeo de clasificación etaria) ·
-**`popularity_window_days` = 90** (RD-108) · **`popularity_confidence_z` = 1,96** (nivel de confianza de Wilson, Q6; valor fijado en RD-53) ·
+**`popularity_window_days` = 90** (RD-108) · **`fallback_stored_size` = 100** (ítems precalculados del
+respaldo, 2 × `top_n_max`, validado `≥ top_n_max`; RD-111) · **`popularity_confidence_z` = 1,96** (nivel de confianza de Wilson, Q6; valor fijado en RD-53) ·
 **`diversity_max_cluster_share` = 0,4**, con cluster = tag principal del ítem, aplicado como tope en
 la selección (FR-071a, RD-108) · ~~`fallback_new_item_slots`~~ **reemplazado por RD-77** ·
 **`fallback_new_item_quota_ratio` = 0,20** — cuota de novedades **del top-N personalizado** desde RD-102
@@ -1209,12 +1216,14 @@ como operativos, fuera de este archivo — corregido 2026-09-27.)*
 > **Desde RD-102 la fórmula no se evalúa al servir**: la cuota se materializa como posiciones
 > `ceil(k / ratio)` en la lista de longitud `top_n_max`, y truncarla a `top_n` produce exactamente ese
 > `floor` — la fórmula pasa a ser la **propiedad verificada** por el test, no un cálculo en el request.
+> La propiedad vale sobre la lista **precalculada**; si las guardas retiran `r` ítems al servir, la cota
+> pasa a `floor((top_n + r) × ratio)` (RD-111, FR-033a6a).
 
 > **Parámetros operativos (FR-068), fuera de este archivo**: `signal_retention_days` = **18–24 meses**
 > (RD-53) · `sync_volume_delta_ratio` = **0,9** (RD-53) · **`interaction_recalc_threshold` = 10**
 > (RD-63) · retención de la marca de idempotencia · `recompute_requests_maxlen` = **100 000** (RD-100,
-> RD-108) · `event_redelivery_window_hours` (RD-110; se copia de la configuración del broker) · TTLs de
-> caché · umbrales de reintento.
+> RD-108) · `recompute_requests_max_deliveries` = **5** (RD-111) · `event_redelivery_window_hours`
+> (RD-110; se copia de la configuración del broker) · TTLs de caché · umbrales de reintento.
 >
 > **`signal_retention_days` NO pertenece a este archivo (Q8, RD-46).** Es configuración
 > **operativa**, no del motor, y la distinción no es estética: todo parámetro de
@@ -4787,6 +4796,48 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
+### RD-111 — Remediación del análisis de consistencia del 2026-09-28
+
+**Fecha**: 2026-09-28 · **Origen**: `/speckit-analyze` sobre el commit 188c710; recomendaciones aprobadas
+por el autor · **Tipo**: corrección de contradicciones y fijación de medidas
+
+**Decisiones**:
+1. **Constitución v1.1.1 (PATCH)** (CA1): el Principio III nombra los dos disparadores del recálculo
+   —`recomendacion.actualizar` y las solicitudes internas— y Restricciones enumera los emisores reales.
+   Sin cambio de obligaciones: los cuatro emisores (miss, declaración, warm-up, refresco etario) dejan la
+   entrada ausente antes de emitir, de modo que la pérdida de una solicitud se repara sola.
+2. **Evento de baja de cuenta con la misma disciplina que el otro evento consumido** (CA2): schema en
+   T049, contract test en T043, reintentos y dead-letter en T058. Los reintentos van en **T058** y no en
+   T025/T026 porque el consumidor de ese evento nace en Fase 3: ponerlos en T025 (Fase 2) habría creado
+   una tarea que verifica una cola que todavía no existe.
+3. **Cuota y tope de cluster se garantizan sobre la lista precalculada** (U1). Al servir, las guardas
+   pueden retirar `r` ítems y FR-033d prohíbe reordenar: la desviación queda acotada —hasta
+   `floor((top_n + r) × ratio)` emergentes y `ceil(0,4 × (N + r))` por cluster— y se declara, en lugar de
+   prometer una exactitud que la lista servida no puede tener.
+4. **Longitud almacenada** (U2): `reco:` guarda `min(top_n_max, candidatos)`; `fallback:` guarda
+   `min(fallback_stored_size, candidatos)` con **`fallback_stored_size` = 100** (A3), parámetro del motor
+   porque altera el contenido del respaldo (RD-13). Condición de revisión: si el respaldo servido queda
+   por debajo de `top_n` con frecuencia, subir el valor.
+5. **Solicitudes envenenadas** (U3): `recompute_requests_max_deliveries` = **5** (operativo, alineado con
+   los cinco reintentos de la constitución); agotadas, la entrada se confirma y se descarta. Es seguro
+   porque la solicitud es reconstruible: el siguiente miss la vuelve a emitir.
+6. **«Peso no despreciable»** (A1): vecino del vecindario final, tras el corte top-k, con similitud
+   efectiva > 0. Coherente con RD-105, que ya excluye la similitud ≤ 0; no agrega parámetro.
+7. **FR-011b** (A2) se acota a interacciones y eventos; usuarios e ítems conservan el UUID del origen como
+   PK, como §2.1–§2.2 ya establecían.
+8. **Línea base de SC-001** (A4): 10 000 ítems por módulo; la prueba a 10× llega a 100 000, el techo de la
+   escala declarada en `plan.md`.
+9. **FR-016 y US3** (I2): el Data Transformer materializa la proyección; vectores y vocabulario, el job de
+   vocabulario (T030, módulo propio que el pipeline no importa); perfiles, el worker.
+10. **Métricas nombradas**: `recompute_requests_pending`, `recompute_requests_dropped_total` y
+    `suppressions_unverified_total` (FR-095a), que existían como intención sin nombre.
+
+**Verificación posterior a cada decisión**: ninguna tarea depende de otra de fase posterior; la ruta
+crítica no cambia; los nuevos parámetros entran en T004; las nuevas métricas, en T039 y en el recuento del
+DoD.
+
+---
+
 ### RD-110 — Irreversibilidad declarada, ventanas de FR-068b en lista cerrada y DEP-10 como dependencia observada
 
 **Fecha**: 2026-09-27 · **Origen**: checklist de clarificación (CHK050, CHK051, CHK065), resuelto a
@@ -4975,6 +5026,10 @@ por el número de versiones activadas en 7 días —en la práctica, una o dos�
 ---
 
 ### RD-102 — La cuota de novedades vive en el top-N personalizado, y la promoción se registra
+
+> 🔄 **Precisado por RD-111 (2026-09-28)**: la exactitud del punto 3 vale sobre la lista **precalculada**.
+> Si las guardas al servir retiran `r` ítems, la lista servida puede tener hasta `floor((top_n + r) × ratio)`
+> emergentes; la desviación queda acotada y se acepta porque corregirla exigiría reordenar (FR-033d).
 
 **Fecha**: 2026-09-27 · **Origen**: decisión del autor · **Tipo**: resolución de conflicto (RD-70 frente
 a FR-033c/FR-033d, y FR-033a6c frente a FR-033a6e)
@@ -7076,4 +7131,4 @@ del respaldo y `event_redelivery_window_hours`.
 
 ---
 
-<sub>Refinamiento de `plan.md` §2 · Trazable a spec.md (FR-001…FR-096) y constitution v1.1.0 · Prototipo consultado como referencia (no normativo)</sub>
+<sub>Refinamiento de `plan.md` §2 · Trazable a spec.md (FR-001…FR-096) y constitution v1.1.1 · Prototipo consultado como referencia (no normativo)</sub>

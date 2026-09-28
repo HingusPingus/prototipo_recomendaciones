@@ -13,19 +13,19 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 18 tablas en §2,
-  RD-1→RD-110 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-111 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **167 requisitos definidos** (FR-001→FR-096, con sufijos y huecos
-  declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más el
-  registro de saneamiento del 2026-09-27 · **12** dependencias declaradas (DEP-1→DEP-12: **10 vigentes**,
+  declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
+  registros de saneamiento (2026-09-27) y de remediación del análisis (2026-09-28) · **12** dependencias declaradas (DEP-1→DEP-12: **10 vigentes**,
   DEP-3 vacante a propósito y DEP-4 resuelta)
 - [plan.md](./plan.md) — el plan regenerado ya **no** tiene decisiones D1…D10: las que se cerraron
   viven en `data-model.md` y las referencias `D4`/`D5` de este archivo remiten a valores fijados allí
 - [checklists/requirements-contracts.md](./checklists/requirements-contracts.md) — 30/30 resueltos
 - [checklists/requirements-clarify-2026-09-14.md](./checklists/requirements-clarify-2026-09-14.md) —
   **46/46 tildados — cerrado** (los 10 🔴 se cerraron el 2026-09-22)
-- [constitution v1.1.0](../../.specify/memory/constitution.md) — enmendada el 2026-09-27 (RD-98),
-  pendiente de aprobación por PR según su sección de gobernanza
+- [constitution v1.1.1](../../.specify/memory/constitution.md) — enmendada el 2026-09-27 (RD-98) y
+  aclarada el 2026-09-28 (RD-111), pendiente de aprobación por PR según su sección de gobernanza
 
 > **Corrección del encabezado anterior**: decía «FR-001→FR-071, 5 clarificaciones» y no citaba
 > `data-model.md` ni una vez en todo el documento, pese a ser el que especifica la capa de datos que
@@ -70,6 +70,7 @@ likes propios (D10).
 | Ventana 90 d · umbral emergente 20 · `MAXLEN` 100 000 · cluster = tag principal, tope 0,4 **aplicado en la selección** · vecinos por recálculo (D3) | RD-108 | T004, T010, T015, T038, T063, T065 |
 | Declaración **definitiva** (sin edición ni retiro); un dislike puede anular el peso de un tag declarado | RD-109 | T008, T053 |
 | FR-068e (irreversibilidad) · FR-068b con **tres** ventanas · mínimo de tags elegibles dentro de DEP-10, con métrica | RD-110 | T004, T030, T042 |
+| Remediación de `/speckit-analyze`: evento de baja con contrato, contract test y DLQ · cuota y tope de cluster garantizados sobre la lista precalculada · `fallback_stored_size` = 100 · tope de entregas del stream = 5 · «peso no despreciable» definido | RD-111 | T003, T004, T006, T008, T017, T019, T020, T027, T039, T043, T047, T049, T058 |
 
 ## Formato: `[ID] [P?] Descripción`
 
@@ -320,6 +321,8 @@ pertenecer al Milestone 11)*:
 
 ### T001 — Estructura del paquete y entrypoints
 
+**Requisitos**: estructura de `plan.md` (Project Structure); base de INV-1…INV-4 y de T006 *(explicitados el 2026-09-28 para la trazabilidad de T048, RD-111)*
+
 **Descripción**: crear el árbol de `plan.md` §Source Code con tres entrypoints (`api`, `worker`,
 `transformer`) más el job batch. `engine/` queda como librería pura sin I/O.
 
@@ -388,7 +391,8 @@ un ítem sin clasificación tratable como apto.
 - [ ] `items.age_rating` es `NOT NULL` y su default es el valor más restrictivo del catálogo
 - [ ] `item_popularity`: **PK compuesta `(item_id, config_version)`** (RD-12, RD-13)
 - [ ] `user_exclusions`: **sin `is_permanent`**, con FK **`RESTRICT`** hacia `items` (RD-35)
-- [ ] `engine_config_versions`: **trigger de inmutabilidad** (RD-37)
+- [ ] `engine_config_versions`: **trigger de inmutabilidad** (RD-37) e **índice parcial único** sobre
+      `deactivated_at IS NULL`: a lo sumo una versión activa (DI-7, FR-025b)
 - [ ] `user_declared_tags`: PK `(user_id, module, tag_name)`, FK `user_id` **`ON DELETE CASCADE`** y FK
       `tag_name` **`ON DELETE RESTRICT`** (§2.14) — la asimetría es deliberada: un tag no puede
       desaparecer del catálogo dejando declaraciones colgadas en silencio
@@ -455,6 +459,8 @@ RD-108); y **`event_redelivery_window_hours`** (RD-110), copiado de la configura
 - [ ] `declared_tags_min` y `collab_min_neighbors` son enteros positivos y están presentes
 - [ ] `emergent_evidence_threshold` es entero positivo y está presente (RD-102)
 - [ ] `0 < diversity_max_cluster_share ≤ 1` (FR-071)
+- [ ] `fallback_stored_size` (**100**) presente y `≥ top_n_max` (FR-033f, RD-111); el operativo
+      `recompute_requests_max_deliveries` (**5**) presente y positivo
 - [ ] **FR-068b con lista cerrada** (RD-110): `signal_retention_days` debe superar estrictamente a
       **las tres** ventanas —`popularity_window_days`, la retención de idempotencia y
       `event_redelivery_window_hours`—; si alguna falta o no se cumple, el arranque falla nombrándola
@@ -505,6 +511,9 @@ que alguien "resuelva" una latencia calculando en línea.
       de `filters:` ante miss, repoblado de `retired:` ante miss y escritura de declaración (T053).
       Ninguna ruta de lectura de resultados los importa. *(Decía «fuera del health check», regla que
       T053 y `data-model.md` §3.1.1 no podían cumplir.)*
+- [ ] **FR-068e**: falla si algún módulo fuera de la purga (T057) y de la supresión (T058) emite `DELETE`
+      o `TRUNCATE` sobre `user_signals`, `user_declared_tags`, `user_exclusions`, `user_suppressions` o
+      `item_promotions` (RD-111)
 - [ ] El mensaje de fallo nombra el import ofensor y cita FR-003
 - [ ] **SC-012** — 0 conexiones directas a bases de datos de otros repos y 0 rutas de acceso desde frontends. El test de arquitectura es el único lugar donde esto se verifica estructuralmente y no por inspección
 
@@ -584,6 +593,8 @@ y dislikes construyen el perfil; el consumo no lo altera** (FR-022b, corrige P1 
 - [ ] Los tags **heredados** del otro módulo (compartidos según `tag_modules`) se incorporan al insumo
       **derivándolos** en la construcción, no leyéndolos de una tabla (FR-085, RD-97)
 - [ ] Las señales sobre ítems **retirados** siguen alimentando el perfil (FR-073)
+- [ ] **FR-086b**: dislikes suficientes llevan el peso de un tag declarado a cero o a negativo; la
+      declaración no se toca y un like posterior lo vuelve a subir
 
 > *Agregado el 2026-09-27: la siembra por declaración estaba solo en T056 (Fase 2), mientras T053–T055
 > (Fase 1) ya obligan a declarar. En Fase 1 el usuario declaraba y el motor lo ignoraba: sin señales,
@@ -594,7 +605,8 @@ y dislikes construyen el perfil; el consumo no lo altera** (FR-022b, corrige P1 
 cualquier conjunto no vacío de señales; una señal `consumo` **no altera** el vector; un like posterior
 revierte un dislike previo; vector nulo → similitud 0 sin excepción; coseno siempre en `[-1,1]`;
 declaración de 5 tags sin señales → perfil no vacío y afín a esos tags; tag heredado presente en el
-insumo sin fila propia en la declaración.
+insumo sin fila propia en la declaración; tres dislikes sobre ítems de un tag declarado → su componente
+del perfil ≤ 0 y la declaración intacta (FR-086b).
 
 **🟢 Paso 2 — Verde**: implementar hasta pasar. El test de `consumo` codifica la decisión Q3 antes de
 que exista código que pueda contradecirla.
@@ -602,6 +614,8 @@ que exista código que pueda contradecirla.
 ---
 
 ### T009 [P] [TDD] — Señal content-based
+
+**Requisitos**: FR-022, FR-021 *(explicitados el 2026-09-28 para la trazabilidad de T048, RD-111)*
 
 **Descripción**: puntuar candidatos por similitud entre el perfil del módulo y el vector del ítem.
 
@@ -857,8 +871,9 @@ diseño estructural del orden; escrito después, se habría aceptado el orden co
 - [ ] Cubre los cinco `result_type` (FR-056) — incluido el respaldo y el obsoleto. **El rechazo por
       falta de declaración NO es un sexto estado** (FR-088): es precondición incumplida y se verifica
       como tal, antes de la precedencia
-- [ ] **Cubre los 32 invariantes vigentes de `data-model.md` §6** (DI-1→DI-28, contando `DI-2a`…`DI-2e`),
-      o declara por escrito cuáles quedan fuera y por qué
+- [ ] **Cubre los 34 invariantes vigentes de `data-model.md` §6** (DI-1→DI-29, contando `DI-2a'`…`DI-2e`),
+      o declara por escrito cuáles quedan fuera y por qué. **DI-29** (lápida de supresión) se verifica con
+      T029 y T058. *(Decía «32, DI-1→DI-28», anterior a RD-101.)*
 - [ ] **DI-28 incluido y con test propio**: un usuario con módulo declarado tiene al menos
       `declared_tags_min` filas **propias** en `user_declared_tags` —sin contar las heredadas por
       FR-085—. Es el **único invariante que el esquema no sostiene**: no hay restricción de tabla que
@@ -953,6 +968,8 @@ catálogo etario, y se sirve con la etiqueta `v1`.
 
 **Criterios de aceptación**:
 - [ ] Cada entrada persiste `config_version` y `computed_at` (trazabilidad exigida por Q4)
+- [ ] `items` se guarda con **`min(top_n_max, candidatos)`** ítems, no con el `top_n` de ninguna
+      solicitud: el truncado ocurre al servir (`data-model.md` §3.2, RD-102, RD-111)
 - [ ] La escritura del top-N vigente y su copia obsoleta es consistente entre sí
 - [ ] Serialización y deserialización son simétricas — round-trip exacto
 - [ ] Una entrada escrita con una `config_version` retirada no se sirve como vigente
@@ -987,6 +1004,8 @@ señal de recálculo con supresión (`recompute:lock`) para no disparar N señal
 - [ ] Ante miss bajo la versión activa, consulta las **versiones legibles** de T018 antes de declarar miss; un acierto así se sirve con su etiqueta y **no** emite señal (RD-103)
 - [ ] Con respaldo y obsoleto disponibles, se sirve el **respaldo** con la señal de FR-056a; el obsoleto solo se sirve si no hay respaldo servible
 - [ ] `INV-1`: el miss no dispara cómputo en línea
+- [ ] **FR-038**: dos lecturas consecutivas sobre el mismo estado de caché devuelven la misma respuesta
+      degradada (US6-5)
 - [ ] **SC-015** — una ráfaga de misses del mismo par (usuario, módulo) dentro de la ventana no multiplica los recálculos
 
 **Tests**: `tests/integration/test_cache_miss.py` — 50 lecturas concurrentes en miss producen 1 sola entrada en `recompute:requests`; broker caído → la lectura responde igual y la entrada se escribe; tabla de los cinco estados con su entrada correspondiente; entrada de la versión anterior con igual catálogo etario → servida con su etiqueta, sin señal.
@@ -1052,7 +1071,7 @@ colateral del tráfico de lectura.
 |---|---|---|---|---|---|
 | T023 | Consumo de `recomendacion.actualizar` | **1** | T003, T005, **T049** | | M |
 | T024 | Idempotencia por `event_id` | **1** | T023 | | M |
-| T027 | Recálculo y propagación cross-module condicional | **1** | T024, T016, T019 | | L |
+| T027 | Recálculo y propagación cross-module condicional | **1** | T024, T016, T019, T064 | | L |
 | T025 | Reintentos con backoff y DLQ | 2 | T023 | | M |
 | T026 | Manejo de payload inválido sin bloquear la cola | 2 | T025 | | S |
 
@@ -1160,6 +1179,10 @@ motivo quedan registrados (FR-010c).
 - [ ] **Consume también `recompute:requests`** (RD-100) con grupo de consumidores: confirma (`XACK`)
       solo después de escribir el resultado, de modo que una caída a mitad reentrega la solicitud; una
       solicitud de un usuario con supresión en curso se descarta (FR-092a)
+- [ ] Una solicitud entregada **`recompute_requests_max_deliveries` (5)** veces sin confirmarse se
+      confirma y se descarta, incrementando `recompute_requests_dropped_total`; nunca se reentrega
+      indefinidamente (RD-111). Se emite `recompute_requests_pending`
+- [ ] El resultado escrito tiene `min(top_n_max, candidatos)` ítems (T019, RD-102)
 - [ ] Se registra la métrica `reco_cross_module_propagation_total{propagated}`
 - [ ] **SC-010**, **SC-016** y **SC-017** — cobertura cross-module, propagación en el 100 % de las
       actividades con tag compartido y 0 % sin él, y registro del motivo en 100 % de los recálculos
@@ -1193,6 +1216,8 @@ motivo quedan registrados (FR-010c).
 > resiliencia vive en un módulo propio.
 
 ### T028 [TDD] — Cliente REST autenticado y de solo lectura
+
+**Requisitos**: FR-015, FR-017, FR-040 *(explicitados el 2026-09-28 para la trazabilidad de T048, RD-111)*
 
 **Descripción**: cliente `httpx` hacia `api-general` con la API key interna. **Solo lectura**: el
 cliente no expone verbos de mutación.
@@ -1365,6 +1390,8 @@ sincronización que `data-model.md` §7 define con umbral y responsable.
 
 ### T032 [TDD] — Comportamiento ante `api-general` no disponible
 
+**Requisitos**: FR-019, FR-040 *(explicitados el 2026-09-28 para la trazabilidad de T048, RD-111)*
+
 **Descripción**: la caída de `api-general` degrada la **frescura**, no la disponibilidad. El servicio
 sigue sirviendo con los datos materializados.
 
@@ -1393,7 +1420,7 @@ comparte `pipeline.py` con T031)
 | T034 | Autenticación por API key interna y no alcanzabilidad desde frontends | T002, T033 | | M |
 | T035 | Errores tipados y contrato estable | T033, T005 | | S |
 | ~~T036~~ | ~~Registro de feedback y emisión del evento de recálculo~~ — **retirada** (RD-95), reemplazada por T064 | — | | — |
-| T038 | Batch de top-N de respaldo | T012, T015, T003 | [P] | M |
+| T038 | Batch de top-N de respaldo | T012, T015, T003, T063 | [P] | M |
 | T037 | Filtrado de salida sobre el respaldo (acotado) | T033, T013, T014, **T038** | | M |
 
 ### T033 [TDD] — Endpoint de lectura del top-N
@@ -1559,6 +1586,8 @@ Consumidores: Batch de respaldo T038».
       recibe exactamente la población sin resultado propio; contaminarlo con retirados afecta a
       quien menos defensa tiene
 - [ ] Se computa sobre ventana temporal configurable, no sobre histórico completo (FR-033a1)
+- [ ] Publica **`min(fallback_stored_size, candidatos)`** ítems (100): margen para el filtrado por
+      usuario de FR-033f (`data-model.md` §3.2, RD-111)
 - [ ] El resultado pasa por MMR: no se concentra en el género dominante (FR-033b)
 - [ ] Es global por módulo, **no** personaliza por usuario (FR-033c)
 - [ ] **Sin likes, el respaldo existe igual** (FR-033a2, RD-106): todos los puntajes son 0 y el orden lo da el desempate determinista (FR-070); queda vacío solo si no hay ítems vigentes del módulo. *(Decía «sin likes suficientes → respaldo vacío», sin umbral definido y en conflicto con SC-024.)*
@@ -1586,6 +1615,8 @@ Consumidores: Batch de respaldo T038».
 
 ### T039 [TDD] — Métricas Prometheus
 
+**Requisitos**: FR-042, FR-043, FR-044, FR-025d, FR-095a *(explicitados el 2026-09-28 para la trazabilidad de T048, RD-111)*
+
 **Archivos**: `src/recomendaciones/observability/metrics.py`
 
 **Dep.**: T033, T027, T031
@@ -1598,6 +1629,12 @@ Consumidores: Batch de respaldo T038».
 - [ ] `catalog_sync_last_success_timestamp` (freshness, nombre de `data-model.md` §7.7) y `reco_sync_duration_seconds`
 - [ ] `reco_cross_module_propagation_total{propagated}`
 - [ ] `reco_active_config_version` como gauge etiquetado
+- [ ] El registro de métricas **declara** (nombre, tipo, etiquetas) las agregadas desde RD-100…RD-111;
+      cada una la **emite** la tarea que produce el hecho, en su fase: `recompute_requests_pending` y
+      `recompute_requests_dropped_total` (T027), `diversity_cap_relaxed_total` (T015, FR-071a),
+      `declarable_tags_total{module}` (T030, DEP-10), `fallback_new_item_share` (T065, FR-033a8) y
+      `suppressions_unverified_total` (T059, FR-095a, valor esperado 0). Esta tarea no espera a las de
+      fases posteriores: el nombre declarado sin emisor todavía es el estado esperado hasta que llegan
 - [ ] Ninguna etiqueta contiene `user_id` ni datos personales (cardinalidad y privacidad)
 
 **Tests**: `tests/integration/test_metrics.py` — cada métrica se emite tras su operación; ninguna etiqueta es de alta cardinalidad.
@@ -1746,6 +1783,9 @@ propuesta —tiene prioridad de definición (RD-47)—, pero el contrato vigente
       declaración (FR-088) como error de precondición y **no** como sexto estado
 - [ ] `recomendacion-actualizar.schema.json` declara como requeridos los **siete** campos mínimos de
       FR-061, incluido `origin_interaction_id`
+- [ ] `usuario-eliminado.schema.json` (CR-19, DEP-12) declara como requeridos el identificador único de
+      evento, el identificador del usuario y la marca temporal, y se publica en `api-general` **antes** de
+      implementar T058 (Principio II, RD-111)
 - [ ] `contracts/README.md` declara explícitamente que los contratos son **custodiados por
       `api-general`** y que estas copias son derivadas (Principio II) — no son fuente de verdad
 - [ ] Existe el PR o documento en `api-general` que publica los contratos, **enlazado** desde el
@@ -1774,7 +1814,8 @@ servicio (RD-105), con el catálogo a 10×. **Hallazgo F7**: era el único Succe
 **Dep.**: T033, T038
 
 **Criterios de aceptación**:
-- [ ] Existe un generador reproducible de catálogo a 1×, 10× y volumen de usuarios equivalente
+- [ ] Existe un generador reproducible de catálogo a 1× (**10 000 ítems por módulo**, línea base de
+      SC-001, RD-111), 10× (100 000) y volumen de usuarios equivalente
 - [ ] La latencia de lectura a 10× permanece en **p95 ≤ 50 ms** (SC-001, RD-105) sobre el hardware
       declarado en el reporte
 - [ ] Se mide con caché **poblada** y con caché **fría**, y ambos escenarios se reportan por separado
@@ -1799,7 +1840,8 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 **Dep.**: T049 (los artefactos de contrato deben existir antes de validarlos)
 
 **Criterios de aceptación**:
-- [ ] El evento consumido se valida contra el schema oficial de `api-general`
+- [ ] **Cada** evento consumido se valida contra su schema oficial de `api-general`:
+      `recomendacion.actualizar` y la **baja de cuenta** (CR-19, RD-111)
 - [ ] La respuesta de lectura se valida contra el OpenAPI publicado
 - [ ] Existe un test que **falla si un campo requerido desaparece** del contrato
 - [ ] Cubre las dependencias externas **vigentes**: DEP-1, DEP-2, DEP-5…DEP-11. *(Decía «DEP-1..DEP-6», que incluía la vacante DEP-3 y la resuelta DEP-4 y omitía DEP-7…DEP-11)*
@@ -1840,6 +1882,8 @@ de gustos. Ninguno es opcional. *(Decía «los nueve que el plan declara»; la l
 
 ### T045 — Pipeline de CI con gates bloqueantes
 
+**Requisitos**: FR-048, FR-055 (Principio VI) *(explicitados el 2026-09-28 para la trazabilidad de T048, RD-111)*
+
 **Archivos**: `.github/workflows/ci.yml`
 
 **Dep.**: T017, T043, T044
@@ -1863,7 +1907,7 @@ de gustos. Ninguno es opcional. *(Decía «los nueve que el plan declara»; la l
 | ID | Tarea | Dep. | [P] | Est. |
 |---|---|---|---|---|
 | T047 | Documento de campos requeridos a `api-general` | T043 | [P] | S |
-| T048 | Validación final contra el checklist y DoD | T045, T046, T047 | | M |
+| T048 | Validación final contra el checklist y DoD | T045, T046, T047, T050 | | M |
 
 > **T046 se movió al Milestone 8 (Fase 2)**. Un runbook escrito mientras el sistema todavía sorprende
 > es sustancialmente mejor que uno escrito de memoria dos meses después. Ver T046 arriba.
@@ -1871,7 +1915,7 @@ de gustos. Ninguno es opcional. *(Decía «los nueve que el plan declara»; la l
 
 ### T047 [P] — Documento de campos requeridos a `api-general`
 
-**Descripción**: el documento único que exige FR-063, índice de **DEP-1…DEP-11** y de **CR-1…CR-18**.
+**Descripción**: el documento único que exige FR-063, índice de **DEP-1…DEP-12** y de **CR-1…CR-19**.
 **No sustituye** la documentación oficial de `api-general` (Principio II): es la lista de lo que este
 repo necesita.
 
@@ -1881,12 +1925,15 @@ repo necesita.
 
 **Criterios de aceptación**:
 - [ ] Enumera cada campo requerido, su FR asociado y el impacto de su ausencia
-- [ ] Cubre las **9 dependencias vigentes** *(decía «10» y enumeraba nueve)*: DEP-1, DEP-2, DEP-5,
-      DEP-6, DEP-7, DEP-8, DEP-9, DEP-10, DEP-11 — con DEP-8 exigido **también en el evento** (FR-061). **DEP-4** se marca como **resuelta internamente** (la popularidad se deriva localmente) y
+- [ ] Cubre las **10 dependencias vigentes** *(eran nueve hasta DEP-12, RD-101)*: DEP-1, DEP-2, DEP-5,
+      DEP-6, DEP-7, DEP-8, DEP-9, DEP-10, DEP-11, DEP-12 — con DEP-8 exigido **también en el evento** (FR-061). **DEP-4** se marca como **resuelta internamente** (la popularidad se deriva localmente) y
       **DEP-3** como **vacante a propósito**: el identificador fue retirado y **no se reasigna**
       > La versión anterior de este criterio citaba **DEP-3 como si existiera** y se detenía en DEP-6,
       > ignorando las cinco posteriores.
-- [ ] Cubre **CR-1…CR-18**, marcando **CR-13 y CR-14 como retiradas** (RD-50)
+- [ ] Cubre **CR-1…CR-19**, marcando **CR-13 y CR-14 como retiradas** (RD-50); CR-19 y DEP-12 son el
+      evento de baja de cuenta
+- [ ] Registra **FR-079a** (formulario de alta) como expectativa externa sin tarea en este repo: la
+      cumple la aplicación web y aquí solo se verifica su efecto (rechazo en la ingesta, SC-028)
 - [ ] Señala cuál es la dependencia de mayor severidad y por qué: **DEP-10** es la única cuyo
       incumplimiento deja al sistema **sin ningún usuario atendible**, por encadenamiento con FR-088
 - [ ] Declara explícitamente que la fuente de verdad del contrato es `api-general`
@@ -1897,6 +1944,8 @@ repo necesita.
 ---
 
 ### T048 — Validación final contra el checklist y DoD
+
+**Requisitos**: trazabilidad de todo FR y SC; Definition of Done *(explicitados el 2026-09-28 para la trazabilidad de T048, RD-111)*
 
 **Descripción**: producir la **matriz de trazabilidad ítem → evidencia**: cada uno de los **76** ítems
 de los **dos** checklists (30 de `requirements-contracts.md` y 46 de
@@ -1943,7 +1992,7 @@ siendo revisión humana y así debe quedar declarado en el PR de cierre.
 | T055 | Rechazo por módulo sin declaración | 1 | T018, T033, T053 |  | S |
 | T056 | Perfil vectorial derivado puro | 2 | T017, T053 |  | S |
 | T057 | Purga de señales de actividad con guarda de exclusión | 2 | T003, T023 |  | M |
-| T058 | Supresión verificada con aborto del recálculo en curso | 3 | T023, T024, T028, T049, T057 |  | L |
+| T058 | Supresión verificada con aborto del recálculo en curso | 3 | T023, T024, T025, T026, T028, T049, T057 |  | L |
 | T059 | Verificación ejecutable de supresión, observador y escalamiento | 3 | T039, T058 |  | M |
 | T060 | Disparador de recálculo por conteo e invalidación en el mismo acto | 2 | T023, T064 |  | M |
 | T061 | Ponderación regional del término colaborativo | 2 | T004, T017 |  | M |
@@ -2225,10 +2274,13 @@ de recálculo no detiene al worker que ya lo tomó, sólo habilita a que entre u
 §7.11) y `src/recomendaciones/worker/handler.py` —el recálculo de T027, que consulta la marca antes de
 escribir— *(decía `services/` y `jobs/recalculo.py`, paquetes inexistentes en T001)*
 
-**Dep.**: T023, T024, T028, T057, **T049** (el esquema del evento de baja, contract-first)
+**Dep.**: T023, T024, T025, T026, T028, T057, **T049** (el esquema del evento de baja, contract-first)
 
 **Criterios de aceptación**:
 - [ ] Se dispara por el evento de baja (FR-091a); reprocesar el mismo evento no repite efectos
+- [ ] La cola del evento de baja tiene los **mismos reintentos con backoff y dead-letter** que
+      `recomendacion.actualizar` (reutiliza T025) y el payload inválido va a DLQ sin reintento
+      (reutiliza T026) — Principios VI y VII, RD-111
 - [ ] Orden de operaciones: Redis primero, Postgres después (FR-080c)
 - [ ] La marca es la fila `user_suppressions` con `state = 'in_progress'` (FR-092a)
 - [ ] Las entradas pendientes del usuario en `recompute:requests` se purgan (RD-100)
@@ -2245,7 +2297,8 @@ escribir— *(decía `services/` y `jobs/recalculo.py`, paquetes inexistentes en
       un dato que sigue siendo legible no está suprimido, por más que vaya a expirar
 - [ ] Un worker que termina después de la supresión **no** reescribe el resultado suprimido
 
-**Tests**: `tests/integration/test_supresion_aborta_recalculo.py` — recálculo en vuelo durante la
+**Tests**: consumo real del evento de baja contra un broker de prueba (Principio VI): duplicado → un solo
+efecto; payload inválido → DLQ; fallo transitorio → reintento. `tests/integration/test_supresion_aborta_recalculo.py` — recálculo en vuelo durante la
 supresión; verificar que ningún registro reaparece.
 
 ---
@@ -2636,7 +2689,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [ ] Constantes del motor y mapeo de `age_rating` externalizados a configuración (T004, T013)
 
 ## Operación
-- [ ] **Las dieciséis métricas de observabilidad emitiéndose** (T039). La cifra anterior ("diez")
+- [ ] **Las veintidós métricas de observabilidad emitiéndose** (T039). La cifra anterior ("diez")
       quedó obsoleta: el recuento sobre `data-model.md` da dieciséis nombres de métrica
       (`age_stale_config_users_total`, `age_threshold_crossings_total`, `catalog_retired_total`,
       `catalog_unrated_ratio`, `catalog_unvectorized_ratio`, `contract_violations_total`,
@@ -2645,7 +2698,10 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
       `signal_ingest_lag_seconds`, `signals_purge_deferred_total`, `sync_volume_delta_ratio`,
       `user_deletion_residual_keys_total`, `vector_recompute_lag_seconds`, y la métrica de
       **liveness** del job de T051 que reemplaza a `age_ordinal_staleness_seconds`). Un DoD que pide
-      diez sobre dieciséis se da por satisfecho con seis métricas faltando.
+      diez sobre dieciséis se da por satisfecho con seis métricas faltando. *(Recontado el 2026-09-28:
+      a las dieciséis se suman `declarable_tags_total`, `diversity_cap_relaxed_total`,
+      `fallback_new_item_share`, `recompute_requests_pending`, `recompute_requests_dropped_total` y
+      `suppressions_unverified_total`, nombradas por RD-108, RD-110, RD-102 y RD-111.)*
 - [ ] `contract_violations_total` se emite con contadores **separados** para `birth_date` y `region`
 - [ ] `exclusions_orphaned_permanent_total` se emite **sin alerta asociada** (FR-068d1): su ausencia
       de umbral es un requisito, no un olvido de configuración
@@ -2665,7 +2721,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [ ] **Matriz de trazabilidad ítem → evidencia completa** en `docs/validation/traceability-matrix.md`;
       ningún ítem marcado sin evidencia concreta (T048)
 - [ ] `test_traceability.py` en verde: toda evidencia referenciada existe (T048)
-- [ ] Sin violaciones de la constitution v1.1.0, **aprobada** por PR (RD-98)
+- [ ] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111)
 - [ ] Valores cargados: `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
       `diversity_max_cluster_share` = 0,4, `recompute_requests_maxlen` = 100 000 (RD-108), y
       `event_redelivery_window_hours` copiado del broker real (RD-110)

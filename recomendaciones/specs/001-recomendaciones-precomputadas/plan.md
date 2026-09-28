@@ -19,9 +19,9 @@
 |---|---|---|---|
 | Requisitos funcionales | **167** definidos · **92** bases | `spec.md` | `grep -oE '^- \*\*FR-[0-9]{3}[a-z0-9]*\*\*' spec.md \| sort -u \| wc -l` (bases: mismo patrón hasta `FR-[0-9]{3}`) |
 | Criterios de éxito | **31** (`SC-001`…`SC-031`; SC-028…SC-031 agregados el 2026-09-27, CHK072) | `spec.md` | `grep -oE 'SC-[0-9]{3}' spec.md \| sort -u \| wc -l` |
-| Entradas de clarificación | **53**, en **6 sesiones** (2026-09-07, 2026-09-14, tres del 2026-09-22 y las decisiones del autor del 2026-09-27), más el registro de saneamiento del 2026-09-27, que no abre preguntas | `spec.md` | `grep -c '^- \*\*Q' spec.md` |
+| Entradas de clarificación | **53**, en **6 sesiones** (2026-09-07, 2026-09-14, tres del 2026-09-22 y las decisiones del autor del 2026-09-27), más los registros de saneamiento (2026-09-27) y de remediación del análisis (2026-09-28), que no abren preguntas | `spec.md` | `grep -c '^- \*\*Q' spec.md` |
 | Dependencias externas | **12 declaradas**: **10 vigentes**, 1 resuelta (`DEP-4`) y `DEP-3` **vacante a propósito**. `DEP-12` (evento de baja) se agregó el 2026-09-27 (RD-101) | `spec.md` | `grep -oE 'DEP-[0-9]+' spec.md \| sort -u` |
-| Registros de decisión | **RD-1 … RD-110** (110; RD-94…RD-97 del saneamiento y RD-98…RD-110 de las decisiones del autor, ambos del 2026-09-27) | `data-model.md` §11 | `grep -c '^### RD-' data-model.md` |
+| Registros de decisión | **RD-1 … RD-111** (111; RD-94…RD-97 del saneamiento y RD-98…RD-110 de las decisiones del autor, del 2026-09-27; RD-111, remediación del análisis del 2026-09-28) | `data-model.md` §11 | `grep -c '^### RD-' data-model.md` |
 | Invariantes de datos | **34** (`DI-1`…`DI-29` más `DI-2a'`…`DI-2e`; `DI-2a` eliminado) | `data-model.md` §6 | `grep -oE "^\| \*\*DI-[0-9a-z']+\*\*" data-model.md \| sort -u \| wc -l` |
 | Cláusulas de contrato a `api-general` | **19 declaradas**, **17 vigentes** (`CR-13` y `CR-14` eliminadas por RD-50; `CR-19` agregada por RD-101) | `data-model.md` §10 | `grep -oE '^\| \*\*CR-[0-9]+\*\*' data-model.md \| sort -u` |
 | Tablas en PostgreSQL | **18**, agrupadas en 16 subsecciones | `data-model.md` §2 | inspección de §2 |
@@ -92,15 +92,15 @@ frontends (FR-008).
 | Principio | Cómo lo satisface este plan | Riesgo residual |
 |---|---|---|
 | **I. Frontera de datos y ownership** (NN) | Catálogo, usuarios y actividad son proyección; se materializan, no se editan. La actividad entra **solo** por sincronización o por el evento `recomendacion.actualizar` (RD-95: se retiró el endpoint propio de feedback). Única excepción de autoría local: `user_declared_tags` (§2.14) | La excepción **debe seguir siendo una**: RD-75 fija que un segundo dato de autoría local exige componente propio |
-| **II. Contratos como verdad externa** (NN) | CR-1…CR-18 en `data-model.md` §10; contratos propios **definidos primero** y publicados en `api-general` antes de implementar (T049); contract testing como gate de deploy | `api-general` incompleta: los contratos se están **definiendo**, no consumiendo. La señalización de recálculo propia (FR-035) usa un Stream de Redis interno (RD-100), que **no** es contrato entre repositorios. El evento de baja de cuenta (CR-19, DEP-12) **sí** lo es y debe definirse primero en `api-general` |
+| **II. Contratos como verdad externa** (NN) | CR-1…CR-19 en `data-model.md` §10 —CR-19 es el evento de baja de cuenta, con schema propio (T049) y contract test (T043)—; contratos propios **definidos primero** y publicados en `api-general` antes de implementar (T049); contract testing como gate de deploy | `api-general` incompleta: los contratos se están **definiendo**, no consumiendo. La señalización de recálculo propia (FR-035) usa un Stream de Redis interno (RD-100), que **no** es contrato entre repositorios. El evento de baja de cuenta (CR-19, DEP-12) **sí** lo es y debe definirse primero en `api-general` |
 | **III. Cómputo pesado fuera del request path** (NN) | Top-N materializado; popularidad materializada (FR-033a4); el camino normal de lectura solo lee Redis, con Postgres únicamente como respaldo degradado ante miss (RD-96); el endpoint de escritura tiene **prohibición explícita** de calcular (FR-089b) | **Tensión resuelta por enmienda** (constitución **v1.1.0**, RD-98): el Principio III declara ahora la escritura de declaración como su **única excepción**, con los límites de FR-089b. Pendiente la aprobación de la enmienda por PR (Governance) |
 | **IV. Pipeline unidireccional** | Data Transformer solo lee de `api-general`; sin escritura de vuelta | — |
 | **V. Gobernanza del motor híbrido** | Configuración versionada, una sola versión activa por entorno, sin A/B en MVP | — |
 | **VI. Testing obligatorio y contract testing** (NN) | pytest + testcontainers; contract tests bloquean el deploy | — |
 | **VII. Observabilidad y resiliencia asíncrona** | Reintento con backoff exponencial (máx. 5) → DLQ; métricas de cuota, obsolescencia y sincronización | — |
 
-**Resultado** *(revisado 2026-09-27)*: **sin violaciones, condicionado a la aprobación de la enmienda
-v1.1.0**. La tensión que registraba esta sección —la escritura de declaración frente al Principio III—
+**Resultado** *(revisado 2026-09-28)*: **sin violaciones, condicionado a la aprobación de la enmienda
+v1.1.0 y de su aclaración v1.1.1** (RD-111: el Principio III nombra los dos disparadores del recálculo). La tensión que registraba esta sección —la escritura de declaración frente al Principio III—
 se resolvió enmendando el principio (RD-98), que era la única vía: la constitución prevalece sobre la
 spec y una excepción al principio exige enmendarlo (Governance). La otra excepción, el cómputo en la
 carga de configuración, no toca el request path.
@@ -113,7 +113,7 @@ carga de configuración, no toca el request path.
 specs/001-recomendaciones-precomputadas/
 ├── spec.md              # requisitos, criterios de éxito, clarificaciones, DEP-1…DEP-12 (ver inventario)
 ├── plan.md              # este archivo
-├── data-model.md        # AUTORITATIVO · 18 tablas · RD-1…RD-110 · DI-1…DI-29 · CR-1…CR-19
+├── data-model.md        # AUTORITATIVO · 18 tablas · RD-1…RD-111 · DI-1…DI-29 · CR-1…CR-19
 ├── tasks.md             # backlog T001…T065 (T036 retirada) en 11 milestones
 ├── contracts/           # OpenAPI + JSON Schema — producido por T049 (contract-first)
 └── checklists/          # auditoría de calidad de requisitos (2 checklists)
@@ -123,7 +123,7 @@ src/recomendaciones/     # mismo árbol que tasks.md T001, que es el que manda
 ├── engine/              # funciones puras: TF-IDF, coseno, k-vecinos, cross-boost, combinación, postprocess.py (edad → exclusión → MMR → cuota)
 ├── config/              # carga y validación estricta, cálculo de config_version, engine_config/vN.yaml
 ├── worker/              # consumo de `recomendacion.actualizar`, de `recompute:requests` y del evento de baja; idempotencia, señal, recálculo, supresión
-├── transformer/         # Data Transformer: cliente REST de solo lectura, materialización, vocabulario
+├── transformer/         # Data Transformer: cliente REST de solo lectura y materialización de la proyección; vocabulary_sync.py es el job de vocabulario (T030), proceso propio que el pipeline no importa (DI-13)
 ├── batch/               # procesos periódicos: respaldo, popularidad, purga, refresco etario, warm-up
 ├── storage/             # db/ (SQLAlchemy, repositorios, resolutor de exclusiones) y cache/ (claves, TTL)
 ├── observability/       # logging JSON, métricas, health
@@ -255,6 +255,7 @@ solicitudes de recálculo sin TTL y con `MAXLEN` (RD-100); el inventario complet
 | `popularity_confidence_z` | **1,96** | RD-53 |
 | `popularity_window_days` | **90** | RD-53, RD-108 |
 | `fallback_new_item_quota_ratio` | **0,20** — cuota del **top-N personalizado** (el prefijo es histórico) | RD-77, RD-80, RD-102 |
+| `fallback_stored_size` | **100** ítems precalculados del respaldo (2 × `top_n_max`) | FR-033f, RD-111 |
 | `declared_tags_min` | **5** | RD-68 |
 | `region_weight_factor` | **0,1** | RD-79 |
 | `diversity_max_cluster_share` | **0,4**, cluster = tag principal del ítem, aplicado como tope en la selección | FR-071a, RD-108 |
@@ -276,7 +277,7 @@ su existencia:
 
 **Parámetros operativos** (fuera de `data-model.md`, RD-46): `signal_retention_days` = **18–24 meses**,
 `sync_volume_delta_ratio` = **0,9**, `interaction_recalc_threshold` = **10**, `recompute_requests_maxlen`
-= **100 000** (RD-100, RD-108), `event_redelivery_window_hours` (RD-110, copiado del broker), retención de la marca de idempotencia, TTLs de caché, umbrales de reintento.
+= **100 000** (RD-100, RD-108), `recompute_requests_max_deliveries` = **5** (RD-111), `event_redelivery_window_hours` (RD-110, copiado del broker), retención de la marca de idempotencia, TTLs de caché, umbrales de reintento.
 
 > La distinción no es estética: los del motor entran en el **cálculo** de un derivado versionado (RD-13);
 > los operativos no alteran ningún puntaje. `interaction_recalc_threshold` es el caso intermedio y va
@@ -482,6 +483,7 @@ mismo día:
 | Valores sin fijar; D3 | FR-071, §4 | ✅ RD-108 | T004, T010, T015, T063 |
 | Edición de la declaración; dislikes sobre tags declarados | CHK037, CHK038 | ✅ Definitiva; el peso puede anularse (RD-109) | T053 |
 | Irreversibilidad sin FR; ventanas de FR-068b abiertas; DEP-10 como supuesto | CHK050, CHK051, CHK065 | ✅ FR-068e, lista cerrada, DEP-10 con métrica (RD-110) | T004, T030, T042 |
+| Hallazgos de `/speckit-analyze` (2 críticos, 3 altos, 8 medios, 10 bajos) | constitución III; US1; FR-016; FR-033a6a/FR-071a; evento de baja | ✅ RD-111 y constitución v1.1.1 | T003, T004, T006, T008, T017, T019, T020, T027, T039, T043, T047, T049, T058 |
 
 **Siguen abiertos**: ninguna decisión de diseño. CHK072 se cerró agregando SC-028…SC-031.
 
