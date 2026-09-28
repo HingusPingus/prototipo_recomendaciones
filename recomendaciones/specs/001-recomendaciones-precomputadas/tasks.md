@@ -258,7 +258,7 @@ pertenecer al Milestone 11)*:
 - [X] T034 [US1] Autenticación por API key interna y no alcanzabilidad desde frontends en `src/recomendaciones/api/deps.py` (TDD)
 - [X] T035 [US1] Errores tipados y contrato estable en `src/recomendaciones/api/errors.py` (TDD)
 - [ ] T037 [US6] Filtrado de salida sobre el respaldo (acotado) en `src/recomendaciones/api/services/read_service.py` (TDD)
-- [ ] T038 [P] [US6] Batch de top-N de respaldo en `src/recomendaciones/batch/fallback.py` (TDD)
+- [X] T038 [P] [US6] Batch de top-N de respaldo en `src/recomendaciones/batch/fallback.py` (TDD)
 - [ ] T049 Definir `contracts/` primero (OpenAPI + JSON Schema) en `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
 - [X] T053 [P] [US4] Endpoint de declaración de gustos en `src/recomendaciones/api/routes/declaraciones.py` (TDD)
 - [X] T054 [US4] Herencia de tags entre módulos en `src/recomendaciones/api/services/declaracion.py` (TDD)
@@ -1570,30 +1570,30 @@ Consumidores: Batch de respaldo T038».
 > depende de `item_popularity`, que puebla **T063**, y por eso T063 se movió a Fase 1 con esta.
 
 **Criterios de aceptación**:
-- [ ] **Lee `item_popularity` bajo la `config_version` activa**, vía `idx_popularity_ranking`
+- [X] **Lee `item_popularity` bajo la `config_version` activa**, vía `idx_popularity_ranking`
       `(config_version, popularity_score DESC)`
-- [ ] **Ordena por `popularity_score`**, no por `like_count` (RD-12): ordenar por el conteo bruto
+- [X] **Ordena por `popularity_score`**, no por `like_count` (RD-12): ordenar por el conteo bruto
       pondría arriba a los ítems con mucho volumen y mala conversión
-- [ ] Reúne con `items` filtrando `status = 'available'` y agrupando por `module`. Es el costo
+- [X] Reúne con `items` filtrando `status = 'available'` y agrupando por `module`. Es el costo
       declarado de RD-12, y **T050 lo perfila** en vez de asumirlo resuelto
-- [ ] **El respaldo NO lleva cuota de novedades** (RD-102). ~~La cuota de ítems nuevos reserva
+- [X] **El respaldo NO lleva cuota de novedades** (RD-102). ~~La cuota de ítems nuevos reserva
       `floor(top_n × fallback_new_item_quota_ratio)` posiciones~~: el criterio **se trasladó a T065**,
       porque el emergente se ordena por afinidad con el perfil del usuario (FR-033a6f1) y este batch es
       global (FR-033c); componerlos al servir sería reordenar, que FR-033d prohíbe. *(El criterio había
       llegado acá desde T063 el 2026-09-22 y quedó bloqueado por ese conflicto hasta RD-102.)*
-- [ ] **El batch se construye únicamente sobre ítems vigentes** (FR-033a1, FR-072, §4.4 punto 2):
+- [X] **El batch se construye únicamente sobre ítems vigentes** (FR-033a1, FR-072, §4.4 punto 2):
       reunión con `item_popularity` bajo `WHERE status = 'available'` (RD-12). El respaldo es lo que
       recibe exactamente la población sin resultado propio; contaminarlo con retirados afecta a
       quien menos defensa tiene
-- [ ] Se computa sobre ventana temporal configurable, no sobre histórico completo (FR-033a1)
-- [ ] Publica **`min(fallback_stored_size, candidatos)`** ítems (100): margen para el filtrado por
+- [X] Se computa sobre ventana temporal configurable, no sobre histórico completo (FR-033a1)
+- [X] Publica **`min(fallback_stored_size, candidatos)`** ítems (100): margen para el filtrado por
       usuario de FR-033f (`data-model.md` §3.2, RD-111)
-- [ ] El resultado pasa por MMR: no se concentra en el género dominante (FR-033b)
-- [ ] Es global por módulo, **no** personaliza por usuario (FR-033c)
-- [ ] **Sin likes, el respaldo existe igual** (FR-033a2, RD-106): todos los puntajes son 0 y el orden lo da el desempate determinista (FR-070); queda vacío solo si no hay ítems vigentes del módulo. *(Decía «sin likes suficientes → respaldo vacío», sin umbral definido y en conflicto con SC-024.)*
-- [ ] El respaldo respeta el **tope de cluster** de FR-071a (SC-025)
-- [ ] Se persiste **solo en Redis** (`fallback:v{cfg}:{module}`); ante pérdida se **recomputa** ejecutando este batch (`data-model.md` §3.3: «no existe una tabla de respaldo»). *(Decía «Redis y tabla (D8)»: D8 era una recomendación del plan del 2026-09-07 que el modelo de datos no adoptó — ninguna de las 16 tablas es de respaldo.)*
-- [ ] **SC-024** y **SC-025** — 100 % de los usuarios declarados sin top-N personalizado vigente recibe respaldo no vacío en ese módulo, y el respaldo cumple el mismo umbral de diversidad de SC-011
+- [X] El resultado pasa por MMR: no se concentra en el género dominante (FR-033b)
+- [X] Es global por módulo, **no** personaliza por usuario (FR-033c)
+- [X] **Sin likes, el respaldo existe igual** (FR-033a2, RD-106): todos los puntajes son 0 y el orden lo da el desempate determinista (FR-070); queda vacío solo si no hay ítems vigentes del módulo. *(Decía «sin likes suficientes → respaldo vacío», sin umbral definido y en conflicto con SC-024.)*
+- [X] El respaldo respeta el **tope de cluster** de FR-071a (SC-025)
+- [X] Se persiste **solo en Redis** (`fallback:v{cfg}:{module}`); ante pérdida se **recomputa** ejecutando este batch (`data-model.md` §3.3: «no existe una tabla de respaldo»). *(Decía «Redis y tabla (D8)»: D8 era una recomendación del plan del 2026-09-07 que el modelo de datos no adoptó — ninguna de las 16 tablas es de respaldo.)*
+- [X] **SC-024** y **SC-025** — 100 % de los usuarios declarados sin top-N personalizado vigente recibe respaldo no vacío en ese módulo, y el respaldo cumple el mismo umbral de diversidad de SC-011
 
 **Tests**: `tests/integration/test_fallback_batch.py` — diversidad medida supera la del top-N sin MMR; sistema sin likes → respaldo **no vacío**, ordenado por desempate, idéntico en dos corridas; módulo sin
 ítems vigentes → respaldo vacío.
