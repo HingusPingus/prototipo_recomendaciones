@@ -227,7 +227,7 @@ pertenecer al Milestone 11)*:
 ### Fase 1 — Vertical slice
 
 - [ ] T001 Estructura del paquete y entrypoints en `src/recomendaciones/{api,engine,config,worker,transformer,batch,storage,observability,shared}/`
-- [ ] T002 Configuración por entorno y gestión de la API key interna en `src/recomendaciones/config/settings.py` (TDD)
+- [X] T002 Configuración por entorno y gestión de la API key interna en `src/recomendaciones/config/settings.py` (TDD)
 - [ ] T003 Esquema DB Recomendaciones + Alembic en `src/recomendaciones/storage/db/models.py` (TDD)
 - [ ] T004 [P] Configuración versionada del motor + loader validante en `src/recomendaciones/config/engine_config/v1.yaml` (TDD)
 - [ ] T005 [P] Modelo de dominio compartido y errores tipados en `src/recomendaciones/shared/domain.py` (TDD)
@@ -331,8 +331,8 @@ pertenecer al Milestone 11)*:
 
 **Criterios de aceptación**:
 - [ ] Los tres entrypoints arrancan de forma independiente y fallan con error explícito si falta configuración
-- [ ] `engine/` no declara dependencias de red, DB ni reloj: verificable por inspección de imports
-- [ ] `pip install -e .` + `pytest --collect-only` termina sin error de importación
+- [X] `engine/` no declara dependencias de red, DB ni reloj: verificable por inspección de imports
+- [X] `pip install -e .` + `pytest --collect-only` termina sin error de importación
 
 **Tests**: `tests/unit/test_layout.py` — cada paquete es importable y `engine/` no importa `storage/`, `api/` ni librerías de I/O.
 
@@ -348,11 +348,11 @@ entorno, nunca en repo**. La credencial es válida en un único entorno (FR-059)
 **Dep.**: T001
 
 **Criterios de aceptación**:
-- [ ] Arranque falla si la API key no está presente — no hay default (FR-054)
-- [ ] La key incluye el identificador de entorno; una key de otro entorno se rechaza (FR-059)
-- [ ] El rechazo devuelve `401` genérico, sin revelar si la key es inválida o de otro entorno
+- [X] Arranque falla si la API key no está presente — no hay default (FR-054)
+- [X] La key incluye el identificador de entorno; una key de otro entorno se rechaza (FR-059)
+- [X] El rechazo devuelve `401` genérico, sin revelar si la key es inválida o de otro entorno
 - [ ] Ningún valor de credencial aparece en logs ni en la respuesta de `/health`
-- [ ] `INV-4`: no existe cadena de conexión a DB fuera de DB Recomendaciones
+- [X] `INV-4`: no existe cadena de conexión a DB fuera de DB Recomendaciones
 
 **Tests**: `tests/unit/test_settings.py` — ausencia de key → fallo de arranque; key de otro entorno → rechazo; `repr()` del settings enmascara secretos.
 

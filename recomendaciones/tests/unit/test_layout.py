@@ -87,3 +87,18 @@ def test_three_entrypoints_and_batch_are_declared() -> None:
     for module in ("api.main", "worker.main", "transformer.main", "batch.main"):
         mod = importlib.import_module(f"recomendaciones.{module}")
         assert callable(getattr(mod, "run"))
+
+
+@pytest.mark.parametrize("script", ["reco-api", "reco-worker", "reco-transformer", "reco-batch"])
+def test_entrypoint_fails_explicitly_without_configuration(script: str) -> None:
+    """Los entrypoints arrancan de forma independiente y fallan con error explícito si falta config."""
+    import os
+    import subprocess
+    import sys
+
+    exe = Path(sys.executable).parent / script
+    env = {k: v for k, v in os.environ.items() if not k.startswith("RECO_")}
+    proc = subprocess.run([str(exe)], env=env, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 2
+    assert "no arranca" in proc.stderr and "RECO_" in proc.stderr
+    assert "Traceback" not in proc.stderr
