@@ -88,7 +88,21 @@ class RecomputeRequestConsumer:
         self._ack(entry_id)
 
     def poll_once(self) -> int:
-        """Reclama pendientes ociosas, lee nuevas y procesa. Devuelve cuántas entradas atendió."""
+        """Reclama pendientes ociosas, lee nuevas y procesa. Devuelve cuántas entradas atendió.
+
+        Si Redis perdió el Stream y el grupo (pérdida total, T022), el grupo se recrea y se reintenta una
+        vez: sin esto el worker quedaba en `NOGROUP` hasta reiniciarse y el warm-up no tenía consumidor.
+        """
+        try:
+            return self._poll()
+        except ResponseError as exc:
+            if "NOGROUP" not in str(exc):
+                raise
+            log.warning("grupo de recompute:requests ausente (¿pérdida de Redis?); se recrea")
+            self._group_ready = False
+            return self._poll()
+
+    def _poll(self) -> int:
         self._ensure_group()
         handled = 0
         claimed = self._cache.call(
