@@ -114,3 +114,45 @@ def exclusion(s: Session, user_id: uuid.UUID, item_id: uuid.UUID, origin: str = 
     s.execute(
         sa.text("INSERT INTO user_exclusions VALUES (:u, :i, :o, now())"), {"u": user_id, "i": item_id, "o": origin}
     )
+
+
+def vectorize_all(s: Session) -> str:
+    """Vectoriza el catálogo sembrado con las funciones del motor y activa esa versión de vocabulario.
+
+    Atajo de test equivalente al job de vocabulario (T030): `tag_modules` sobre vigentes y vectores de
+    todo ítem vigente con tags (más los retirados que tienen señales).
+    """
+    from recomendaciones.engine.content import CatalogItem, vectorize_catalog
+    from recomendaciones.engine.vocabulary import Vocabulary
+
+    rows = s.execute(
+        sa.text(
+            "SELECT i.id, i.module::text, i.status::text, array_agg(it.tag_name) FROM items i "
+            "JOIN item_tags it ON it.item_id = i.id GROUP BY i.id"
+        )
+    ).all()
+    items = [CatalogItem(r[0], r[1], frozenset(r[3]), r[2] == "available") for r in rows]
+    vocab = Vocabulary.from_tags({t for it in items if it.available for t in it.tags})
+    with_signals = set(s.execute(sa.text("SELECT DISTINCT item_id FROM user_signals")).scalars())
+    vectors = vectorize_catalog(items, vocab, also_vectorize=with_signals)
+    s.execute(sa.text("UPDATE vocab_versions SET deactivated_at = now() WHERE deactivated_at IS NULL AND activated_at IS NOT NULL"))
+    s.execute(
+        sa.text("INSERT INTO vocab_versions (version, tag_count, created_at, activated_at) VALUES (:v, :n, now(), now()) "
+                "ON CONFLICT (version) DO UPDATE SET activated_at = now(), deactivated_at = NULL"),
+        {"v": vocab.version, "n": len(vocab)},
+    )
+    for tag, dim in vocab.index.items():
+        s.execute(sa.text("INSERT INTO vocab_version_tags VALUES (:v, :t, :d) ON CONFLICT DO NOTHING"),
+                  {"v": vocab.version, "t": tag, "d": dim})
+    for item_id, vec in vectors.items():
+        s.execute(
+            sa.text("INSERT INTO item_vectors VALUES (:i, :v, :vec, now()) ON CONFLICT (item_id, vocab_version) "
+                    "DO UPDATE SET vector = EXCLUDED.vector"),
+            {"i": item_id, "v": vocab.version, "vec": "[" + ",".join(repr(float(x)) for x in vec.values) + "]"},
+        )
+    s.execute(sa.text("DELETE FROM tag_modules"))
+    s.execute(
+        sa.text("INSERT INTO tag_modules SELECT DISTINCT it.tag_name, i.module, now() FROM item_tags it "
+                "JOIN items i ON i.id = it.item_id WHERE i.status = 'available'")
+    )
+    return vocab.version
