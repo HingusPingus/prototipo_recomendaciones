@@ -230,7 +230,7 @@ pertenecer al Milestone 11)*:
 - [X] T002 Configuración por entorno y gestión de la API key interna en `src/recomendaciones/config/settings.py` (TDD)
 - [X] T003 Esquema DB Recomendaciones + Alembic en `src/recomendaciones/storage/db/models.py` (TDD)
 - [X] T004 [P] Configuración versionada del motor + loader validante en `src/recomendaciones/config/engine_config/v1.yaml` (TDD)
-- [ ] T005 [P] Modelo de dominio compartido y errores tipados en `src/recomendaciones/shared/domain.py` (TDD)
+- [X] T005 [P] Modelo de dominio compartido y errores tipados en `src/recomendaciones/shared/domain.py` (TDD)
 - [ ] T006 [P] Test de arquitectura: `api/` no importa `engine/` en `tests/unit/test_architecture.py`
 - [ ] T007 Vectorización TF-IDF sobre vocabulario compartido en `src/recomendaciones/engine/content.py` (TDD)
 - [ ] T008 Similitud coseno y construcción de perfil en `src/recomendaciones/engine/similarity.py` (TDD)
@@ -486,10 +486,10 @@ el enum de `result_type` con los cinco estados de FR-056.
 **Dep.**: T001
 
 **Criterios de aceptación**:
-- [ ] `ResultType` tiene exactamente cinco valores y es cerrado (FR-056, FR-057)
-- [ ] `SignalType` distingue `like`, `dislike`, `consumo` (FR-062) — sin valor por defecto
-- [ ] Cada error declara su código HTTP; no hay `Exception` genérica escapando a la API
-- [ ] Los tipos no dependen de SQLAlchemy ni de Redis
+- [X] `ResultType` tiene exactamente cinco valores y es cerrado (FR-056, FR-057)
+- [X] `SignalType` distingue `like`, `dislike`, `consumo` (FR-062) — sin valor por defecto
+- [X] Cada error declara su código HTTP; no hay `Exception` genérica escapando a la API
+- [X] Los tipos no dependen de SQLAlchemy ni de Redis
 
 **Tests**: `tests/unit/test_domain.py` — exhaustividad del enum; construir una señal sin tipo falla.
 
