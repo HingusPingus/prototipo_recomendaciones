@@ -260,7 +260,7 @@ pertenecer al Milestone 11)*:
 - [ ] T037 [US6] Filtrado de salida sobre el respaldo (acotado) en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [ ] T038 [P] [US6] Batch de top-N de respaldo en `src/recomendaciones/batch/fallback.py` (TDD)
 - [ ] T049 Definir `contracts/` primero (OpenAPI + JSON Schema) en `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
-- [ ] T053 [P] [US4] Endpoint de declaración de gustos en `src/recomendaciones/api/routes/declaraciones.py` (TDD)
+- [X] T053 [P] [US4] Endpoint de declaración de gustos en `src/recomendaciones/api/routes/declaraciones.py` (TDD)
 - [ ] T054 [US4] Herencia de tags entre módulos en `src/recomendaciones/api/services/declaracion.py` (TDD)
 - [ ] T055 [US4] Rechazo por módulo sin declaración en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [ ] T063 [US6] Recálculo de popularidad por ventana en `src/recomendaciones/batch/popularidad.py` (TDD)
@@ -2110,25 +2110,25 @@ pasaría a ser una revocación de FR-003.
 **Dep.**: T003, T018, T049
 
 **Criterios de aceptación**:
-- [ ] Persiste en `user_declared_tags` con PK `(user_id, module, tag_name)` (FR-082); **solo** los tags
+- [X] Persiste en `user_declared_tags` con PK `(user_id, module, tag_name)` (FR-082); **solo** los tags
       que el usuario declaró en ese módulo — los heredados **no** se escriben (RD-97)
-- [ ] **Invalida `filters:{user_id}` antes de escribir** (FR-080c, RD-96): sin esto, un `filters:`
+- [X] **Invalida `filters:{user_id}` antes de escribir** (FR-080c, RD-96): sin esto, un `filters:`
       vigente sin el módulo haría rechazar por FR-088, durante hasta `TTL_FILTERS`, a quien acaba de
       declarar — lo que FR-089a existe para impedir
-- [ ] Solicita el recálculo asíncrono del usuario para ese módulo (FR-089b, US4-5) con `XADD` a
+- [X] Solicita el recálculo asíncrono del usuario para ese módulo (FR-089b, US4-5) con `XADD` a
       `recompute:requests` y `reason = 'declaration'` (RD-100), después de confirmar la escritura
-- [ ] Rechaza declaraciones con menos de `declared_tags_min` = 5 tags propios (FR-083)
-- [ ] **La declaración es definitiva** (FR-086a, RD-109): una segunda declaración para un módulo ya
+- [X] Rechaza declaraciones con menos de `declared_tags_min` = 5 tags propios (FR-083)
+- [X] **La declaración es definitiva** (FR-086a, RD-109): una segunda declaración para un módulo ya
       declarado → `409`, sin modificar la existente; no existe operación de edición ni de retiro
-- [ ] **No impone máximo** de tags
-- [ ] **SC-029** — 100 % de las declaraciones válidas confirmadas sin ejecutar el motor, y 100 % de las
+- [X] **No impone máximo** de tags
+- [X] **SC-029** — 100 % de las declaraciones válidas confirmadas sin ejecutar el motor, y 100 % de las
       segundas declaraciones rechazadas sin cambios (la parte de lectura sin declaración la verifica T055)
-- [ ] Responde de forma **síncrona** confirmando la persistencia (FR-089a): una confirmación diferida
+- [X] Responde de forma **síncrona** confirmando la persistencia (FR-089a): una confirmación diferida
       habilitaría el rechazo inmediato de FR-088 sobre un dato ya entregado por el usuario
-- [ ] **No dispara el motor de recomendación** ni cómputo alguno (FR-089b); se verifica por ausencia
+- [X] **No dispara el motor de recomendación** ni cómputo alguno (FR-089b); se verifica por ausencia
       de llamada, no por tiempo de respuesta
-- [ ] Sólo los tags del vocabulario vigente son aceptables (DEP-10)
-- [ ] **La declaración se exige al primer ingreso al módulo, no al crear la cuenta** (FR-084). El
+- [X] Sólo los tags del vocabulario vigente son aceptables (DEP-10)
+- [X] **La declaración se exige al primer ingreso al módulo, no al crear la cuenta** (FR-084). El
       endpoint acepta declaración para **un** módulo por llamada y **no** exige el otro: un usuario
       que solo use recomendaciones de juegos nunca declara tags de películas, y la falta de
       declaración en un módulo **no** impide operar en el otro

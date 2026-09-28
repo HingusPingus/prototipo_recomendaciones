@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from fastapi import Depends, FastAPI
 from recomendaciones.api.deps import require_api_key
 from recomendaciones.api.errors import install_error_handlers
+from recomendaciones.api.services.declaracion import DeclarationService
 from recomendaciones.api.services.read_service import ReadService
 from recomendaciones.config.loader import (
     EngineConfig,
@@ -27,6 +28,7 @@ from recomendaciones.storage.cache.filters import FiltersCache, RetiredCache
 from recomendaciones.storage.cache.recompute import RecomputeStream
 from recomendaciones.storage.cache.repository import RecommendationRepository
 from recomendaciones.storage.cache.ttl import CacheTTLs
+from recomendaciones.storage.db.declarations import DeclarationRepository
 from recomendaciones.storage.db.filters_source import DbFiltersSource
 from recomendaciones.storage.db.session import SessionFactory, create_db_engine, session_factory
 
@@ -43,6 +45,7 @@ class ApiServices:
     retired: RetiredCache
     signaler: RecomputeStream
     read_service: ReadService
+    declaration_service: DeclarationService
     readable_versions: tuple[str, ...]
     extras: dict[str, object] = field(default_factory=dict)
 
@@ -76,13 +79,27 @@ def build_services(
         readable_versions=readable,
         age_compatible_versions=compatible,
     )
+    declaration_service = DeclarationService(
+        factory, DeclarationRepository(), filters, signaler, declared_tags_min=engine_config.declared_tags_min
+    )
     return ApiServices(
-        settings, engine_config, cache, factory, ttls, repository, filters, retired, signaler, read_service, readable
+        settings,
+        engine_config,
+        cache,
+        factory,
+        ttls,
+        repository,
+        filters,
+        retired,
+        signaler,
+        read_service,
+        declaration_service,
+        readable,
     )
 
 
 def create_app(settings: Settings, services: ApiServices | None = None) -> FastAPI:
-    from recomendaciones.api.routes import recommendations
+    from recomendaciones.api.routes import declaraciones, recommendations
 
     services = services or build_services(settings)
     app = FastAPI(
@@ -97,4 +114,5 @@ def create_app(settings: Settings, services: ApiServices | None = None) -> FastA
     app.state.services = services
     install_error_handlers(app)
     app.include_router(recommendations.router, dependencies=[Depends(require_api_key)])
+    app.include_router(declaraciones.router, dependencies=[Depends(require_api_key)])
     return app
