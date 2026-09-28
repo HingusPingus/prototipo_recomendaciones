@@ -17,6 +17,7 @@ REQUIRED = {
     "reco_recompute_duration_seconds": ("histogram", ("module",)),
     "reco_dlq_messages_total": ("counter", ("reason",)),
     "reco_queue_depth": ("gauge", ("queue",)),
+    "reco_dead_letter_depth": ("gauge", ("queue",)),
     "catalog_sync_last_success_timestamp": ("gauge", ()),
     "reco_sync_duration_seconds": ("histogram", ()),
     "reco_cross_module_propagation_total": ("counter", ("propagated",)),
@@ -109,4 +110,31 @@ async def test_queue_depth_reports_the_messages_actually_waiting(amqp_url: str) 
         assert await consumer.queue_depth() == 4  # uno en proceso (sin confirmar), cuatro esperando
     finally:
         release.set()
+        await consumer.stop()
+
+
+async def test_dead_letter_depth_counts_every_message_in_the_dlq_whatever_put_it_there(amqp_url: str) -> None:
+    """Con colas quorum el broker también manda a la DLQ (TTL vencido, x-delivery-limit) sin pasar por el
+    consumidor, de modo que `reco_dlq_messages_total` no lo ve: la profundidad de la DLQ sí."""
+    import aio_pika
+
+    topology = _topology()
+    consumer = EventConsumer(amqp_url, topology, lambda e: "recomputed")
+    await consumer.start()
+    try:
+        broken = _body()
+        broken.pop("signal_type")
+        await _publish(amqp_url, topology, broken)  # la manda el consumidor
+        connection = await aio_pika.connect_robust(amqp_url)
+        async with connection:
+            channel = await connection.channel()
+            await channel.default_exchange.publish(aio_pika.Message(b"vencido"), routing_key=topology.dead_letter_queue)  # la manda el broker
+        depth = 0
+        for _ in range(50):
+            depth = await consumer.dead_letter_depth()
+            if depth >= 2:
+                break
+            await asyncio.sleep(0.1)
+        assert depth == 2
+    finally:
         await consumer.stop()
