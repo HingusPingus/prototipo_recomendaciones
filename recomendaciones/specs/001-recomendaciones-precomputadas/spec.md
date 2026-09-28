@@ -187,6 +187,29 @@ había quedado escrito antes de ella. Lo que requería decidir quedó fuera y li
   **A**: se agrega **FR-068e**; FR-068b enumera sus ventanas en lista cerrada; el mínimo de tags
   elegibles pasa a ser parte de **DEP-10**, con métrica y alerta (RD-110).
 
+### Session 2026-09-28 — remediación de `/speckit-analyze`
+
+Recomendaciones del análisis, aprobadas por el autor y registradas en RD-111. Ninguna agrega alcance:
+cierran contradicciones o fijan lo que el texto dejaba sin medida.
+
+- **US1 (prueba independiente, escenarios 2 y 3)**: hablaban de páginas y de «pedir la página
+  siguiente», contra FR-005 (sin paginación, RD-107). Reescritos sobre `top_n`.
+- **US3 y FR-016**: el Data Transformer materializaba «perfiles y vectores», contra la regla de escritor
+  único (`data-model.md` §1.1, DI-13): proyecta usuarios, catálogo y actividad; los vectores los escribe
+  el job de vocabulario y los perfiles el worker.
+- **FR-033a6, FR-033a6a, FR-071a, SC-011, SC-025**: la cuota y el tope de cluster se garantizan sobre la
+  **lista precalculada**; las guardas al servir pueden retirar ítems y FR-033d prohíbe reordenar, de modo
+  que la desviación de la lista servida queda **acotada** por los ítems retirados y declarada.
+- **FR-033f**: el respaldo se precalcula con `fallback_stored_size` = 100 ítems (2 × `top_n_max`).
+- **FR-096 y SC-031**: «peso no despreciable» se define como similitud efectiva > 0 dentro del
+  vecindario final, tras el corte top-k.
+- **FR-011b**: acotado a interacciones y eventos; las entidades proyectadas conservan como clave el
+  identificador del origen, que es su identidad.
+- **FR-047 y FR-091a**: el evento de baja de cuenta tiene contrato propio en `api-general`, validado como
+  el de `recomendacion.actualizar`.
+- **SC-001**: la línea base es un catálogo de **10 000 ítems por módulo**.
+- **FR-032, FR-033e, FR-054**: se referencian a su requisito precisado (FR-071a, FR-006/SC-027, FR-029).
+
 ## Dependencias Externas Bloqueantes
 
 > Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature
@@ -226,8 +249,8 @@ observable. Puede demostrarse con datos precargados, sin que el worker ni el sin
 todavía.
 
 **Independent Test**: Precargando manualmente un top-N para un usuario y módulo, se consulta la
-operación de lectura y se verifica orden, score, versión de configuración, tamaño de página y
-latencia.
+operación de lectura y se verifica orden, score, versión de configuración, tamaño del resultado
+(`top_n`) y latencia.
 
 **Acceptance Scenarios**:
 
@@ -236,10 +259,10 @@ latencia.
    post-procesamiento —que incluye la diversificación de FR-028, de modo que el score no es
    necesariamente monótono en la posición—, con posición, score y versión de configuración por ítem
    (FR-004), marcada como vigente, sin que el servicio ejecute cálculo alguno.
-2. **Given** una solicitud con tamaño de página menor a la cantidad disponible, **When** se
-   consulta, **Then** se devuelve exactamente ese tamaño respetando el orden y con información
-   suficiente para pedir la página siguiente.
-3. **Given** una solicitud con módulo inválido o tamaño de página fuera de los límites permitidos,
+2. **Given** una solicitud con `top_n` menor a la cantidad disponible, **When** se consulta,
+   **Then** se devuelven exactamente `top_n` ítems respetando el orden, en una sola respuesta y sin
+   cursor (FR-005).
+3. **Given** una solicitud con módulo inválido o `top_n` fuera de `[10, 50]` (FR-006a),
    **When** se consulta, **Then** el servicio la rechaza con un error de validación explícito y no
    devuelve resultados parciales.
 4. **Given** una solicitud sin credencial de servicio válida, **When** se consulta, **Then** se
@@ -300,8 +323,9 @@ configuración.
 ### User Story 3 - Sincronización unidireccional de datos desde `api-general` (Priority: P2)
 
 El Data Transformer lee usuarios, catálogo y actividad desde `api-general` vía REST autenticado con
-la API key interna del entorno, y materializa en la DB Recomendaciones los perfiles de tags de
-usuario y los vectores de tags de ítems que el motor necesita.
+la API key interna del entorno, y materializa en la DB Recomendaciones su proyección: usuarios,
+catálogo con tags y actividad. Sobre esa proyección, el job de vocabulario deriva los vectores de ítems
+y el worker los perfiles de usuario, cada uno escritor único de su tabla (FR-016).
 
 **Why this priority**: Alimenta al motor, pero puede sustituirse temporalmente por datos cargados a
 mano para demostrar las historias P1. Es independientemente testeable observando el estado
@@ -314,8 +338,9 @@ recursos ajenos.
 **Acceptance Scenarios**:
 
 1. **Given** un conjunto de usuarios, ítems y actividad disponible en `api-general`, **When** corre
-   el Data Transformer, **Then** quedan materializados los perfiles de tags de usuario y los
-   vectores de tags de ítems, junto con la marca temporal de la sincronización.
+   el Data Transformer, **Then** quedan materializados usuarios, ítems con sus tags y actividad, con
+   la marca temporal de la sincronización, y el job de vocabulario que corre a continuación deja
+   vector para todo ítem vigente con tags.
 2. **Given** una corrida previa exitosa, **When** se vuelve a ejecutar sobre los mismos datos,
    **Then** el estado resultante es equivalente (idempotencia) y no se generan duplicados.
 3. **Given** que `api-general` no está disponible o responde con error durante la corrida, **When**
@@ -631,8 +656,12 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 
 - **FR-015**: El Data Transformer MUST obtener usuarios, catálogo y actividad únicamente desde
   `api-general` vía REST, autenticado con la API key interna del entorno.
-- **FR-016**: El Data Transformer MUST materializar los perfiles de tags de usuario y los vectores
-  de tags de ítems en la DB Recomendaciones.
+- **FR-016**: El Data Transformer MUST materializar en la DB Recomendaciones la **proyección** de
+  usuarios, catálogo con tags y actividad. Los derivados MUST escribirlos sus procesos propios, cada uno
+  escritor único de su tabla: los vectores de ítems y el vocabulario, el job de vocabulario que corre
+  tras cada sincronización; los perfiles de usuario, el worker (`data-model.md` §1.1, DI-13).
+  *(Decía que el Data Transformer materializaba perfiles y vectores, contra la regla de escritor único.
+  Corregido el 2026-09-28, RD-111.)*
 - **FR-017**: El Data Transformer MUST NOT escribir en la base de datos ni en ningún almacenamiento
   de otro repo, ni invocar operaciones que muten estado de usuario o catálogo en `api-general`.
 - **FR-018**: La sincronización MUST ser idempotente y re-ejecutable sin corromper el estado.
@@ -707,8 +736,12 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-011a**: La deduplicación de interacciones MUST apoyarse en el **identificador provisto por el
   origen**, no en una combinación de atributos descriptivos. Una interacción reentregada MUST NOT
   producir un segundo registro **aunque su marca temporal difiera**.
-- **FR-011b**: El identificador del origen MUST NOT usarse como clave primaria interna. La identidad
-  interna de un registro MUST permanecer bajo control de este servicio.
+- **FR-011b**: El identificador de **interacción** o de **evento** del origen MUST NOT usarse como clave
+  primaria interna: la identidad interna de esos registros MUST permanecer bajo control de este
+  servicio (clave subrogada; el identificador del origen es clave natural única). Las entidades
+  proyectadas —usuarios e ítems— conservan como clave primaria el identificador del origen, porque su
+  identidad **es** la del origen (`data-model.md` §2.1, §2.2). *(Alcance precisado el 2026-09-28,
+  RD-111: «un registro» abarcaba también a esas entidades.)*
 **Ciclo de vida del ítem — FR-072 a FR-075**
 
 > Estos cuatro identificadores estaban **vacantes, no retirados**: nunca designaron ningún
@@ -768,7 +801,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   incluidos los almacenados en caché. MUST NOT considerarse suprimido un dato cuya eliminación se
   delegue en el vencimiento de su tiempo de vida.
 - **FR-091a**: La supresión MUST dispararse por la **notificación de baja de cuenta** de `api-general`
-  (DEP-12), procesada con idempotencia por identificador de evento. La ausencia de un usuario en una
+  (DEP-12), procesada con idempotencia por identificador de evento, validada contra su JSON Schema
+  publicado en `api-general` (FR-047) y con los mismos reintentos y dead-letter que cualquier evento
+  consumido (FR-012, FR-013). La ausencia de un usuario en una
   sincronización MUST NOT interpretarse como baja (RD-101).
 - **FR-091b**: Un usuario suprimido MUST NOT volver a materializarse aunque el origen lo siga listando:
   la constancia de la supresión actúa como lápida (DI-29, RD-101).
@@ -826,7 +861,7 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-030**: Un ítem cuyo `age_rating` sea desconocido o ausente MUST tratarse como no apto.
 - **FR-031**: La diversificación MMR MUST NOT reintroducir ningún ítem previamente filtrado.
 - **FR-032**: La diversificación MUST reducir la dominancia de un único cluster de tags en el top-N,
-  según un criterio de diversidad medible y documentado.
+  según un criterio de diversidad medible y documentado: la métrica y el tope de FR-071 y FR-071a.
 - **FR-033**: Si tras los filtros no quedan candidatos válidos, el resultado MUST ser un top-N vacío
   explícito y distinguible del vacío por recálculo pendiente, nunca un relleno con ítems no aptos.
 - **FR-033a**: MUST existir un top-N de respaldo por módulo, basado en la popularidad global de los
@@ -858,8 +893,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-033a6**: El **top-N personalizado** MUST reservar una **proporción del resultado**, declarada en
   configuración versionada (`fallback_new_item_quota_ratio` = 0,20; el prefijo es histórico), a ítems del
   **conjunto emergente**, ordenados entre sí por **afinidad con el perfil del usuario** (FR-033a6f1). La
-  cuota MUST ser un **máximo, no un mínimo**: si no hay suficientes ítems emergentes, las posiciones
-  sobrantes MUST ocuparse por el orden ordinario y MUST NOT quedar vacías. La cuota MUST aplicarse al
+  cuota MUST ser un **máximo, no un mínimo**, sobre la lista precalculada: si no hay suficientes ítems
+  emergentes, las posiciones sobrantes MUST ocuparse por el orden ordinario y MUST NOT quedar vacías.
+  La cuota MUST aplicarse al
   precomputar (paso 4 de FR-028): el k-ésimo emergente ocupa la posición `ceil(k / ratio)` de una lista de
   longitud `top_n_max`. El respaldo global (FR-033c) **no lleva cuota**.
   > **Trasladada del respaldo al personalizado el 2026-09-27 (RD-102)**: el orden por afinidad con el
@@ -870,8 +906,11 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   > agregarlo— sin que este enunciado se actualizara.
 - **FR-033a6a**: La cuota efectiva MUST corresponder al `top_n` **de la solicitud atendida**
   (FR-006, FR-006a): `cuota = floor( top_n × fallback_new_item_quota_ratio )`, sin piso ni
-  clamp. Con la colocación de FR-033a6, truncar la lista a `top_n` produce exactamente esa cuota sin
-  cálculo al servir (RD-102). El redondeo MUST ser hacia abajo, con el efecto conocido de que la porción real oscila por
+  clamp. Con la colocación de FR-033a6, truncar la lista **precalculada** a `top_n` produce exactamente
+  esa cuota sin cálculo al servir (RD-102). Si las guardas al servir retiran `r` ítems antes del corte,
+  la lista servida sale de las primeras `top_n + r` posiciones y puede contener hasta
+  `floor((top_n + r) × ratio)` emergentes; la desviación queda **acotada por `r`** y se acepta, porque
+  corregirla al servir exigiría reordenar, que FR-033d prohíbe (RD-111). El redondeo MUST ser hacia abajo, con el efecto conocido de que la porción real oscila por
   debajo del 20 % dentro de cada tramo —en `top_n` = 14 la cuota es 2, el 14 %—: es inherente a una cuota
   entera sobre un resultado entero. Con `top_n_min` = 10 la cuota **nunca baja de 2**, de modo que el
   apagado por redondeo a cero que motivaba un piso es **irrepresentable** y el piso se elimina (RD-80).
@@ -947,10 +986,13 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   rendimiento o simplicidad.
 - **FR-033e**: Un top-N de respaldo servido MUST marcarse explícitamente como resultado no
   personalizado, distinguible de una recomendación personalizada, de un vacío por falta de
-  candidatos y de un vacío por recálculo pendiente.
+  candidatos y de un vacío por recálculo pendiente. Es el caso de respaldo de la naturaleza que exige
+  FR-006, y lo mide SC-027.
 - **FR-033f**: Si tras aplicar los filtros del usuario el respaldo queda por debajo del tamaño
   solicitado, MUST devolverse lo disponible sin completar con ítems no aptos; el respaldo
-  precomputado MUST dimensionarse con margen suficiente para absorber el filtrado habitual.
+  precomputado MUST dimensionarse con margen suficiente para absorber el filtrado habitual:
+  `fallback_stored_size` = **100** ítems (2 × `top_n_max`), declarado en configuración versionada y
+  validado como `≥ top_n_max` (RD-111).
 - **FR-033g**: En cuanto exista un top-N personalizado vigente para el usuario y el módulo —el primero
   se produce en el recálculo asíncrono que dispara su declaración de gustos (FR-082, FR-089b), sin
   esperar actividad—, sus recomendaciones MUST servirse personalizadas y dejar de marcarse como
@@ -999,7 +1041,8 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 
 **Contratos**
 
-- **FR-047**: Todo endpoint expuesto hacia `api-general` y el schema del evento consumido MUST
+- **FR-047**: Todo endpoint expuesto hacia `api-general` y el schema de **cada** evento consumido
+  —`recomendacion.actualizar` y la baja de cuenta (CR-19)— MUST
   corresponder a los contratos documentados en `api-general`; esta feature MUST NOT definir ni
   modificar contratos compartidos por cuenta propia.
 - **FR-048**: El servicio MUST validar automáticamente su conformidad con esos contratos antes de
@@ -1020,7 +1063,8 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   estar definido explícitamente en la configuración versionada; incorporar un valor nuevo MUST
   requerir un cambio revisable.
 - **FR-054**: Una configuración que intente desactivar, omitir o relajar los filtros obligatorios
-  MUST provocar un fallo de arranque del componente, además de ser rechazada al cargarse.
+  MUST provocar un fallo de arranque del componente, además de ser rechazada al cargarse. Es la
+  aplicación en el arranque de la regla general de FR-029.
 - **FR-055**: La batería de verificación de los invariantes MUST cubrir, como mínimo: cada valor de
   `age_rating` válido cruzado con cada franja etaria relevante, cada origen de exclusión, cada uno
   de los estados de respuesta posibles, y los valores límite de edad. Un caso no cubierto MUST
@@ -1209,7 +1253,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   MUST ser `0 <= region_weight_factor < 1`, **inclusivo abajo** —`0` es el neutro de FR-090— y
   **estricto arriba** —`1` anula el aporte extrarregional y es el caso que FR-081a prohíbe—.
 - **FR-096**: El término colaborativo MUST considerar un **número mínimo de vecinos con peso no
-  despreciable**, declarado en configuración versionada (`collab_min_neighbors`). Si la región del
+  despreciable**, declarado en configuración versionada (`collab_min_neighbors`). Un vecino tiene **peso
+  no despreciable** cuando integra el **vecindario final** —después del corte top-k— con similitud
+  efectiva (similitud × peso regional) **mayor que cero** (RD-105, RD-111). Si la región del
   usuario no los aporta, el vecindario MUST completarse con usuarios de otras regiones hasta alcanzar el
   mínimo. Este requisito es el **criterio verificable** de FR-081a: un usuario situado en una región con
   muy pocos usuarios MUST obtener un vecindario de tamaño mayor o igual al mínimo, condición sobre la que
@@ -1259,7 +1305,10 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   `ceil(diversity_max_cluster_share × p)`. Así el tope vale para **todo prefijo**, y por lo tanto para
   cualquier `top_n`. Si todos los candidatos restantes pertenecen a clusters ya topados, el tope MUST
   relajarse para esa posición en lugar de acortar la lista, y cada relajación MUST contarse en una
-  métrica. Rige igual para el respaldo (SC-025) y para la colocación de la cuota (FR-033a6).
+  métrica. Rige igual para el respaldo (SC-025) y para la colocación de la cuota (FR-033a6). El tope se
+  garantiza sobre la **lista precalculada**; si las guardas al servir retiran `r` ítems, un cluster
+  puede llegar a `ceil(diversity_max_cluster_share × (N + r))` en la lista servida de tamaño N, por la
+  misma razón y con la misma cota que FR-033a6a (RD-111).
 
 ### Key Entities
 
@@ -1315,7 +1364,8 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 ### Measurable Outcomes
 
 - **SC-001**: La latencia de la operación de lectura del top-N permanece en **p95 ≤ 50 ms**, medida en el
-  servicio (RD-105), cuando el catálogo crece al menos 10× respecto de la línea base; la variación
+  servicio (RD-105), cuando el catálogo crece al menos 10× respecto de la línea base —**10 000 ítems por
+  módulo**, de modo que la prueba llega a 100 000 (RD-111)—; la variación
   atribuible al tamaño del catálogo es inferior al 10 %.
 - **SC-002**: **0 %** de ítems que violen el filtro de edad en cualquier respuesta emitida —vigente
   u obsoleta— medido sobre el 100 % de las respuestas de una batería de verificación con usuarios de
@@ -1339,9 +1389,10 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   (FR-084), al menos el 90 % obtiene un top-N no vacío en el módulo opuesto (efectividad del cold
   start cruzado). Sin declaración en el opuesto la solicitud se rechaza por FR-088 y no entra en la
   medición.
-- **SC-011**: Ningún top-N de tamaño N concentra más de `ceil(0,4 × N)` ítems de un mismo cluster de
-  tags (tag principal, FR-071), salvo las posiciones donde FR-071a relajó el tope por falta de
-  candidatos de otros clusters, que se cuentan y se reportan.
+- **SC-011**: Ningún prefijo de tamaño N de un top-N **precalculado** concentra más de `ceil(0,4 × N)`
+  ítems de un mismo cluster de tags (tag principal, FR-071), salvo las posiciones donde FR-071a relajó
+  el tope por falta de candidatos de otros clusters, que se cuentan y se reportan. En la lista servida,
+  la desviación queda acotada por los ítems que retiran las guardas (FR-071a).
 - **SC-012**: **0** conexiones directas a bases de datos de otros repos y **0** rutas de acceso desde
   los frontends, verificable por revisión de configuración de red y dependencias.
 - **SC-013**: El **100 %** de los endpoints expuestos y del evento consumido pasa la validación
@@ -1373,8 +1424,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **SC-024**: El **100 %** de los usuarios con declaración de gustos en un módulo y sin top-N
   personalizado vigente en él recibe un top-N de respaldo no vacío de ese módulo, salvo que sus
   propios filtros obligatorios agoten los candidatos disponibles.
-- **SC-025**: El top-N de respaldo cumple el mismo umbral de diversidad exigido en SC-011: ningún
-  cluster de tags supera el porcentaje máximo acordado.
+- **SC-025**: El top-N de respaldo **precalculado** cumple el mismo umbral de diversidad exigido en
+  SC-011: ningún cluster de tags supera el porcentaje máximo acordado, con las mismas excepciones
+  contadas y la misma cota en la lista servida.
 - **SC-026**: **0 %** de los top-N de respaldo servidos contiene ítems que violen el filtro de edad
   o de exclusión del usuario que los recibe.
 - **SC-027**: El **100 %** de las respuestas de respaldo se marca como no personalizada, siendo
@@ -1391,8 +1443,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   materializarse (FR-091…FR-095a).
 - **SC-031**: Con `region_weight_factor = 0`, el top-N es **idéntico** al calculado sin región en el
   **100 %** de los casos de prueba; con cualquier valor admisible, el **100 %** de los recálculos
-  colaborativos usa al menos `collab_min_neighbors` vecinos con peso no despreciable o registra que no
-  los hubo (FR-081…FR-081b, FR-090, FR-096).
+  colaborativos usa al menos `collab_min_neighbors` vecinos con peso no despreciable —en el
+  vecindario final, con similitud efectiva > 0 (FR-096)— o registra que no los hubo (FR-081…FR-081b,
+  FR-090, FR-096).
 
 ## Assumptions
 
