@@ -1108,10 +1108,10 @@ expirar la marca debe poder reprocesarse sin corromper estado.
 **Dep.**: T023
 
 **Criterios de aceptación**:
-- [ ] Evento ya procesado → ACK sin recomputar
-- [ ] La marca vive en Redis **y** en Postgres: perder Redis no rompe la idempotencia (INV-2)
-- [ ] Reprocesar tras expirar la marca produce el mismo resultado, sin duplicar señales (FR-069)
-- [ ] El TTL de retención es configurable (FR-068)
+- [X] Evento ya procesado → ACK sin recomputar
+- [X] La marca vive en Redis **y** en Postgres: perder Redis no rompe la idempotencia (INV-2)
+- [X] Reprocesar tras expirar la marca produce el mismo resultado, sin duplicar señales (FR-069)
+- [X] El TTL de retención es configurable (FR-068)
 - [ ] **SC-005** — reprocesar el mismo evento produce un top-N idéntico
 
 **Tests**: `tests/integration/test_idempotency.py` — mismo evento 10 veces → 1 recálculo; con la marca expirada, el reproceso converge al mismo estado.
