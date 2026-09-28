@@ -218,14 +218,14 @@ def load_engine_config(path: Path | str) -> EngineConfig:
     return parse_engine_config(data, source=str(path.name))
 
 
-class _OperationalWindows(Protocol):
+class OperationalWindows(Protocol):
     signal_retention_days: int
     idempotency_retention_hours: int
     ttl_dedupe_seconds: int
     event_redelivery_window_hours: int
 
 
-def validate_operational_windows(cfg: EngineConfig, settings: _OperationalWindows) -> None:
+def validate_operational_windows(cfg: EngineConfig, settings: OperationalWindows) -> None:
     """FR-068b: la retención supera estrictamente las tres ventanas de la lista cerrada (RD-110)."""
     retention_h = settings.signal_retention_days * 24
     windows = {
