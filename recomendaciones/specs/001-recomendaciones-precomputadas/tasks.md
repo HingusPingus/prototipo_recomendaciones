@@ -291,7 +291,7 @@ pertenecer al Milestone 11)*:
 - [ ] T043 Contract testing contra `api-general` como gate de CI en `tests/contract/`
 - [X] T044 Suite de casos críticos obligatorios en `tests/integration/test_critical_scenarios.py`
 - [ ] T045 Pipeline de CI con gates bloqueantes en `.github/workflows/ci.yml`
-- [ ] T047 [P] Documento de campos requeridos a `api-general` en `docs/contracts/required-fields.md`
+- [X] T047 [P] Documento de campos requeridos a `api-general` en `docs/contracts/required-fields.md`
 - [ ] T048 Validación final contra el checklist y DoD en `docs/validation/traceability-matrix.md`
 - [ ] T050 [P] [US1] Pruebas de carga y verificación de SC-001 en `tests/performance/test_read_latency.py`
 - [X] T058 Supresión verificada con aborto del recálculo en curso en `src/recomendaciones/worker/suppression.py` (TDD)
@@ -1924,20 +1924,20 @@ repo necesita.
 **Dep.**: T043
 
 **Criterios de aceptación**:
-- [ ] Enumera cada campo requerido, su FR asociado y el impacto de su ausencia
-- [ ] Cubre las **10 dependencias vigentes** *(eran nueve hasta DEP-12, RD-101)*: DEP-1, DEP-2, DEP-5,
+- [X] Enumera cada campo requerido, su FR asociado y el impacto de su ausencia
+- [X] Cubre las **10 dependencias vigentes** *(eran nueve hasta DEP-12, RD-101)*: DEP-1, DEP-2, DEP-5,
       DEP-6, DEP-7, DEP-8, DEP-9, DEP-10, DEP-11, DEP-12 — con DEP-8 exigido **también en el evento** (FR-061). **DEP-4** se marca como **resuelta internamente** (la popularidad se deriva localmente) y
       **DEP-3** como **vacante a propósito**: el identificador fue retirado y **no se reasigna**
       > La versión anterior de este criterio citaba **DEP-3 como si existiera** y se detenía en DEP-6,
       > ignorando las cinco posteriores.
-- [ ] Cubre **CR-1…CR-19**, marcando **CR-13 y CR-14 como retiradas** (RD-50); CR-19 y DEP-12 son el
+- [X] Cubre **CR-1…CR-19**, marcando **CR-13 y CR-14 como retiradas** (RD-50); CR-19 y DEP-12 son el
       evento de baja de cuenta
-- [ ] Registra **FR-079a** (formulario de alta) como expectativa externa sin tarea en este repo: la
+- [X] Registra **FR-079a** (formulario de alta) como expectativa externa sin tarea en este repo: la
       cumple la aplicación web y aquí solo se verifica su efecto (rechazo en la ingesta, SC-028)
-- [ ] Señala cuál es la dependencia de mayor severidad y por qué: **DEP-10** es la única cuyo
+- [X] Señala cuál es la dependencia de mayor severidad y por qué: **DEP-10** es la única cuyo
       incumplimiento deja al sistema **sin ningún usuario atendible**, por encadenamiento con FR-088
-- [ ] Declara explícitamente que la fuente de verdad del contrato es `api-general`
-- [ ] Está enlazado desde el README y desde los contract tests
+- [X] Declara explícitamente que la fuente de verdad del contrato es `api-general`
+- [X] Está enlazado desde el README y desde los contract tests
 
 **Tests**: test que falla si el documento no menciona todos los campos que los contract tests validan.
 

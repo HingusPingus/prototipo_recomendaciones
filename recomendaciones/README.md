@@ -8,6 +8,7 @@ bypass.
   (`data-model.md` manda en la capa de datos)
 - Arquitectura: [`docs/architecture.md`](docs/architecture.md)
 - Operación y alertas: [`docs/runbook.md`](docs/runbook.md), [`ops/alerts.yaml`](ops/alerts.yaml)
+- Lo que se necesita de `api-general`: [`docs/contracts/required-fields.md`](docs/contracts/required-fields.md)
 - Contratos (copias derivadas; los custodia `api-general`):
   [`specs/001-recomendaciones-precomputadas/contracts/`](specs/001-recomendaciones-precomputadas/contracts/)
 
