@@ -246,7 +246,7 @@ pertenecer al Milestone 11)*:
 - [X] T018 Cliente Redis y esquema de claves en `src/recomendaciones/storage/cache/keys.py` (TDD)
 - [X] T019 Escritura del top-N con score y `config_version` en `src/recomendaciones/storage/cache/repository.py` (TDD)
 - [X] T020 [US6] Política de cache miss y señalización de recálculo en `src/recomendaciones/api/services/read_service.py` (TDD)
-- [ ] T021 [P] [US6] Comportamiento ante Redis caído en `src/recomendaciones/storage/cache/client.py` (TDD)
+- [X] T021 [P] [US6] Comportamiento ante Redis caído en `src/recomendaciones/storage/cache/client.py` (TDD)
 - [ ] T022 [US6] Reconstrucción total tras pérdida de Redis en `src/recomendaciones/batch/warmup.py` (TDD)
 - [ ] T023 [US2] Consumo de `recomendacion.actualizar` en `src/recomendaciones/worker/consumer.py` (TDD)
 - [ ] T024 [US2] Idempotencia por `event_id` en `src/recomendaciones/worker/idempotency.py` (TDD)
@@ -256,7 +256,7 @@ pertenecer al Milestone 11)*:
 - [ ] T030 [US3] Vocabulario versionado y reconciliación de vectores en `src/recomendaciones/transformer/vocabulary_sync.py` (TDD)
 - [X] T033 [US1] Endpoint de lectura del top-N en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [X] T034 [US1] Autenticación por API key interna y no alcanzabilidad desde frontends en `src/recomendaciones/api/deps.py` (TDD)
-- [ ] T035 [US1] Errores tipados y contrato estable en `src/recomendaciones/api/errors.py` (TDD)
+- [X] T035 [US1] Errores tipados y contrato estable en `src/recomendaciones/api/errors.py` (TDD)
 - [ ] T037 [US6] Filtrado de salida sobre el respaldo (acotado) en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [ ] T038 [P] [US6] Batch de top-N de respaldo en `src/recomendaciones/batch/fallback.py` (TDD)
 - [ ] T049 Definir `contracts/` primero (OpenAPI + JSON Schema) en `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
@@ -1022,7 +1022,7 @@ con `Retry-After`. **Prohibido** recurrir a Postgres para calcular en línea (FR
 **Dep.**: T018
 
 **Criterios de aceptación**:
-- [ ] Redis caído → `503` con `Retry-After`, nunca `200` con resultado vacío
+- [X] Redis caído → `503` con `Retry-After`, nunca `200` con resultado vacío
 - [X] **No existe** ruta de fallback que consulte Postgres desde el request path (FR-065, INV-1)
 - [X] El timeout hacia Redis es explícito y configurable — no se cuelga indefinidamente
 - [X] Miss y caída producen `result_type` / código HTTP distintos y distinguibles
@@ -1486,10 +1486,10 @@ la definición de cambio breaking siguen FR-058.
 **Dep.**: T033, T005
 
 **Criterios de aceptación**:
-- [ ] `401` sin auth, `422` params inválidos, `503` + `Retry-After` con Redis caído
-- [ ] Ninguna excepción no manejada escapa como `500` con stack trace
-- [ ] Los cuerpos de error tienen forma estable y documentada
-- [ ] Ningún mensaje de error revela detalles internos (rutas, versiones de librerías, SQL)
+- [X] `401` sin auth, `422` params inválidos, `503` + `Retry-After` con Redis caído
+- [X] Ninguna excepción no manejada escapa como `500` con stack trace
+- [X] Los cuerpos de error tienen forma estable y documentada
+- [X] Ningún mensaje de error revela detalles internos (rutas, versiones de librerías, SQL)
 
 **Tests**: `tests/contract/test_errors.py` — cada error produce su código; ningún cuerpo contiene rastros internos.
 
