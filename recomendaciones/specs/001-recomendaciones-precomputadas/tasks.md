@@ -262,7 +262,7 @@ pertenecer al Milestone 11)*:
 - [ ] T049 Definir `contracts/` primero (OpenAPI + JSON Schema) en `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
 - [X] T053 [P] [US4] Endpoint de declaración de gustos en `src/recomendaciones/api/routes/declaraciones.py` (TDD)
 - [X] T054 [US4] Herencia de tags entre módulos en `src/recomendaciones/api/services/declaracion.py` (TDD)
-- [ ] T055 [US4] Rechazo por módulo sin declaración en `src/recomendaciones/api/routes/recommendations.py` (TDD)
+- [X] T055 [US4] Rechazo por módulo sin declaración en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [ ] T063 [US6] Recálculo de popularidad por ventana en `src/recomendaciones/batch/popularidad.py` (TDD)
 - [ ] T064 [US2] Persistencia de la señal del evento y materialización de su exclusión en `src/recomendaciones/worker/signals.py` (TDD)
 
@@ -2191,14 +2191,14 @@ contrato de lectura (DEP-6).
 **Dep.**: T053, T018, T033
 
 **Criterios de aceptación**:
-- [ ] El chequeo de declaración ocurre en precondiciones, antes de resolver estado de resultado
-- [ ] La declaración se lee de `filters:{user_id}.declared_modules` (RD-96): el camino normal no consulta
+- [X] El chequeo de declaración ocurre en precondiciones, antes de resolver estado de resultado
+- [X] La declaración se lee de `filters:{user_id}.declared_modules` (RD-96): el camino normal no consulta
       Postgres (INV-1). *(La dependencia de T012 —motor— era espuria: el rechazo ocurre antes de todo
       resultado.)*
-- [ ] El conjunto de estados de respuesta sigue teniendo **cinco** miembros
-- [ ] El rechazo es por módulo: declarado en uno y no en el otro → rechazo sólo en el segundo
-- [ ] El cuerpo del rechazo indica qué falta, sin exponer detalle interno
-- [ ] **SC-029** (parte de lectura) — 100 % de las lecturas de un módulo sin declaración rechazadas como
+- [X] El conjunto de estados de respuesta sigue teniendo **cinco** miembros
+- [X] El rechazo es por módulo: declarado en uno y no en el otro → rechazo sólo en el segundo
+- [X] El cuerpo del rechazo indica qué falta, sin exponer detalle interno
+- [X] **SC-029** (parte de lectura) — 100 % de las lecturas de un módulo sin declaración rechazadas como
       precondición incumplida, sin un sexto estado
 
 **Tests**: `tests/contract/test_rechazo_sin_declaracion.py` — enumera los estados posibles y falla si

@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from recomendaciones.shared.domain import Module, ResultType
-from recomendaciones.shared.errors import DeclarationRequired, StaleAgeScale, UnknownUser
+from recomendaciones.api.services.precondiciones import check_preconditions
 from recomendaciones.storage.cache.filters import FiltersCache, RetiredCache, UserFilters
 from recomendaciones.storage.cache.recompute import RecomputeSignaler
 from recomendaciones.storage.cache.repository import CachedItem, RecommendationEntry, RecommendationRepository
@@ -83,21 +83,6 @@ class ReadService:
         self._compatible = age_compatible_versions
         self._on_signal_failure = on_signal_failure
         self._on_stale_age_scale = on_stale_age_scale
-
-    # --- precondiciones -------------------------------------------------------------------------
-    def _user_filters(self, user_id: uuid.UUID) -> UserFilters:
-        filters = self._filters.get(user_id)
-        if filters is None:
-            raise UnknownUser()
-        if filters.age_config_version not in self._compatible:
-            filters = self._filters.repopulate(user_id)  # la entrada de caché era de otra escala
-            if filters is None:
-                raise UnknownUser()
-            if filters.age_config_version not in self._compatible:
-                if self._on_stale_age_scale:
-                    self._on_stale_age_scale()
-                raise StaleAgeScale()  # nunca servir con un ordinal incomparable (DI-23)
-        return filters
 
     # --- resolución del resultado ----------------------------------------------------------------
     def _usable(self, entry: RecommendationEntry | None, filters: UserFilters) -> RecommendationEntry | None:
@@ -155,9 +140,7 @@ class ReadService:
     # --- entrada pública ------------------------------------------------------------------------
     def read(self, user_id: uuid.UUID, module: Module, *, top_n: int, prefer_stale: bool = False) -> ReadResult:
         module = Module(module)
-        filters = self._user_filters(user_id)
-        if module not in filters.declared_modules:
-            raise DeclarationRequired()  # FR-088: precondición, no un sexto estado
+        filters = check_preconditions(self._filters, user_id, module, self._compatible, self._on_stale_age_scale)
         retired = self._retired.members(module)
 
         fresh = self._resolve(lambda v: self._repository.read_fresh(v, user_id, module), filters)
