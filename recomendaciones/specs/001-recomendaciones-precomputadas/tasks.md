@@ -1043,11 +1043,11 @@ colateral del tráfico de lectura.
 **Dep.**: T020
 
 **Criterios de aceptación**:
-- [ ] Es un proceso dedicado, invocable manualmente; **no** se activa por tráfico (FR-066)
-- [ ] Respeta un límite de tasa configurable
-- [ ] Es reanudable: interrumpirlo y relanzarlo no duplica trabajo ni pierde usuarios
-- [ ] Con Redis vacío, el servicio sigue respondiendo (pendiente/respaldo) mientras reconstruye
-- [ ] `INV-2`: reconstruye íntegramente desde Postgres
+- [X] Es un proceso dedicado, invocable manualmente; **no** se activa por tráfico (FR-066)
+- [X] Respeta un límite de tasa configurable
+- [X] Es reanudable: interrumpirlo y relanzarlo no duplica trabajo ni pierde usuarios
+- [X] Con Redis vacío, el servicio sigue respondiendo (pendiente/respaldo) mientras reconstruye
+- [X] `INV-2`: reconstruye íntegramente desde Postgres
 - [ ] **SC-008** — tras un vaciado total de la caché, 100 % de los top-N afectados se reconstruye sin intervención manual
 
 **Tests**: `tests/integration/test_warmup.py` — flush total de Redis; el servicio no devuelve 500; el warm-up repuebla; la tasa de `XADD` no supera el límite.
