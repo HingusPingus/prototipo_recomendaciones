@@ -22,3 +22,15 @@ htmlcov/
 .vscode/
 .idea/
 .DS_Store
+
+# Build y herramientas (agregado por /speckit-implement, T001)
+dist/
+build/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+*.log
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
