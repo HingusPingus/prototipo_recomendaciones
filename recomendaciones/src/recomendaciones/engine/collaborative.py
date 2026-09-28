@@ -30,6 +30,19 @@ class Neighbor:
 class CollaborativeResult:
     scores: dict[uuid.UUID, float]
     neighbors: tuple[Neighbor, ...]
+    insufficient: bool = False  # menos de `collab_min_neighbors` vecinos con peso no despreciable (FR-096)
+
+
+def regional_weights(target_region: str, regions: Mapping[uuid.UUID, str], factor: float) -> dict[uuid.UUID, float]:
+    """Peso por vecino según región (T061, FR-081b): misma región pesa 1; otra, `1 − factor`.
+
+    `factor` es la **intensidad** de la segmentación: `0` es el neutro (FR-090) y `1` —que anularía el aporte
+    extrarregional, el filtro duro que FR-081a prohíbe— no es admisible. El peso extrarregional es
+    estrictamente positivo en todo el dominio.
+    """
+    if not 0 <= factor < 1:
+        raise ValueError("region_weight_factor debe cumplir 0 <= x < 1 (FR-081b)")
+    return {user: (1.0 if region == target_region else 1.0 - factor) for user, region in regions.items()}
 
 
 def select_neighbors(
@@ -38,8 +51,14 @@ def select_neighbors(
     k: int,
     *,
     weights: Mapping[uuid.UUID, float] | None = None,
+    min_neighbors: int = 0,
 ) -> tuple[Neighbor, ...]:
-    """Vecindario final: los `k` de mayor similitud efectiva estrictamente positiva (FR-023, FR-096)."""
+    """Vecindario final: los de mayor similitud efectiva (similitud × peso regional) estrictamente positiva.
+
+    Tamaño `max(k, min_neighbors)`: como todo peso extrarregional es positivo, un vecino de otra región con
+    similitud positiva nunca queda fuera por su peso si hacen falta vecinos para llegar al mínimo —el corte
+    top-k no convierte un peso ínfimo en cero (FR-081a, FR-096)—.
+    """
     if target is None:
         return ()
     scored: list[Neighbor] = []
@@ -50,7 +69,7 @@ def select_neighbors(
         if sim > 0:
             scored.append(Neighbor(user_id, sim))
     scored.sort(key=lambda n: (-n.similarity, str(n.user_id)))
-    return tuple(scored[:k])
+    return tuple(scored[: max(k, min_neighbors)])
 
 
 def score_from_neighbors(
@@ -77,6 +96,8 @@ def collaborative_scores(
     k: int,
     *,
     weights: Mapping[uuid.UUID, float] | None = None,
+    min_neighbors: int = 0,
 ) -> CollaborativeResult:
-    neighborhood = select_neighbors(target, others, k, weights=weights)
-    return CollaborativeResult(score_from_neighbors(neighborhood, likes, list(candidates)), neighborhood)
+    neighborhood = select_neighbors(target, others, k, weights=weights, min_neighbors=min_neighbors)
+    scores = score_from_neighbors(neighborhood, likes, list(candidates))
+    return CollaborativeResult(scores, neighborhood, insufficient=len(neighborhood) < min_neighbors)

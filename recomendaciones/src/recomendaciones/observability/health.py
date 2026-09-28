@@ -10,7 +10,6 @@ credenciales ni detalles de la excepción: solo `ok` / `unavailable` por depende
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 
 import sqlalchemy as sa
@@ -57,27 +56,8 @@ def check_postgres(factory: SessionFactory) -> str:
         return UNAVAILABLE
 
 
-def check_broker(amqp_url: str, timeout: float = 2.0) -> str:
-    import aio_pika
-
-    async def probe() -> str:
-        connection = await asyncio.wait_for(aio_pika.connect(amqp_url), timeout)
-        await connection.close()
-        return OK
-
-    try:
-        return asyncio.run(probe())
-    except Exception:  # noqa: BLE001
-        return UNAVAILABLE
-
-
 def api_health(*, cache: CacheClient, factory: SessionFactory, config_version: str) -> HealthReport:
     return HealthReport("api", config_version, {"redis": check_redis(cache), "postgres": check_postgres(factory)}, critical=("redis",))
-
-
-def worker_health(*, cache: CacheClient, factory: SessionFactory, amqp_url: str, config_version: str) -> HealthReport:
-    checks = {"redis": check_redis(cache), "postgres": check_postgres(factory), "broker": check_broker(amqp_url)}
-    return HealthReport("worker", config_version, checks, critical=("redis", "postgres", "broker"))
 
 
 def transformer_health(*, factory: SessionFactory, config_version: str) -> HealthReport:

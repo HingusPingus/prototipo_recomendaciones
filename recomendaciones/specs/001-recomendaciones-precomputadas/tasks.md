@@ -282,7 +282,7 @@ pertenecer al Milestone 11)*:
 - [ ] T056 Perfil vectorial derivado puro en `src/recomendaciones/engine/profile.py` (TDD)
 - [ ] T057 Purga de señales de actividad con guarda de exclusión en `src/recomendaciones/batch/purga_senales.py` (TDD)
 - [X] T060 [US2] Disparador de recálculo por conteo e invalidación en el mismo acto en `src/recomendaciones/worker/trigger.py` (TDD)
-- [ ] T061 Ponderación regional del término colaborativo en `src/recomendaciones/engine/collaborative.py` (TDD)
+- [X] T061 Ponderación regional del término colaborativo en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [X] T062 [US6] Señal de resultado obsoleto como campo aparte en `src/recomendaciones/api/schemas/respuesta.py` (TDD)
 - [ ] T065 [US2] Cuota de novedades en el top-N personalizado en `src/recomendaciones/engine/postprocess.py` (TDD)
 
@@ -2383,16 +2383,16 @@ FR-081a exige degradación continua. FR-081b fija el factor como **intensidad de
 **Dep.**: T004, T017
 
 **Criterios de aceptación**:
-- [ ] Con `region_weight_factor = 0` el resultado es **idéntico** al de no segmentar
-- [ ] **SC-031** — factor 0 idéntico a sin región en el 100 % de los casos de prueba; 100 % de los
+- [X] Con `region_weight_factor = 0` el resultado es **idéntico** al de no segmentar
+- [X] **SC-031** — factor 0 idéntico a sin región en el 100 % de los casos de prueba; 100 % de los
       recálculos con al menos `collab_min_neighbors` vecinos con peso no despreciable, o registro de que
       no los hubo
-- [ ] El peso extraregional es positivo para todo factor `< 1`: ningún vecino queda excluido por regla
-- [ ] `collab_min_neighbors` = 10: si la región del usuario no aporta ese mínimo de vecinos con peso
+- [X] El peso extraregional es positivo para todo factor `< 1`: ningún vecino queda excluido por regla
+- [X] `collab_min_neighbors` = 10: si la región del usuario no aporta ese mínimo de vecinos con peso
       no despreciable, el vecindario **se completa con usuarios de otras regiones** hasta alcanzarlo
       (FR-096). *(Corregido el 2026-09-27: decía que en ese caso «el término colaborativo no se
       aplica», que es exactamente el apagado discontinuo que FR-081a y FR-096 prohíben.)*
-- [ ] El corte top-k **posterior** se verifica: un peso positivo pero ínfimo no debe volverse
+- [X] El corte top-k **posterior** se verifica: un peso positivo pero ínfimo no debe volverse
       indistinguible de cero al recortar (riesgo señalado al cerrar FR-081a)
 
 **Tests**: `tests/unit/test_ponderacion_regional.py` — factor 0 equivale a sin segmentación; usuario en

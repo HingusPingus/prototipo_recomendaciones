@@ -11,7 +11,8 @@ from prometheus_client import start_http_server
 
 from recomendaciones.bootstrap import Runtime, build_runtime
 from recomendaciones.config.settings import Settings
-from recomendaciones.observability.health import start_health_server, worker_health
+from recomendaciones.observability.health import start_health_server
+from recomendaciones.worker.health import worker_health
 from recomendaciones.shared.errors import CacheUnavailable
 from recomendaciones.transformer.freshness import refresh_sync_metrics
 from recomendaciones.storage.cache.filters import FiltersCache

@@ -25,7 +25,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
 from recomendaciones.config.loader import EngineConfig
-from recomendaciones.engine.collaborative import score_from_neighbors, select_neighbors
+from recomendaciones.engine.collaborative import regional_weights, score_from_neighbors, select_neighbors
 from recomendaciones.engine.content import content_scores
 from recomendaciones.engine.cross_module import cross_module_scores
 from recomendaciones.engine.postprocess import PostprocessRequest, postprocess
@@ -175,15 +175,20 @@ class Recomputer:
             out.setdefault(user_id, set()).add(item_id)
         return {u: frozenset(items) for u, items in out.items()}
 
-    def _other_profiles(self, s, user_id: uuid.UUID, module: Module, vocab_version: str) -> dict[uuid.UUID, TagVector]:  # noqa: ANN001
+    def _other_profiles(self, s, user_id: uuid.UUID, module: Module, vocab_version: str):  # noqa: ANN001, ANN202
+        """Perfiles de los demás usuarios del módulo y su región (T061). La región viaja por la PK de `users`:
+        no es predicado de filtro, de modo que el índice que §2.1 difería a esta tarea no se justifica."""
         rows = s.execute(
-            sa.select(UserProfile.user_id, UserProfile.vector).where(
+            sa.select(UserProfile.user_id, UserProfile.vector, User.region)
+            .join(User, User.id == UserProfile.user_id)
+            .where(
                 UserProfile.scope == module.value,
                 UserProfile.vocab_version == vocab_version,
                 UserProfile.user_id != user_id,
             )
         ).all()
-        return {r.user_id: TagVector(np.asarray(r.vector, dtype=np.float64), vocab_version) for r in rows}
+        vectors = {r.user_id: TagVector(np.asarray(r.vector, dtype=np.float64), vocab_version) for r in rows}
+        return vectors, {r.user_id: r.region for r in rows}
 
     def _persist_profiles(self, user_id: uuid.UUID, profiles: dict[ProfileScope, Profile]) -> None:
         with self._factory.begin() as s:
@@ -208,7 +213,7 @@ class Recomputer:
         module = Module(module)
         started = time.monotonic()
         with self._factory() as s:
-            user = s.execute(sa.select(User.max_age_ordinal, User.age_config_version).where(User.id == user_id)).one_or_none()
+            user = s.execute(sa.select(User.max_age_ordinal, User.age_config_version, User.region).where(User.id == user_id)).one_or_none()
             if user is None:
                 return self._done(module, ModuleOutcome("user_not_found"), started)
             if self._suppressed(s, user_id):
@@ -226,11 +231,20 @@ class Recomputer:
             profiles, general = self._profiles(s, user_id, module, snapshot)
             opposite_activity = self._has_preference_activity(s, user_id, module.opposite)
             own = profiles.get(ProfileScope(module.value))
+            others, regions = self._other_profiles(s, user_id, module, snapshot.vocab.version)
             neighbors = select_neighbors(
                 own.vector if own else None,
-                self._other_profiles(s, user_id, module, snapshot.vocab.version),
+                others,
                 self._cfg.k,
+                weights=regional_weights(user.region, regions, self._cfg.region_weight_factor),  # FR-081, FR-090a
+                min_neighbors=self._cfg.collab_min_neighbors,  # FR-096
             )
+            if own is not None and len(neighbors) < self._cfg.collab_min_neighbors:  # SC-031: se registra que no los hubo
+                self._metrics.inc("collab_insufficient_neighbors_total", module=module.value)
+                log.info(
+                    "vecindario colaborativo por debajo del mínimo",
+                    extra={"user_id": str(user_id), "reco_module": module.value, "neighbors": len(neighbors)},
+                )
             likes = self._neighbor_likes(s, [n.user_id for n in neighbors])
             exclusions = load_exclusion_set(s, user_id)
         entry = self._rank(user_id, module, user.max_age_ordinal, snapshot, profiles, general, opposite_activity, neighbors, likes, exclusions)

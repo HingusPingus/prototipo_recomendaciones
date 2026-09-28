@@ -40,6 +40,7 @@ SPECS: dict[str, MetricSpec] = {
     "recompute_requests_pending": MetricSpec("gauge", (), "Pendientes de recompute:requests (RD-111)"),
     "recompute_requests_dropped_total": MetricSpec("counter", (), "Solicitudes descartadas al agotar entregas (RD-111)"),
     "diversity_cap_relaxed_total": MetricSpec("counter", ("module",), "Relajaciones del tope de cluster (FR-071a)"),
+    "collab_insufficient_neighbors_total": MetricSpec("counter", ("module",), "Recálculos con menos de collab_min_neighbors vecinos (SC-031)"),
     "fallback_new_item_share": MetricSpec("gauge", ("module", "kind"), "Cuota de novedades disponible/ocupada (FR-033a8)"),
     "signal_duplicate_rejections_total": MetricSpec("counter", ("source",), "Reentregas de una misma interacción (§7.10)"),
     "signal_ingest_lag_seconds": MetricSpec("histogram", ("source",), "received_at − occurred_at (§7.10)", LAG_BUCKETS),
