@@ -72,3 +72,16 @@ def vectorize_catalog(
         if vec is not None:
             out[item.item_id] = vec
     return out
+
+
+def content_scores(
+    profile: TagVector | None, candidates: Mapping[uuid.UUID, TagVector | None]
+) -> dict[uuid.UUID, float]:
+    """Señal content-based (T009): coseno perfil–ítem en [-1, 1], comparable con las otras dos.
+
+    Perfil vacío ⟹ señal neutra (0). Ítem sin vector ⟹ 0 en este término (RD-24). Vectores de otra
+    versión de vocabulario ⟹ `VocabularyMismatch`, nunca un resultado silencioso (FR-010f).
+    """
+    if profile is None:
+        return {item: 0.0 for item in candidates}
+    return {item: (0.0 if vec is None else profile.cosine(vec)) for item, vec in candidates.items()}

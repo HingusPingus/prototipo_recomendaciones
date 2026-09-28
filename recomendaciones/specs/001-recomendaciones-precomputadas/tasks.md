@@ -234,7 +234,7 @@ pertenecer al Milestone 11)*:
 - [X] T006 [P] Test de arquitectura: `api/` no importa `engine/` en `tests/unit/test_architecture.py`
 - [X] T007 Vectorización TF-IDF sobre vocabulario compartido en `src/recomendaciones/engine/content.py` (TDD)
 - [X] T008 Similitud coseno y construcción de perfil en `src/recomendaciones/engine/similarity.py` (TDD)
-- [ ] T009 [P] Señal content-based en `src/recomendaciones/engine/content.py` (TDD)
+- [X] T009 [P] Señal content-based en `src/recomendaciones/engine/content.py` (TDD)
 - [ ] T010 [P] Señal colaborativa (k vecinos) en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [ ] T011 [P] [US4] Señal cross-module en `src/recomendaciones/engine/cross_module.py` (TDD)
 - [ ] T012 Combinación lineal y desempate determinista en `src/recomendaciones/engine/scoring.py` (TDD)
@@ -624,10 +624,10 @@ que exista código que pueda contradecirla.
 **Dep.**: T008
 
 **Criterios de aceptación**:
-- [ ] Score en rango acotado y comparable con las otras dos señales
-- [ ] Perfil vacío (usuario sin señales) → señal neutra, sin excepción
-- [ ] Función pura, determinista con semilla fija
-- [ ] Vectores con `vocab_version` distinta → error, no resultado silencioso
+- [X] Score en rango acotado y comparable con las otras dos señales
+- [X] Perfil vacío (usuario sin señales) → señal neutra, sin excepción
+- [X] Función pura, determinista con semilla fija
+- [X] Vectores con `vocab_version` distinta → error, no resultado silencioso
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_content.py`): usuario con perfil de terror puntúa más alto un
 ítem de terror; perfil vacío → señal neutra sin lanzar; vectores de `vocab_version` distinta → error.
