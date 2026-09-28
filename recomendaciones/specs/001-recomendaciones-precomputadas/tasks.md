@@ -240,7 +240,7 @@ pertenecer al Milestone 11)*:
 - [X] T012 Combinación lineal y desempate determinista en `src/recomendaciones/engine/scoring.py` (TDD)
 - [X] T013 [US5] Filtro de edad por `age_rating` (fail-closed) en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [X] T014 [US5] Filtro de exclusión en `src/recomendaciones/engine/postprocess.py` (TDD)
-- [ ] T015 Diversificación MMR en `src/recomendaciones/engine/postprocess.py` (TDD)
+- [X] T015 Diversificación MMR en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T016 [US5] Pipeline de post-proceso con orden garantizado en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T017 [US5] Batería exhaustiva de invariantes en `tests/invariants/` (TDD)
 - [ ] T018 Cliente Redis y esquema de claves en `src/recomendaciones/storage/cache/keys.py` (TDD)
@@ -811,16 +811,16 @@ selecciona de un conjunto ya filtrado y no puede reintroducir nada** (FR-031).
 **Dep.**: T012
 
 **Criterios de aceptación**:
-- [ ] La salida de MMR es un **subconjunto** de su entrada — verificado como aserción, no por convención
-- [ ] `lambda_mmr` viene de configuración versionada
-- [ ] La diversidad se mide como proporción máxima del top-N atribuible a un cluster (FR-071)
-- [ ] Con `lambda=1` el orden coincide con el de relevancia pura (caso degenerado correcto)
-- [ ] Determinista ante empates (FR-070)
-- [ ] **Tope de cluster en la selección** (FR-071a, RD-108): cluster = tag principal del ítem (mayor peso,
+- [X] La salida de MMR es un **subconjunto** de su entrada — verificado como aserción, no por convención
+- [X] `lambda_mmr` viene de configuración versionada
+- [X] La diversidad se mide como proporción máxima del top-N atribuible a un cluster (FR-071)
+- [X] Con `lambda=1` el orden coincide con el de relevancia pura (caso degenerado correcto)
+- [X] Determinista ante empates (FR-070)
+- [X] **Tope de cluster en la selección** (FR-071a, RD-108): cluster = tag principal del ítem (mayor peso,
       desempate por nombre); en la posición `p` se omite un candidato cuyo cluster superaría
       `ceil(0,4 × p)`; si solo quedan candidatos de clusters topados, se relaja y se incrementa
       `diversity_cap_relaxed_total`
-- [ ] **SC-011** — ningún prefijo de longitud N concentra más de `ceil(0,4 × N)` ítems de un mismo
+- [X] **SC-011** — ningún prefijo de longitud N concentra más de `ceil(0,4 × N)` ítems de un mismo
       cluster, salvo las relajaciones contadas
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_mmr.py`): property-based — `set(salida) ⊆ set(entrada)` para
