@@ -295,3 +295,45 @@ def register_active_version(registry: ConfigRegistry, cfg: EngineConfig, now: da
     if current is not None:
         registry.deactivate(current, now)
     registry.insert(ConfigRow(cfg.config_version, cfg.payload(), now))
+
+
+# --- Versiones desplegadas (RD-103: «desde los archivos de configuración desplegados») --------------
+
+
+def _file_order(path: Path) -> tuple[int, str]:
+    stem = path.stem
+    digits = stem[1:] if stem[:1] == "v" and stem[1:].isdigit() else ""
+    return (int(digits) if digits else -1, stem)
+
+
+def load_deployed_configs(directory: Path = ENGINE_CONFIG_DIR) -> list[EngineConfig]:
+    """Todas las `vN.yaml` desplegadas, de la más nueva a la más vieja (por N)."""
+    paths = sorted(directory.glob("v*.yaml"), key=_file_order, reverse=True)
+    return [load_engine_config(p) for p in paths]
+
+
+def age_compatible_versions(active: EngineConfig, deployed: list[EngineConfig]) -> frozenset[str]:
+    """Versiones cuyo catálogo etario es idéntico al activo: sus ordinales son comparables (§3.1.1).
+
+    Comparar por identidad de versión —el hash de todo el archivo— volvería incomparable a todo usuario
+    ante cualquier cambio de pesos, con `503` generalizado hasta rederivar (DI-23 leído literalmente).
+    """
+    fingerprint = active.age_catalog_fingerprint()
+    return frozenset({active.config_version}) | {
+        c.config_version for c in deployed if c.age_catalog_fingerprint() == fingerprint
+    }
+
+
+def readable_versions_from_files(active: EngineConfig, deployed: list[EngineConfig]) -> tuple[str, ...]:
+    """Versiones anteriores legibles (RD-103), de la más nueva a la más vieja, sin tocar Postgres.
+
+    La cota «desactivadas hace menos de `TTL_STALE`» es redundante con los TTL: las claves de una versión
+    más vieja ya expiraron, y consultarlas solo cuesta un miss.
+    """
+    compatible = age_compatible_versions(active, deployed)
+    ordered: list[str] = []
+    for cfg in deployed:
+        if cfg.config_version != active.config_version and cfg.config_version in compatible:
+            if cfg.config_version not in ordered:
+                ordered.append(cfg.config_version)
+    return tuple(ordered)

@@ -254,7 +254,7 @@ pertenecer al Milestone 11)*:
 - [ ] T028 [US3] Cliente REST autenticado y de solo lectura en `src/recomendaciones/transformer/client.py` (TDD)
 - [ ] T029 [US3] Materialización idempotente de usuarios, catálogo y actividad en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T030 [US3] Vocabulario versionado y reconciliación de vectores en `src/recomendaciones/transformer/vocabulary_sync.py` (TDD)
-- [ ] T033 [US1] Endpoint de lectura del top-N en `src/recomendaciones/api/routes/recommendations.py` (TDD)
+- [X] T033 [US1] Endpoint de lectura del top-N en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [ ] T034 [US1] Autenticación por API key interna y no alcanzabilidad desde frontends en `src/recomendaciones/api/deps.py` (TDD)
 - [ ] T035 [US1] Errores tipados y contrato estable en `src/recomendaciones/api/errors.py` (TDD)
 - [ ] T037 [US6] Filtrado de salida sobre el respaldo (acotado) en `src/recomendaciones/api/services/read_service.py` (TDD)
@@ -1437,17 +1437,17 @@ parámetro de tamaño y la respuesta trae el resultado completo.
 **Dep.**: T020, T005, **T049** (el contrato se define antes que el endpoint, Principio II)
 
 **Criterios de aceptación**:
-- [ ] `module` es **obligatorio** y pertenece a `peliculas | juegos`; otro valor → `422` (FR-001, US1-3).
+- [X] `module` es **obligatorio** y pertenece a `peliculas | juegos`; otro valor → `422` (FR-001, US1-3).
       *(El endpoint no tenía parámetro de módulo; el plan original lo declaraba como `?module=`.)*
-- [ ] La respuesta incluye `result_type`, `computed_at`, `config_version`, `items[]` (con posición y
+- [X] La respuesta incluye `result_type`, `computed_at`, `config_version`, `items[]` (con posición y
       score, FR-004) y `stale_available` (FR-056a, T062). **No** incluye `next_cursor`
-- [ ] El tamaño de resultado solicitado se valida en **`[top_n_min, top_n_max]` = `[10, 50]`**: debajo
+- [X] El tamaño de resultado solicitado se valida en **`[top_n_min, top_n_max]` = `[10, 50]`**: debajo
       del mínimo **y** encima del máximo → `422` (FR-005, FR-006a). *(Solo se validaba el máximo.)*
-- [ ] `limit` o `cursor` en la solicitud → `422`: no son parámetros del contrato (FR-005)
-- [ ] `INV-1`: no importa `engine/`, no consulta Postgres en el camino normal —solo ante miss de
+- [X] `limit` o `cursor` en la solicitud → `422`: no son parámetros del contrato (FR-005)
+- [X] `INV-1`: no importa `engine/`, no consulta Postgres en el camino normal —solo ante miss de
       `filters:`/`retired:`— (verificado por T006)
-- [ ] `config_version` de la respuesta permite trazar con qué configuración se generó
-- [ ] **SC-009** — 0 % de los requests de lectura ejecuta scoring, similitud o diversificación. Lo
+- [X] `config_version` de la respuesta permite trazar con qué configuración se generó
+- [X] **SC-009** — 0 % de los requests de lectura ejecuta scoring, similitud o diversificación. Lo
       verifica `tests/integration/test_no_heavy_computation` de esta tarea, apoyado en el test
       estructural de T006. La guarda de vigencia de T037 **no** cuenta como excepción: es diferencia
       de conjuntos, no cómputo de recomendaciones (RD-8)
@@ -1792,7 +1792,7 @@ propuesta —tiene prioridad de definición (RD-47)—, pero el contrato vigente
       README, y la conformidad de los consumidores registrada (Principio II; Flujo de Desarrollo de la
       constitución) — **antes** de mergear T023, T033 y T053
 - [ ] Cada copia derivada registra la versión del contrato origen y su fecha de sincronización
-- [ ] El OpenAPI que la aplicación **genera** se compara contra el contrato publicado: la
+- [X] El OpenAPI que la aplicación **genera** se compara contra el contrato publicado: la
       implementación se ajusta al contrato, nunca el contrato a la implementación
 
 > *SC-023 (versión de configuración consultable) estaba atribuido acá; lo verifica T041 (`/health`).*

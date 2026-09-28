@@ -32,11 +32,15 @@ def test_normal_path_emits_zero_queries(valid_env, db_factory, redis_client) -> 
     headers = {"X-Internal-API-Key": valid_env["RECO_INTERNAL_API_KEY"]}
     queries: list[str] = []
     engine = db_factory.kw["bind"]
+
+    def spy(conn, cursor, statement, *args):  # noqa: ANN001, ANN202
+        queries.append(statement)
+
     with TestClient(create_app(settings, services)) as client:
         url = f"/internal/v1/recommendations/{user}"
         assert client.get(url, params={"module": "peliculas"}, headers=headers).status_code == 200  # puebla filters:/retired:
-        sa.event.listen(engine, "before_cursor_execute", lambda *a, **k: queries.append(a[2]))
+        sa.event.listen(engine, "before_cursor_execute", spy)
         for _ in range(20):
             assert client.get(url, params={"module": "peliculas"}, headers=headers).status_code == 200
-    sa.event.remove(engine, "before_cursor_execute", queries.append) if False else None
+    sa.event.remove(engine, "before_cursor_execute", spy)
     assert queries == [], f"el camino normal consultó Postgres: {queries[:3]}"

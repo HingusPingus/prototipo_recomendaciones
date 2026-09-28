@@ -21,3 +21,6 @@ def session_factory(engine: sa.Engine) -> sessionmaker[Session]:
 def transaction(factory: sessionmaker[Session]) -> Iterator[Session]:
     with factory.begin() as session:
         yield session
+
+
+SessionFactory = sessionmaker[Session]
