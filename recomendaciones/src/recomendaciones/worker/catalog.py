@@ -37,8 +37,12 @@ class CatalogSnapshot:
     shared_tags: frozenset[str]
 
     def seed_items(self, modules: tuple[str, ...]) -> dict[uuid.UUID, frozenset[str]]:
-        """Ítems vigentes de los módulos dados: fuente de los centroides de la declaración (T008)."""
-        return {i.item_id: i.tags for i in self.items.values() if i.available and i.module in modules}
+        """Ítems de los módulos dados con vector: fuente de los centroides de la declaración (T008).
+
+        Incluye a los retirados que conservan vector: si el retiro sacara al ítem del centroide de un tag
+        declarado, retirar un ítem alteraría el perfil de quien lo declaró, contra DI-11 y FR-073.
+        """
+        return {i.item_id: i.tags for i in self.items.values() if i.module in modules and i.item_id in self.vectors}
 
 
 _FINGERPRINT_SQL = sa.text(
