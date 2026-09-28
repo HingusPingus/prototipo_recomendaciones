@@ -245,7 +245,7 @@ pertenecer al Milestone 11)*:
 - [ ] T017 [US5] Batería exhaustiva de invariantes en `tests/invariants/` (TDD)
 - [X] T018 Cliente Redis y esquema de claves en `src/recomendaciones/storage/cache/keys.py` (TDD)
 - [X] T019 Escritura del top-N con score y `config_version` en `src/recomendaciones/storage/cache/repository.py` (TDD)
-- [ ] T020 [US6] Política de cache miss y señalización de recálculo en `src/recomendaciones/api/services/read_service.py` (TDD)
+- [X] T020 [US6] Política de cache miss y señalización de recálculo en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [ ] T021 [P] [US6] Comportamiento ante Redis caído en `src/recomendaciones/storage/cache/client.py` (TDD)
 - [ ] T022 [US6] Reconstrucción total tras pérdida de Redis en `src/recomendaciones/batch/warmup.py` (TDD)
 - [ ] T023 [US2] Consumo de `recomendacion.actualizar` en `src/recomendaciones/worker/consumer.py` (TDD)
@@ -997,16 +997,16 @@ señal de recálculo con supresión (`recompute:lock`) para no disparar N señal
 **Dep.**: T019
 
 **Criterios de aceptación**:
-- [ ] Los cinco estados son mutuamente excluyentes; la precedencia se aplica en el orden de FR-056
-- [ ] Respaldo vacío tras filtrar se reporta como **sin candidatos**, no como respaldo (FR-056)
-- [ ] La señal de recálculo se emite a lo sumo una vez por ventana de supresión
-- [ ] La lectura **nunca falla** porque la escritura de la señal falle: se registra y se mide, y la respuesta no cambia. (Si Redis entero cae, rige T021: `503`)
-- [ ] Ante miss bajo la versión activa, consulta las **versiones legibles** de T018 antes de declarar miss; un acierto así se sirve con su etiqueta y **no** emite señal (RD-103)
-- [ ] Con respaldo y obsoleto disponibles, se sirve el **respaldo** con la señal de FR-056a; el obsoleto solo se sirve si no hay respaldo servible
-- [ ] `INV-1`: el miss no dispara cómputo en línea
-- [ ] **FR-038**: dos lecturas consecutivas sobre el mismo estado de caché devuelven la misma respuesta
+- [X] Los cinco estados son mutuamente excluyentes; la precedencia se aplica en el orden de FR-056
+- [X] Respaldo vacío tras filtrar se reporta como **sin candidatos**, no como respaldo (FR-056)
+- [X] La señal de recálculo se emite a lo sumo una vez por ventana de supresión
+- [X] La lectura **nunca falla** porque la escritura de la señal falle: se registra y se mide, y la respuesta no cambia. (Si Redis entero cae, rige T021: `503`)
+- [X] Ante miss bajo la versión activa, consulta las **versiones legibles** de T018 antes de declarar miss; un acierto así se sirve con su etiqueta y **no** emite señal (RD-103)
+- [X] Con respaldo y obsoleto disponibles, se sirve el **respaldo** con la señal de FR-056a; el obsoleto solo se sirve si no hay respaldo servible
+- [X] `INV-1`: el miss no dispara cómputo en línea
+- [X] **FR-038**: dos lecturas consecutivas sobre el mismo estado de caché devuelven la misma respuesta
       degradada (US6-5)
-- [ ] **SC-015** — una ráfaga de misses del mismo par (usuario, módulo) dentro de la ventana no multiplica los recálculos
+- [X] **SC-015** — una ráfaga de misses del mismo par (usuario, módulo) dentro de la ventana no multiplica los recálculos
 
 **Tests**: `tests/integration/test_cache_miss.py` — 50 lecturas concurrentes en miss producen 1 sola entrada en `recompute:requests`; broker caído → la lectura responde igual y la entrada se escribe; tabla de los cinco estados con su entrada correspondiente; entrada de la versión anterior con igual catálogo etario → servida con su etiqueta, sin señal.
 
