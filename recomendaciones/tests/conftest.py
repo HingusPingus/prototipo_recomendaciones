@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -154,3 +155,16 @@ def redis_client(redis_url: str) -> Iterator[object]:
     yield client
     client.flushdb()
     client.close()
+
+
+@pytest.fixture
+def api(valid_env, db_factory, redis_client) -> Iterator[tuple[TestClient, object]]:  # noqa: ANN001
+    """Devuelve (cliente HTTP, servicios) con la configuración v1 activa."""
+    from recomendaciones.api.app import build_services, create_app
+    from recomendaciones.config.settings import load_settings
+    from recomendaciones.storage.cache.client import CacheClient
+
+    settings = load_settings()
+    services = build_services(settings, db_factory=db_factory, cache=CacheClient(redis_client))
+    with TestClient(create_app(settings, services)) as client:
+        yield client, services

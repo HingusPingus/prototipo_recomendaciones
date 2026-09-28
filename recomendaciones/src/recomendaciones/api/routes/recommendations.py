@@ -44,6 +44,7 @@ def get_recommendations(
     if not cfg.top_n_min <= size <= cfg.top_n_max:
         raise InvalidRequest(f"top_n debe estar en [{cfg.top_n_min}, {cfg.top_n_max}] (FR-006a)")
     result = services.read_service.read(user_id, module, top_n=size, prefer_stale=prefer == "stale")
+    services.metrics.inc("reco_cache_hits_total", result_type=result.result_type.value)
     return RecommendationResponse(
         user_id=user_id,
         module=module,

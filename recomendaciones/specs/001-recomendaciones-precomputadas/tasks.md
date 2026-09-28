@@ -272,7 +272,7 @@ pertenecer al Milestone 11)*:
 - [X] T026 [US2] Manejo de payload inválido sin bloquear la cola en `src/recomendaciones/worker/dlq.py` (TDD)
 - [X] T031 [P] [US3] Registro de freshness de sincronización en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T032 [US3] Comportamiento ante `api-general` no disponible en `src/recomendaciones/transformer/resilience.py` (TDD)
-- [ ] T039 [US7] Métricas Prometheus en `src/recomendaciones/observability/metrics.py` (TDD)
+- [X] T039 [US7] Métricas Prometheus en `src/recomendaciones/observability/metrics.py` (TDD)
 - [ ] T040 [P] [US7] Logging estructurado con correlation ID en `src/recomendaciones/observability/logging.py` (TDD)
 - [ ] T041 [P] [US7] Health, readiness y liveness por servicio en `src/recomendaciones/observability/health.py` (TDD)
 - [ ] T042 [US7] Alertas operativas en `ops/alerts.yaml` (TDD)
@@ -1622,20 +1622,20 @@ Consumidores: Batch de respaldo T038».
 **Dep.**: T033, T027, T031
 
 **Criterios de aceptación**:
-- [ ] `reco_cache_hits_total{result_type}` discrimina los cinco estados
-- [ ] `reco_request_duration_seconds` es histograma por endpoint
-- [ ] `reco_recompute_total{status,module}` y `reco_recompute_duration_seconds`
-- [ ] `reco_dlq_messages_total{reason}` y `reco_queue_depth`
-- [ ] `catalog_sync_last_success_timestamp` (freshness, nombre de `data-model.md` §7.7) y `reco_sync_duration_seconds`
-- [ ] `reco_cross_module_propagation_total{propagated}`
-- [ ] `reco_active_config_version` como gauge etiquetado
-- [ ] El registro de métricas **declara** (nombre, tipo, etiquetas) las agregadas desde RD-100…RD-111;
+- [X] `reco_cache_hits_total{result_type}` discrimina los cinco estados
+- [X] `reco_request_duration_seconds` es histograma por endpoint
+- [X] `reco_recompute_total{status,module}` y `reco_recompute_duration_seconds`
+- [X] `reco_dlq_messages_total{reason}` y `reco_queue_depth`
+- [X] `catalog_sync_last_success_timestamp` (freshness, nombre de `data-model.md` §7.7) y `reco_sync_duration_seconds`
+- [X] `reco_cross_module_propagation_total{propagated}`
+- [X] `reco_active_config_version` como gauge etiquetado
+- [X] El registro de métricas **declara** (nombre, tipo, etiquetas) las agregadas desde RD-100…RD-111;
       cada una la **emite** la tarea que produce el hecho, en su fase: `recompute_requests_pending` y
       `recompute_requests_dropped_total` (T027), `diversity_cap_relaxed_total` (T015, FR-071a),
       `declarable_tags_total{module}` (T030, DEP-10), `fallback_new_item_share` (T065, FR-033a8) y
       `suppressions_unverified_total` (T059, FR-095a, valor esperado 0). Esta tarea no espera a las de
       fases posteriores: el nombre declarado sin emisor todavía es el estado esperado hasta que llegan
-- [ ] Ninguna etiqueta contiene `user_id` ni datos personales (cardinalidad y privacidad)
+- [X] Ninguna etiqueta contiene `user_id` ni datos personales (cardinalidad y privacidad)
 
 **Tests**: `tests/integration/test_metrics.py` — cada métrica se emite tras su operación; ninguna etiqueta es de alta cardinalidad.
 

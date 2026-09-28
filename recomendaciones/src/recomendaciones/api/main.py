@@ -10,6 +10,10 @@ def run() -> None:
     from recomendaciones.config.bootstrap import settings_or_exit
 
     settings = settings_or_exit("api")
-    from recomendaciones.api.app import create_app
+    from prometheus_client import start_http_server
 
-    uvicorn.run(create_app(settings), host=settings.api_host, port=settings.api_port)
+    from recomendaciones.api.app import build_services, create_app
+
+    services = build_services(settings)
+    start_http_server(settings.metrics_port, registry=services.metrics.registry)  # puerto propio, no una ruta (FR-060)
+    uvicorn.run(create_app(settings, services), host=settings.api_host, port=settings.api_port)

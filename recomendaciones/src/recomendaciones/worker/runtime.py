@@ -80,6 +80,7 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
                 last_refresh = loop.time()
                 with runtime.factory() as s:
                     await asyncio.to_thread(refresh_sync_metrics, s, runtime.metrics)
+                runtime.metrics.set("reco_queue_depth", await events.queue_depth(), queue=actualizar_topology().queue)
             try:
                 handled = await asyncio.to_thread(requests.poll_once)
                 backoff = 0.1

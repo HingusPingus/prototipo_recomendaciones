@@ -7,9 +7,10 @@ toca por los tres caminos de INV-1 (repoblado de `filters:`/`retired:` y escritu
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from recomendaciones.api.deps import require_api_key
 from recomendaciones.api.errors import install_error_handlers
 from recomendaciones.api.services.declaracion import DeclarationService
@@ -23,6 +24,7 @@ from recomendaciones.config.loader import (
     validate_operational_windows,
 )
 from recomendaciones.config.settings import Settings
+from recomendaciones.observability.metrics import Metrics
 from recomendaciones.storage.cache.client import CacheClient
 from recomendaciones.storage.cache.filters import FiltersCache, RetiredCache
 from recomendaciones.storage.cache.recompute import RecomputeStream
@@ -47,6 +49,7 @@ class ApiServices:
     read_service: ReadService
     declaration_service: DeclarationService
     readable_versions: tuple[str, ...]
+    metrics: Metrics = field(default_factory=Metrics)
     extras: dict[str, object] = field(default_factory=dict)
 
 
@@ -70,6 +73,8 @@ def build_services(
     filters = FiltersCache(cache, source, ttls.filters)
     retired = RetiredCache(cache, source, ttls.filters, ttls.retired_window)
     signaler = RecomputeStream(cache, maxlen=settings.recompute_requests_maxlen, ttl_suppress=ttls.suppress)
+    metrics = Metrics()
+    metrics.set("reco_active_config_version", 1.0, config_version=engine_config.config_version, component="api")
     read_service = ReadService(
         repository=repository,
         filters=filters,
@@ -78,6 +83,8 @@ def build_services(
         active_version=engine_config.config_version,
         readable_versions=readable,
         age_compatible_versions=compatible,
+        on_signal_failure=lambda: metrics.inc("reco_recompute_signal_failures_total"),
+        on_stale_age_scale=lambda: metrics.inc("age_stale_config_users_total"),
     )
     declaration_service = DeclarationService(
         factory, DeclarationRepository(), filters, signaler, declared_tags_min=engine_config.declared_tags_min
@@ -95,6 +102,7 @@ def build_services(
         read_service,
         declaration_service,
         readable,
+        metrics,
     )
 
 
@@ -113,6 +121,15 @@ def create_app(settings: Settings, services: ApiServices | None = None) -> FastA
     app.state.settings = settings
     app.state.services = services
     install_error_handlers(app)
+
+    @app.middleware("http")
+    async def measure(request: Request, call_next):  # noqa: ANN001, ANN202 — latencia por endpoint (FR-042)
+        started = time.perf_counter()
+        response = await call_next(request)
+        route = request.scope.get("route")
+        endpoint = getattr(route, "path", "sin-ruta")
+        services.metrics.observe("reco_request_duration_seconds", time.perf_counter() - started, endpoint=endpoint)
+        return response
     app.include_router(recommendations.router, dependencies=[Depends(require_api_key)])
     app.include_router(declaraciones.router, dependencies=[Depends(require_api_key)])
     return app

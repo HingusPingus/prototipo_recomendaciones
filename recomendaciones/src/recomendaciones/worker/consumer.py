@@ -67,6 +67,12 @@ class EventConsumer(Generic[E]):
         queue = await self._topology.declare(self._channel)
         await queue.consume(self._on_message)
 
+    async def queue_depth(self) -> int:
+        """Mensajes listos en la cola principal (`reco_queue_depth`, FR-043)."""
+        assert self._channel is not None
+        queue = await self._channel.declare_queue(self._topology.queue, passive=True)
+        return int(queue.declaration_result.message_count or 0)
+
     async def stop(self) -> None:
         if self._connection is not None:
             await self._connection.close()
