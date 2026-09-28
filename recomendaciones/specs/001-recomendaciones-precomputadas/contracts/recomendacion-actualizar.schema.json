@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.recome.internal/events/recomendacion.actualizar/1.0.0",
+  "title": "recomendacion.actualizar",
+  "description": "Propuesta derivada (T049). Publica api-general, consume el worker de recomendaciones. Fuente de verdad: la documentación de contratos de api-general (Principio II). Los siete campos mínimos de FR-061 son obligatorios; sin cualquiera de ellos el evento va a dead-letter (FR-012, FR-064).",
+  "x-contract-origin": {"status": "propuesta-no-publicada", "drafted": "2026-09-28", "source": "specs/001-recomendaciones-precomputadas (T049)"},
+  "type": "object",
+  "required": ["event_id", "origin_interaction_id", "user_id", "module", "item_id", "signal_type", "occurred_at"],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid", "description": "Identificador único del evento, estable ante reentregas: idempotencia de recálculo (FR-011, FR-061)"},
+    "origin_interaction_id": {"type": "string", "minLength": 1, "description": "Identificador de la interacción asignado por el origen, el mismo que expone la actividad REST (CR-17, DEP-8): idempotencia de ingesta (FR-011a, DI-21)"},
+    "user_id": {"type": "string", "format": "uuid"},
+    "module": {"type": "string", "enum": ["peliculas", "juegos"]},
+    "item_id": {"type": "string", "format": "uuid"},
+    "signal_type": {"type": "string", "enum": ["like", "dislike", "consumo"], "description": "Obligatorio: nunca se infiere (FR-064, DEP-1)"},
+    "occurred_at": {"type": "string", "format": "date-time", "description": "Momento de la interacción en el origen (CR-12, DEP-2)"},
+    "correlation_id": {"type": "string", "description": "Opcional: identificador de correlación que sobrevive al salto asíncrono (T040)"}
+  },
+  "additionalProperties": true
+}

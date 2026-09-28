@@ -1,0 +1,346 @@
+openapi: 3.1.0
+info:
+  title: RecoMe · API de Recomendaciones (interna)
+  version: 1.0.0-propuesta
+  description: |
+    Contrato **propuesto** por el repositorio `recomendaciones` (prioridad de definición, RD-47) para
+    su publicación en `api-general`, que es su **custodio** (Principio II). Esta copia es derivada:
+    el contrato vigente es el publicado en `api-general` (ver `README.md` de esta carpeta).
+
+    Consumidor único: `api-general` (FR-008). Autenticación por API key interna del entorno (FR-007,
+    FR-059). Sin rutas públicas fuera de salud (FR-060).
+
+    Versionado (FR-058): es cambio incompatible eliminar o renombrar un campo, volver obligatorio uno
+    opcional, cambiar su tipo o semántica, **agregar un estado de respuesta** o endurecer validaciones.
+  x-contract-origin:
+    status: propuesta-no-publicada
+    drafted: "2026-09-28"
+    source: specs/001-recomendaciones-precomputadas (T049)
+servers:
+  - url: http://recomendaciones.internal
+    description: Solo alcanzable por api-general y componentes internos (FR-008, FR-060)
+security:
+  - InternalApiKey: []
+tags:
+  - name: lectura
+  - name: declaracion
+  - name: salud
+paths:
+  /internal/v1/recommendations/{user_id}:
+    get:
+      tags: [lectura]
+      operationId: getRecommendations
+      summary: Top-N precomputado de un usuario en un módulo
+      description: |
+        Se sirve **exclusivamente** desde resultados precomputados (FR-002, FR-003). Sin paginación:
+        `top_n` es el único parámetro de tamaño (FR-005, RD-107). La precedencia de estados de FR-056
+        se evalúa **después** de las guardas de edad, exclusión y vigencia (RD-42); una lista reducida
+        se sirve tal cual y `top_n` es un máximo (FR-075).
+
+        Un módulo **sin declaración de gustos** se rechaza como precondición incumplida (`412`), antes
+        de la precedencia de estados: **no** es un sexto `result_type` (FR-088, DEP-6).
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - name: module
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Module"
+        - name: top_n
+          in: query
+          required: false
+          description: Tamaño del resultado; `[top_n_min, top_n_max]` = `[10, 50]`, por defecto 20 (FR-006a).
+          schema:
+            type: integer
+            minimum: 10
+            maximum: 50
+            default: 20
+        - name: prefer
+          in: query
+          required: false
+          description: |
+            `stale`: si existe un personalizado obsoleto dentro del límite, se sirve como
+            `personalized_stale` tras las mismas guardas; si no, rige la precedencia normal (FR-056a).
+          schema:
+            type: string
+            enum: [stale]
+      responses:
+        "200":
+          description: Resultado, con su naturaleza explícita (FR-006)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecommendationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownUser"
+        "412":
+          $ref: "#/components/responses/DeclarationRequired"
+        "422":
+          $ref: "#/components/responses/InvalidRequest"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /internal/v1/declarations/{user_id}:
+    post:
+      tags: [declaracion]
+      operationId: declareTastes
+      summary: Registrar la declaración de gustos de un usuario en un módulo
+      description: |
+        **Única excepción de escritura** de la API (constitución v1.1.0, Principio III; FR-089).
+        Confirmación **síncrona** de la persistencia (FR-089a). No ejecuta el motor: valida el mínimo
+        de `declared_tags_min` tags **propios**, resuelve la herencia de tags compartidos del otro
+        módulo —que se informa y **no** se persiste ni cuenta para el mínimo (FR-085, RD-97)— y
+        persiste; el recálculo se delega a la vía asíncrona (FR-089b).
+
+        La declaración es **definitiva**: una segunda declaración del mismo módulo es `409` sin cambios
+        (FR-086a). Se declara **un** módulo por llamada; declarar uno no exige el otro (FR-084).
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeclarationRequest"
+      responses:
+        "201":
+          description: Declaración persistida
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeclarationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownUser"
+        "409":
+          $ref: "#/components/responses/DeclarationConflict"
+        "422":
+          $ref: "#/components/responses/InvalidRequest"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /health/live:
+    get:
+      tags: [salud]
+      operationId: liveness
+      security: []
+      summary: El proceso vive (sin dependencias)
+      responses:
+        "200":
+          description: Vivo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /health/ready:
+    get:
+      tags: [salud]
+      operationId: readiness
+      security: []
+      summary: Dependencias críticas disponibles (Redis para la API)
+      responses:
+        "200":
+          description: Listo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: No listo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /health:
+    get:
+      tags: [salud]
+      operationId: health
+      security: []
+      summary: Estado y versión de configuración activa (FR-025d, SC-023)
+      responses:
+        "200":
+          description: Estado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  securitySchemes:
+    InternalApiKey:
+      type: apiKey
+      in: header
+      name: X-Internal-API-Key
+      description: API key interna del entorno, `<entorno>.<secreto>` (FR-059)
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Module:
+      type: string
+      enum: [peliculas, juegos]
+    ResultType:
+      description: |
+        Los **cinco** estados de FR-056, mutuamente excluyentes y exhaustivos. Agregar uno es cambio
+        incompatible del contrato compartido (FR-057, FR-058).
+      type: string
+      enum: [empty_pending, empty_no_candidates, fallback, personalized_stale, personalized]
+    RecommendationItem:
+      type: object
+      additionalProperties: false
+      required: [item_id, position, score, config_version]
+      properties:
+        item_id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+          minimum: 1
+        score:
+          type: number
+        config_version:
+          type: string
+          description: Versión de configuración del motor que generó el ítem (FR-004)
+    RecommendationResponse:
+      type: object
+      additionalProperties: false
+      required: [user_id, module, result_type, computed_at, config_version, stale_available, items]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        module:
+          $ref: "#/components/schemas/Module"
+        result_type:
+          $ref: "#/components/schemas/ResultType"
+        computed_at:
+          description: Marca temporal del cálculo; `null` en `empty_pending` (no hubo cálculo)
+          type: [string, "null"]
+          format: date-time
+        config_version:
+          type: string
+        stale_available:
+          description: |
+            `true` solo cuando se sirve respaldo existiendo un personalizado obsoleto dentro del límite
+            (FR-056a, RD-107). Es un campo aparte, **no** un estado.
+          type: boolean
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/RecommendationItem"
+    DeclarationRequest:
+      type: object
+      additionalProperties: false
+      required: [module, tags]
+      properties:
+        module:
+          $ref: "#/components/schemas/Module"
+        tags:
+          description: Tags propios del vocabulario vigente (DEP-10). Mínimo `declared_tags_min` (5); sin máximo (FR-083)
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+    DeclarationResponse:
+      type: object
+      additionalProperties: false
+      required: [user_id, module, declared_tags, inherited_tags]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        module:
+          $ref: "#/components/schemas/Module"
+        declared_tags:
+          type: array
+          items:
+            type: string
+        inherited_tags:
+          description: "Informativo — tags compartidos heredados del otro módulo, no persistidos (RD-97)"
+          type: array
+          items:
+            type: string
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Código estable
+          enum:
+            - unauthorized
+            - invalid_request
+            - unknown_user
+            - declaration_required
+            - declaration_already_exists
+            - cache_unavailable
+            - filters_unavailable
+            - internal_error
+        message:
+          type: string
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unavailable]
+        component:
+          type: string
+        config_version:
+          type: string
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+  responses:
+    Unauthorized:
+      description: Sin credencial, inválida o de otro entorno — mismo cuerpo en los tres casos (FR-059)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnknownUser:
+      description: Usuario desconocido para el servicio, diferenciado de «usuario conocido sin resultados»
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DeclarationRequired:
+      description: Módulo sin declaración de gustos — precondición incumplida, no un estado (FR-088)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DeclarationConflict:
+      description: El módulo ya tiene declaración; es definitiva (FR-086a)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidRequest:
+      description: Parámetros inválidos (módulo, `top_n` fuera de `[10, 50]`, `limit`/`cursor`, tags insuficientes o fuera del vocabulario)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: Redis caído (≠ miss) o filtros no disponibles; reintentable (FR-050, FR-065)
+      headers:
+        Retry-After:
+          required: true
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

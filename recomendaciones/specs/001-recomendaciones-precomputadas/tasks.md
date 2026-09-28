@@ -1777,16 +1777,16 @@ propuesta —tiene prioridad de definición (RD-47)—, pero el contrato vigente
 **Dep.**: T005 (tipos de dominio y `result_type`)
 
 **Criterios de aceptación**:
-- [ ] El OpenAPI describe el endpoint de lectura —con `module` obligatorio, el tamaño de resultado en
+- [X] El OpenAPI describe el endpoint de lectura —con `module` obligatorio, el tamaño de resultado en
       `[10, 50]`, los cinco `result_type` (FR-056), la señal de FR-056a y los errores de T035 (`401`,
       `422`, `503`)— y el **endpoint de declaración** (FR-089), incluido el rechazo por módulo sin
       declaración (FR-088) como error de precondición y **no** como sexto estado
-- [ ] `recomendacion-actualizar.schema.json` declara como requeridos los **siete** campos mínimos de
+- [X] `recomendacion-actualizar.schema.json` declara como requeridos los **siete** campos mínimos de
       FR-061, incluido `origin_interaction_id`
 - [ ] `usuario-eliminado.schema.json` (CR-19, DEP-12) declara como requeridos el identificador único de
       evento, el identificador del usuario y la marca temporal, y se publica en `api-general` **antes** de
       implementar T058 (Principio II, RD-111)
-- [ ] `contracts/README.md` declara explícitamente que los contratos son **custodiados por
+- [X] `contracts/README.md` declara explícitamente que los contratos son **custodiados por
       `api-general`** y que estas copias son derivadas (Principio II) — no son fuente de verdad
 - [ ] Existe el PR o documento en `api-general` que publica los contratos, **enlazado** desde el
       README, y la conformidad de los consumidores registrada (Principio II; Flujo de Desarrollo de la
