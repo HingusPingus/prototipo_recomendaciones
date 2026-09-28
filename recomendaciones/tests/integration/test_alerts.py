@@ -33,6 +33,13 @@ RUNBOOK = ROOT / "docs" / "runbook.md"
 PROMETHEUS = "prom/prometheus:v2.53.1"
 
 
+def _readable(directory: Path) -> None:
+    """El contenedor de Prometheus corre como `nobody`: el directorio montado debe ser legible."""
+    directory.chmod(0o755)
+    for path in directory.iterdir():
+        path.chmod(0o644)
+
+
 def _rules() -> list[dict]:
     return [rule for group in yaml.safe_load(ALERTS.read_text(encoding="utf-8"))["groups"] for rule in group["rules"]]
 
@@ -165,6 +172,7 @@ def _promtool_tests(tmp: Path) -> Path:
     (tmp / "alerts.yaml").write_text(ALERTS.read_text(encoding="utf-8"), encoding="utf-8")
     path = tmp / "alerts.test.yaml"
     path.write_text(yaml.safe_dump({"rule_files": ["alerts.yaml"], "evaluation_interval": "1m", "tests": tests}), encoding="utf-8")
+    _readable(tmp)
     return path
 
 
@@ -182,6 +190,7 @@ def test_promtool_every_alert_fires_on_its_condition_and_clears(tmp_path: Path) 
 
 def test_promtool_validates_the_rule_file(tmp_path: Path) -> None:
     (tmp_path / "alerts.yaml").write_text(ALERTS.read_text(encoding="utf-8"), encoding="utf-8")
+    _readable(tmp_path)
     proc = subprocess.run(
         ["docker", "run", "--rm", "--entrypoint", "promtool", "-v", f"{tmp_path}:/t", PROMETHEUS, "check", "rules", "/t/alerts.yaml"],
         capture_output=True,
@@ -213,6 +222,22 @@ def _alerts(prom_port: int) -> set[str]:
     with urllib.request.urlopen(f"http://127.0.0.1:{prom_port}/api/v1/alerts", timeout=5) as response:
         data = json.loads(response.read())
     return {a["labels"]["alertname"] for a in data["data"]["alerts"] if a["state"] == "firing"}
+
+
+def _scraping(prom_port: int, timeout: float = 60) -> None:
+    """Prometheus listo y con el target del proceso raspado al menos una vez."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            url = f"http://127.0.0.1:{prom_port}/api/v1/query?query=up%7Bjob%3D%22reco%22%7D"
+            with urllib.request.urlopen(url, timeout=5) as response:
+                result = json.loads(response.read())["data"]["result"]
+            if result and result[0]["value"][1] == "1":
+                return
+        except OSError:
+            pass
+        time.sleep(0.5)
+    raise AssertionError("Prometheus no llegó a raspar el proceso")
 
 
 def _wait(prom_port: int, predicate, timeout: float = 60) -> set[str]:  # noqa: ANN001
@@ -259,6 +284,7 @@ async def test_live_chain_three_conditions_fire_and_clear(valid_env, db_factory,
         )
     )
     _live_rules(tmp_path)
+    _readable(tmp_path)
     container = subprocess.run(
         [
             "docker", "run", "-d", "--rm", "--network", "host", "-v", f"{tmp_path}:/etc/reco", PROMETHEUS,
@@ -273,8 +299,8 @@ async def test_live_chain_three_conditions_fire_and_clear(valid_env, db_factory,
         # no ve el incremento de una serie que aparece ya con su valor final.
         metrics.inc("reco_unavailable_responses_total", 0, error="cache_unavailable")
         metrics.inc("reco_dlq_messages_total", 0, reason="invalid_payload")
-        _wait(prom_port, lambda current: True, timeout=5)
-        time.sleep(3)
+        _scraping(prom_port)
+        time.sleep(3)  # algunas muestras en 0 antes de inducir
         headers = {"X-Internal-API-Key": valid_env["RECO_INTERNAL_API_KEY"]}
         # (1) Redis caído ⟹ 503
         with TestClient(create_app(settings, services)) as api:

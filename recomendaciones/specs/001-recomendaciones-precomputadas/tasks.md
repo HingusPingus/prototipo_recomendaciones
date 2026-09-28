@@ -271,11 +271,11 @@ pertenecer al Milestone 11)*:
 - [X] T025 [US2] Reintentos con backoff y DLQ en `src/recomendaciones/worker/retry.py` (TDD)
 - [X] T026 [US2] Manejo de payload inválido sin bloquear la cola en `src/recomendaciones/worker/dlq.py` (TDD)
 - [X] T031 [P] [US3] Registro de freshness de sincronización en `src/recomendaciones/transformer/pipeline.py` (TDD)
-- [ ] T032 [US3] Comportamiento ante `api-general` no disponible en `src/recomendaciones/transformer/resilience.py` (TDD)
+- [X] T032 [US3] Comportamiento ante `api-general` no disponible en `src/recomendaciones/transformer/resilience.py` (TDD)
 - [X] T039 [US7] Métricas Prometheus en `src/recomendaciones/observability/metrics.py` (TDD)
 - [X] T040 [P] [US7] Logging estructurado con correlation ID en `src/recomendaciones/observability/logging.py` (TDD)
 - [X] T041 [P] [US7] Health, readiness y liveness por servicio en `src/recomendaciones/observability/health.py` (TDD)
-- [ ] T042 [US7] Alertas operativas en `ops/alerts.yaml` (TDD)
+- [X] T042 [US7] Alertas operativas en `ops/alerts.yaml` (TDD)
 - [ ] T046 [US7] Documentación operativa mínima en `docs/runbook.md`
 - [ ] T051 [US5] Job `age_threshold_refresh` (refresco de derivados etarios) en `src/recomendaciones/batch/age_threshold_refresh.py` (TDD)
 - [ ] T052 [US3] Tests de ciclo de vida del ítem en `tests/invariants/test_item_lifecycle.py` (TDD)
@@ -1404,7 +1404,7 @@ comparte `pipeline.py` con T031)
 - [X] `api-general` caído → la sincronización falla de forma limpia y registrada
 - [X] La API de lectura **sigue respondiendo** con los datos ya materializados
 - [X] No se corrompe ni se vacía el estado materializado
-- [ ] Reintento con backoff; se alerta si la freshness supera el umbral
+- [X] Reintento con backoff; se alerta si la freshness supera el umbral
 
 **Tests**: `tests/integration/test_api_general_down.py` — con el doble caído, la lectura sigue en 200 y el estado materializado queda intacto.
 
@@ -1686,34 +1686,34 @@ sino que su umbral esté mal y jamás se active.
 **Dep.**: T039
 
 **Criterios de aceptación**:
-- [ ] Alerta por freshness de sincronización por encima del umbral
-- [ ] Alerta por crecimiento sostenido de DLQ y de profundidad de cola
-- [ ] Alerta por tasa de `503` (Redis caído)
-- [ ] Alerta por caída abrupta de hit rate
-- [ ] Alerta por `config_version` inconsistente entre instancias
-- [ ] **Liveness del job de refresco etario**: `age_refresh_last_success_timestamp` por encima de su
+- [X] Alerta por freshness de sincronización por encima del umbral
+- [X] Alerta por crecimiento sostenido de DLQ y de profundidad de cola
+- [X] Alerta por tasa de `503` (Redis caído)
+- [X] Alerta por caída abrupta de hit rate
+- [X] Alerta por `config_version` inconsistente entre instancias
+- [X] **Liveness del job de refresco etario**: `age_refresh_last_success_timestamp` por encima de su
       umbral. **Reemplaza a la alerta de `age_ordinal_staleness_seconds`**, eliminada por
       `data-model.md` §7.6 — que la califica como la corrección más importante de aquella auditoría:
       la métrica de *staleness* **no dispara cuando el job está muerto**, que es precisamente el único
       caso en que la alerta hace falta. Medía el desfasaje de lo que el job procesó, no el hecho de que
       hubiera dejado de procesar
-- [ ] Alerta por `contract_violations_total{field="birth_date"} > 0` y
+- [X] Alerta por `contract_violations_total{field="birth_date"} > 0` y
       `contract_violations_total{field="region"} > 0` — contadores **separados** (§7.5, RD-85)
-- [ ] Alerta por supresiones sin constancia registrada, **valor esperado 0** (FR-095a, RD-83)
-- [ ] **Toda métrica de `data-model.md` §4.4, §7.5.1, §7.7, §7.9, §7.10, §7.11 y §7.12 que declara
+- [X] Alerta por supresiones sin constancia registrada, **valor esperado 0** (FR-095a, RD-83)
+- [X] **Toda métrica de `data-model.md` §4.4, §7.5.1, §7.7, §7.9, §7.10, §7.11 y §7.12 que declara
       umbral, acción y responsable tiene su alerta** con ese umbral —entre otras
       `retired_set_size`, `catalog_unrated_ratio`, `vector_recompute_lag_seconds`,
       `signal_ingest_lag_seconds`, `signals_purge_deferred_total`, `exclusion_resolve_lag_seconds`,
       `sync_volume_delta_ratio`, `user_deletion_residual_keys_total` y
       `contract_violations_total{field="origin_interaction_id"}`—. Los umbrales no se copian acá: la
       fuente es el modelo de datos. *(Agregado 2026-09-27: la lista de esta tarea cubría una parte.)*
-- [ ] **`exclusions_orphaned_permanent_total` NO tiene alerta**: FR-068d1 la declara informativa y **sin umbral**.
+- [X] **`exclusions_orphaned_permanent_total` NO tiene alerta**: FR-068d1 la declara informativa y **sin umbral**.
       Configurarle una contradiría el requisito
-- [ ] Alerta **`declarable_tags_total{module} < declared_tags_min`** (DEP-10, RD-110): con menos tags
+- [X] Alerta **`declarable_tags_total{module} < declared_tags_min`** (DEP-10, RD-110): con menos tags
       elegibles que el mínimo, el módulo queda no disponible para todo usuario nuevo
-- [ ] Cada alerta tiene entrada en el runbook con primer paso de diagnóstico
-- [ ] **Cada alerta se probó induciendo su condición** en entorno de prueba, no solo por revisión
-- [ ] Ninguna alerta permanece activa tras normalizarse la condición (no se queda pegada)
+- [X] Cada alerta tiene entrada en el runbook con primer paso de diagnóstico
+- [X] **Cada alerta se probó induciendo su condición** en entorno de prueba, no solo por revisión
+- [X] Ninguna alerta permanece activa tras normalizarse la condición (no se queda pegada)
 
 **Tests**: `tests/integration/test_alerts.py` (testcontainers, reutiliza la infraestructura de T041) —
 detener Redis dispara la alerta de `503`; congelar la sincronización dispara la de freshness; inyectar

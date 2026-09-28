@@ -82,7 +82,12 @@ class Metrics:
             if spec.kind == "counter":
                 self._metrics[name] = Counter(name, spec.help, spec.labels, registry=self.registry)
             elif spec.kind == "gauge":
-                self._metrics[name] = Gauge(name, spec.help, spec.labels, registry=self.registry)
+                gauge = Gauge(name, spec.help, spec.labels, registry=self.registry)
+                if not spec.labels:
+                    # Un gauge sin etiquetas se exporta como 0 hasta que alguien lo fija: en un proceso que
+                    # nunca lo emite, `time() - <timestamp> > umbral` dispararía en falso. NaN no dispara.
+                    gauge.set(float("nan"))
+                self._metrics[name] = gauge
             elif spec.buckets:
                 self._metrics[name] = Histogram(name, spec.help, spec.labels, registry=self.registry, buckets=spec.buckets)
             else:
@@ -104,4 +109,6 @@ class Metrics:
     def value(self, name: str, **labels: str) -> float:
         sample = name if SPECS[name].kind != "histogram" else f"{name}_count"
         found = self.registry.get_sample_value(sample, labels or None)
-        return 0.0 if found is None else float(found)
+        if found is None or found != found:  # ausente o NaN (gauge nunca fijado)
+            return 0.0
+        return float(found)

@@ -88,9 +88,17 @@ class FiltersCache:
 
 
 class RetiredCache:
-    def __init__(self, cache: CacheClient, source: FiltersSource, ttl_seconds: int, window_seconds: int) -> None:
+    def __init__(
+        self,
+        cache: CacheClient,
+        source: FiltersSource,
+        ttl_seconds: int,
+        window_seconds: int,
+        on_size=None,  # noqa: ANN001 — callable(módulo, tamaño): métrica retired_set_size (§4.4)
+    ) -> None:
         self._cache, self._source = cache, source
         self._ttl, self._window = ttl_seconds, window_seconds
+        self._on_size = on_size
 
     def members(self, module: Module) -> frozenset[uuid.UUID]:
         key = keys.retired_key(module)
@@ -104,4 +112,6 @@ class RetiredCache:
         except Exception as exc:  # sin la guarda de vigencia no se sirve (FR-072)
             raise ExclusionSetUnavailable() from exc
         self._cache.set_members(key, (str(i) for i in fresh), self._ttl)
+        if self._on_size:
+            self._on_size(Module(module), len(fresh))
         return fresh

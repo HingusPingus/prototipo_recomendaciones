@@ -72,9 +72,11 @@ def build_services(
     source = DbFiltersSource(factory)
     repository = RecommendationRepository(cache, ttl_fresh=ttls.fresh, ttl_stale=ttls.stale, ttl_fallback=ttls.fallback)
     filters = FiltersCache(cache, source, ttls.filters)
-    retired = RetiredCache(cache, source, ttls.filters, ttls.retired_window)
-    signaler = RecomputeStream(cache, maxlen=settings.recompute_requests_maxlen, ttl_suppress=ttls.suppress)
     metrics = Metrics()
+    retired = RetiredCache(
+        cache, source, ttls.filters, ttls.retired_window, on_size=lambda m, n: metrics.set("retired_set_size", float(n), module=m.value)
+    )
+    signaler = RecomputeStream(cache, maxlen=settings.recompute_requests_maxlen, ttl_suppress=ttls.suppress)
     metrics.set("reco_active_config_version", 1.0, config_version=engine_config.config_version, component="api")
     read_service = ReadService(
         repository=repository,

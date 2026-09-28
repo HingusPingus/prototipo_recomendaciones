@@ -31,11 +31,14 @@ def error_body(code: str, message: str) -> dict[str, str]:
     return {"error": code, "message": message}
 
 
-def _reco_error(_: Request, exc: RecoError) -> JSONResponse:
+def _reco_error(request: Request, exc: RecoError) -> JSONResponse:
     headers = {}
     retry_after = getattr(exc, "retry_after_seconds", None)
     if exc.http_status == 503 and retry_after:
         headers["Retry-After"] = str(retry_after)
+        services = getattr(request.app.state, "services", None)
+        if services is not None:
+            services.metrics.inc("reco_unavailable_responses_total", error=exc.code)  # alerta RedisUnavailable503
     return JSONResponse(error_body(exc.code, exc.message), status_code=exc.http_status, headers=headers)
 
 
