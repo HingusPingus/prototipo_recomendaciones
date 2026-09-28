@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from recomendaciones.engine.scoring import ScoredCandidate
+from recomendaciones.shared.domain import ExclusionSet
+from recomendaciones.shared.errors import ExclusionSetUnavailable
 
 
 def _age_stage(scored: Sequence[ScoredCandidate], user_max_age_ordinal: int) -> list[ScoredCandidate]:
@@ -17,3 +19,10 @@ def _age_stage(scored: Sequence[ScoredCandidate], user_max_age_ordinal: int) -> 
     El ordinal del ítem ya viene fail-closed (`age.min_age_ordinal_for_rating`, default del esquema).
     """
     return [s for s in scored if s.candidate.min_age_ordinal <= user_max_age_ordinal]
+
+
+def _exclusion_stage(scored: Sequence[ScoredCandidate], exclusions: ExclusionSet | None) -> list[ScoredCandidate]:
+    """Filtro de exclusión (T014). Conjunto no disponible ⟹ se rechaza; nunca se sirve sin filtrar (FR-050)."""
+    if exclusions is None:
+        raise ExclusionSetUnavailable()
+    return [s for s in scored if not exclusions.contains(s.candidate.item_id)]

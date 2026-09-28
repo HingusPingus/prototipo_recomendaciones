@@ -239,7 +239,7 @@ pertenecer al Milestone 11)*:
 - [X] T011 [P] [US4] Señal cross-module en `src/recomendaciones/engine/cross_module.py` (TDD)
 - [X] T012 Combinación lineal y desempate determinista en `src/recomendaciones/engine/scoring.py` (TDD)
 - [X] T013 [US5] Filtro de edad por `age_rating` (fail-closed) en `src/recomendaciones/engine/postprocess.py` (TDD)
-- [ ] T014 [US5] Filtro de exclusión en `src/recomendaciones/engine/postprocess.py` (TDD)
+- [X] T014 [US5] Filtro de exclusión en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T015 Diversificación MMR en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T016 [US5] Pipeline de post-proceso con orden garantizado en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T017 [US5] Batería exhaustiva de invariantes en `tests/invariants/` (TDD)
@@ -772,18 +772,18 @@ el test de valores basura escrito primero hace estructuralmente imposible reintr
 **Dep.**: T003, T005
 
 **Criterios de aceptación**:
-- [ ] Los cuatro orígenes de exclusión se aplican
-- [ ] Conjunto de exclusión **no disponible** → se rechaza la solicitud, nunca se sirve sin filtrar (FR-050)
-- [ ] La resolución señal→exclusión es determinista y auditable
-- [ ] **Deuda del prototipo resuelta**: el conjunto de exclusión expone una interfaz pública de consulta; ningún llamador accede a sus atributos internos
-- [ ] `INV-2`: las exclusiones se derivan de Postgres; Redis solo las cachea
-- [ ] `storage/db/exclusions.py` es el **resolutor de exclusiones**, **escritor único** de
+- [X] Los cuatro orígenes de exclusión se aplican
+- [X] Conjunto de exclusión **no disponible** → se rechaza la solicitud, nunca se sirve sin filtrar (FR-050)
+- [X] La resolución señal→exclusión es determinista y auditable
+- [X] **Deuda del prototipo resuelta**: el conjunto de exclusión expone una interfaz pública de consulta; ningún llamador accede a sus atributos internos
+- [X] `INV-2`: las exclusiones se derivan de Postgres; Redis solo las cachea
+- [X] `storage/db/exclusions.py` es el **resolutor de exclusiones**, **escritor único** de
       `user_exclusions` (`data-model.md` §2.7, DI-13), invocado por T029 y T064
-- [ ] Escritura **aditiva**: el resolutor **nunca** trunca ni vacía la tabla para reconstruirla
+- [X] Escritura **aditiva**: el resolutor **nunca** trunca ni vacía la tabla para reconstruirla
       (DI-20, FR-029b1); las filas con `origin = 'consumo'` sobreviven a la purga de su señal
-- [ ] Escribe `resolved_at` (consumidor: `exclusion_resolve_lag_seconds`, §7.12) y desempata con
+- [X] Escribe `resolved_at` (consumidor: `exclusion_resolve_lag_seconds`, §7.12) y desempata con
       `ORDER BY occurred_at DESC, id DESC` (DI-22)
-- [ ] **Invalida `filters:{user_id}` antes de escribir** cada exclusión nueva o revertida (RD-96,
+- [X] **Invalida `filters:{user_id}` antes de escribir** cada exclusión nueva o revertida (RD-96,
       FR-080c)
 - [ ] **SC-003** y **SC-018** — 0 % de ítems del conjunto de exclusión y 0 % de ítems con señal registrada en el top-N
 
