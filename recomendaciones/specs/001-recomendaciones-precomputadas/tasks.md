@@ -231,7 +231,7 @@ pertenecer al Milestone 11)*:
 - [X] T003 Esquema DB Recomendaciones + Alembic en `src/recomendaciones/storage/db/models.py` (TDD)
 - [X] T004 [P] Configuración versionada del motor + loader validante en `src/recomendaciones/config/engine_config/v1.yaml` (TDD)
 - [X] T005 [P] Modelo de dominio compartido y errores tipados en `src/recomendaciones/shared/domain.py` (TDD)
-- [ ] T006 [P] Test de arquitectura: `api/` no importa `engine/` en `tests/unit/test_architecture.py`
+- [X] T006 [P] Test de arquitectura: `api/` no importa `engine/` en `tests/unit/test_architecture.py`
 - [ ] T007 Vectorización TF-IDF sobre vocabulario compartido en `src/recomendaciones/engine/content.py` (TDD)
 - [ ] T008 Similitud coseno y construcción de perfil en `src/recomendaciones/engine/similarity.py` (TDD)
 - [ ] T009 [P] Señal content-based en `src/recomendaciones/engine/content.py` (TDD)
@@ -505,17 +505,17 @@ que alguien "resuelva" una latencia calculando en línea.
 **Dep.**: T001
 
 **Criterios de aceptación**:
-- [ ] Falla si cualquier módulo bajo `api/` importa, directa o transitivamente, `engine/`
-- [ ] Falla si `engine/` importa `storage/`, `httpx`, `redis` o `sqlalchemy`
-- [ ] Falla si la API accede a Postgres fuera de los tres repositorios admitidos por INV-1: repoblado
+- [X] Falla si cualquier módulo bajo `api/` importa, directa o transitivamente, `engine/`
+- [X] Falla si `engine/` importa `storage/`, `httpx`, `redis` o `sqlalchemy`
+- [X] Falla si la API accede a Postgres fuera de los tres repositorios admitidos por INV-1: repoblado
       de `filters:` ante miss, repoblado de `retired:` ante miss y escritura de declaración (T053).
       Ninguna ruta de lectura de resultados los importa. *(Decía «fuera del health check», regla que
       T053 y `data-model.md` §3.1.1 no podían cumplir.)*
-- [ ] **FR-068e**: falla si algún módulo fuera de la purga (T057) y de la supresión (T058) emite `DELETE`
+- [X] **FR-068e**: falla si algún módulo fuera de la purga (T057) y de la supresión (T058) emite `DELETE`
       o `TRUNCATE` sobre `user_signals`, `user_declared_tags`, `user_exclusions`, `user_suppressions` o
       `item_promotions` (RD-111)
-- [ ] El mensaje de fallo nombra el import ofensor y cita FR-003
-- [ ] **SC-012** — 0 conexiones directas a bases de datos de otros repos y 0 rutas de acceso desde frontends. El test de arquitectura es el único lugar donde esto se verifica estructuralmente y no por inspección
+- [X] El mensaje de fallo nombra el import ofensor y cita FR-003
+- [X] **SC-012** — 0 conexiones directas a bases de datos de otros repos y 0 rutas de acceso desde frontends. El test de arquitectura es el único lugar donde esto se verifica estructuralmente y no por inspección
 
 **Tests**: es la tarea de test. Se verifica con un caso negativo temporal que debe hacerla fallar.
 
