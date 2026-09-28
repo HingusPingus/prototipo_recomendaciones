@@ -42,7 +42,7 @@ def test_no_label_is_high_cardinality_or_personal() -> None:
     assert not {label for spec in SPECS.values() for label in spec.labels} & forbidden
 
 
-def test_api_emits_hits_by_result_type_latency_and_active_version(api, valid_env, db_factory) -> None:  # noqa: ANN001
+def test_api_emits_hits_by_result_type_latency_and_active_version(api, valid_env, db_factory) -> None:
     client, services = api
     metrics: Metrics = services.metrics
     with db_factory.begin() as s:
@@ -77,3 +77,36 @@ async def test_worker_emits_dlq_and_queue_depth(amqp_url: str) -> None:
         await consumer.stop()
     assert metrics.value("reco_dlq_messages_total", reason="invalid_payload") == 1
     assert metrics.value("reco_queue_depth", queue=topology.queue) == 0
+
+
+async def test_queue_depth_reports_the_messages_actually_waiting(amqp_url: str) -> None:
+    """`reco_queue_depth` alimenta QueueDepthGrowth: un valor congelado deja la alerta ciega.
+
+    Una declaración pasiva sobre el canal que ya declaró la cola devuelve el conteo de la primera declaración;
+    la profundidad debe leerse en un canal propio.
+    """
+    import threading
+
+    release = threading.Event()
+    started = threading.Event()
+
+    def blocked(event) -> str:
+        started.set()
+        release.wait(10)
+        return "recomputed"
+
+    topology = _topology()
+    consumer = EventConsumer(amqp_url, topology, blocked, prefetch=1)
+    await consumer.start()
+    try:
+        for _ in range(5):
+            await _publish(amqp_url, topology, _body())
+        for _ in range(50):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.1)
+        await asyncio.sleep(0.3)
+        assert await consumer.queue_depth() == 4  # uno en proceso (sin confirmar), cuatro esperando
+    finally:
+        release.set()
+        await consumer.stop()

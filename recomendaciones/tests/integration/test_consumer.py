@@ -33,7 +33,7 @@ def _event(**overrides: object) -> dict:
 
 
 def test_packaged_schema_matches_the_contract_copy() -> None:
-    import recomendaciones.worker.schemas as schemas
+    from recomendaciones.worker import schemas
 
     packaged = Path(schemas.__file__).with_name("contracts") / "recomendacion-actualizar.schema.json"
     assert json.loads(packaged.read_text()) == json.loads((CONTRACTS / "recomendacion-actualizar.schema.json").read_text())
@@ -115,10 +115,15 @@ async def test_consumer_processes_valid_and_dead_letters_invalid(amqp_url: str) 
             valid = _event()
             for body in (valid, _event(signal_type=None), _event(module="musica")):
                 await exchange.publish(aio_pika.Message(json.dumps(body).encode()), routing_key="")
-        for _ in range(50):
-            if handled:
-                break
-            await asyncio.sleep(0.1)
+            # Se espera a que los tres estén resueltos, no solo el válido: publicar en una cola quorum espera la
+            # confirmación del broker, y cerrar antes devuelve el inválido a la cola principal (at-least-once).
+            for _ in range(100):
+                probe = await connection.channel()  # canal nuevo: en el mismo, el conteo pasivo queda congelado
+                dlq = await probe.declare_queue(topology.dead_letter_queue, passive=True)
+                await probe.close()
+                if handled and (dlq.declaration_result.message_count or 0) >= 2:
+                    break
+                await asyncio.sleep(0.1)
     finally:
         await consumer.stop()
     assert [str(e.event_id) for e in handled] == [valid["event_id"]]  # módulo desconocido: ningún top-N se toca
