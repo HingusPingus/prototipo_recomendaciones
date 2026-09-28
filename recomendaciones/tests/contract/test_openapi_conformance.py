@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-OPERATIONS = [("/internal/v1/recommendations/{user_id}", "get")]
+OPERATIONS = [("/internal/v1/recommendations/{user_id}", "get"), ("/internal/v1/declarations/{user_id}", "post")]
 
 
 def _resolve(schema: dict, spec: dict) -> dict:
