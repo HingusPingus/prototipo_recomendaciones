@@ -1959,13 +1959,13 @@ que reconstruir el razonamiento desde cero.
 **Dep.**: T045, T046, T047, T050
 
 **Criterios de aceptación**:
-- [ ] La matriz cubre los 76 ítems de ambos checklists, cada uno con su evidencia: ruta de test, ruta de
+- [X] La matriz cubre los 76 ítems de ambos checklists, cada uno con su evidencia: ruta de test, ruta de
       archivo o commit que lo sostiene
-- [ ] Cada evidencia referenciada **existe** y está en verde — verificado automáticamente
-- [ ] **Un ítem sin evidencia concreta NO se marca.** Prohibido dar por bueno lo que "obviamente está"
-- [ ] Los cuatro invariantes transversales (INV-1..4) tienen su test identificado por nombre
-- [ ] Todos los Success Criteria de Fase 1 y 2 verificados, con su evidencia
-- [ ] Las cuatro deudas del prototipo cerradas, cada una con la tarea y el test que lo demuestra
+- [X] Cada evidencia referenciada **existe** y está en verde — verificado automáticamente
+- [X] **Un ítem sin evidencia concreta NO se marca.** Prohibido dar por bueno lo que "obviamente está"
+- [X] Los cuatro invariantes transversales (INV-1..4) tienen su test identificado por nombre
+- [X] Todos los Success Criteria de Fase 1 y 2 verificados, con su evidencia
+- [X] Las cuatro deudas del prototipo cerradas, cada una con la tarea y el test que lo demuestra
 - [ ] La DoD de abajo está completa
 
 **Tests**: `tests/contract/test_traceability.py` — falla si la matriz referencia un test que no
