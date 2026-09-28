@@ -10,6 +10,9 @@ def run() -> None:
     from recomendaciones.config.bootstrap import settings_or_exit
 
     settings = settings_or_exit("worker")
+    from recomendaciones.observability.logging import configure_logging
+
+    configure_logging("worker", secrets=(settings.internal_api_key.get_secret_value(),))
     from recomendaciones.worker.runtime import serve
 
     asyncio.run(serve(settings))

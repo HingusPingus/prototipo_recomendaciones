@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Protocol
 
+from recomendaciones.observability.logging import current_correlation_id
 from recomendaciones.shared.domain import Module
 from recomendaciones.storage.cache import keys
 from recomendaciones.storage.cache.client import CacheClient
@@ -32,9 +33,9 @@ class RecomputeStream:
         module = Module(module)
         if not self._cache.set_nx(keys.lock_key(user_id, module), self._ttl):
             return False
-        self._cache.xadd(
-            keys.RECOMPUTE_STREAM,
-            {"user_id": str(user_id), "module": module.value, "reason": reason},
-            self._maxlen,
-        )
+        fields = {"user_id": str(user_id), "module": module.value, "reason": reason}
+        correlation_id = current_correlation_id()
+        if correlation_id:
+            fields["correlation_id"] = correlation_id  # sobrevive al salto asíncrono (T040)
+        self._cache.xadd(keys.RECOMPUTE_STREAM, fields, self._maxlen)
         return True

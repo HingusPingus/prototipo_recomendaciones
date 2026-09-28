@@ -14,6 +14,7 @@ import uuid
 
 from redis.exceptions import ResponseError
 
+from recomendaciones.observability.logging import correlation_scope
 from recomendaciones.observability.metrics import Metrics
 from recomendaciones.shared.domain import Module
 from recomendaciones.storage.cache import keys
@@ -74,11 +75,16 @@ class RecomputeRequestConsumer:
             log.warning("solicitud de recálculo malformada", extra={"entry_id": entry_id})
             self._ack(entry_id)
             return
-        try:
-            self._recomputer.recompute(user_id, module, fields.get("reason", "miss"))
-        except Exception:  # noqa: BLE001 — queda pendiente y se reclamará
-            log.exception("recálculo fallido; la solicitud queda pendiente", extra={"entry_id": entry_id})
-            return
+        with correlation_scope(fields.get("correlation_id")):
+            try:
+                outcome = self._recomputer.recompute(user_id, module, fields.get("reason", "miss"))
+            except Exception:  # noqa: BLE001 — queda pendiente y se reclamará
+                log.exception("recálculo fallido; la solicitud queda pendiente", extra={"entry_id": entry_id})
+                return
+            log.info(
+                "solicitud de recálculo atendida",
+                extra={"entry_id": entry_id, "reco_module": module.value, "reason": fields.get("reason"), "status": outcome.status},
+            )
         self._ack(entry_id)
 
     def poll_once(self) -> int:

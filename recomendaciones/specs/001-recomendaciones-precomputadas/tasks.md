@@ -273,7 +273,7 @@ pertenecer al Milestone 11)*:
 - [X] T031 [P] [US3] Registro de freshness de sincronización en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T032 [US3] Comportamiento ante `api-general` no disponible en `src/recomendaciones/transformer/resilience.py` (TDD)
 - [X] T039 [US7] Métricas Prometheus en `src/recomendaciones/observability/metrics.py` (TDD)
-- [ ] T040 [P] [US7] Logging estructurado con correlation ID en `src/recomendaciones/observability/logging.py` (TDD)
+- [X] T040 [P] [US7] Logging estructurado con correlation ID en `src/recomendaciones/observability/logging.py` (TDD)
 - [ ] T041 [P] [US7] Health, readiness y liveness por servicio en `src/recomendaciones/observability/health.py` (TDD)
 - [ ] T042 [US7] Alertas operativas en `ops/alerts.yaml` (TDD)
 - [ ] T046 [US7] Documentación operativa mínima en `docs/runbook.md`
@@ -1648,11 +1648,11 @@ Consumidores: Batch de respaldo T038».
 **Dep.**: T033, T023
 
 **Criterios de aceptación**:
-- [ ] Logs en JSON con campos estables
-- [ ] Correlation ID se propaga desde la request y **sobrevive** al salto asíncrono API → broker → worker
-- [ ] Ningún log contiene la API key ni datos personales innecesarios
-- [ ] Cada decisión de propagación cross-module se registra con su motivo (FR-010c)
-- [ ] Cada mensaje a DLQ se registra con su causa
+- [X] Logs en JSON con campos estables
+- [X] Correlation ID se propaga desde la request y **sobrevive** al salto asíncrono API → broker → worker
+- [X] Ningún log contiene la API key ni datos personales innecesarios
+- [X] Cada decisión de propagación cross-module se registra con su motivo (FR-010c)
+- [X] Cada mensaje a DLQ se registra con su causa
 
 **Tests**: `tests/integration/test_correlation.py` — un ID emitido en la API aparece en el log del worker que procesa el evento derivado.
 

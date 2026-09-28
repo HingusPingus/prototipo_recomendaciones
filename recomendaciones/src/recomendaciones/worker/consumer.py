@@ -16,6 +16,7 @@ from typing import Any, Generic, TypeVar
 
 import aio_pika
 
+from recomendaciones.observability.logging import correlation_scope
 from recomendaciones.shared.errors import ContractViolation, InvalidEventPayload
 from recomendaciones.worker.schemas import extract_event_id, parse_actualizar
 from recomendaciones.worker.topology import Topology
@@ -100,13 +101,18 @@ class EventConsumer(Generic[E]):
             await self.dead_letter(message, "invalid_payload", exc.message)
             await message.ack()
             return
+        correlation = getattr(event, "correlation_id", None) or extract_event_id(message.body)
         try:
-            await asyncio.to_thread(self._handler, event)
+            await asyncio.to_thread(self._handle_with_correlation, event, correlation)
         except (InvalidEventPayload, ContractViolation) as exc:  # nunca va a ser válido: sin reintento (T026)
             await self.dead_letter(message, "contract_violation", exc.message)
         except Exception as exc:  # noqa: BLE001 — fallo transitorio: backoff y, agotado, DLQ (T025)
             await self._retry_or_dead_letter(message, f"{exc.__class__.__name__}: {exc}")
         await message.ack()
+
+    def _handle_with_correlation(self, event: E, correlation: str | None) -> Any:
+        with correlation_scope(correlation):
+            return self._handler(event)
 
     async def _retry_or_dead_letter(self, message: aio_pika.abc.AbstractIncomingMessage, cause: str) -> None:
         attempt = int((message.headers or {}).get(RETRY_HEADER, 0)) + 1

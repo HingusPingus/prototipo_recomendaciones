@@ -10,6 +10,9 @@ def run() -> None:
     from recomendaciones.config.bootstrap import settings_or_exit
 
     settings = settings_or_exit("api")
+    from recomendaciones.observability.logging import configure_logging
+
+    configure_logging("api", secrets=(settings.internal_api_key.get_secret_value(),))
     from prometheus_client import start_http_server
 
     from recomendaciones.api.app import build_services, create_app

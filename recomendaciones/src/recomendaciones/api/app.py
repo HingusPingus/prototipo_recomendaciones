@@ -24,6 +24,7 @@ from recomendaciones.config.loader import (
     validate_operational_windows,
 )
 from recomendaciones.config.settings import Settings
+from recomendaciones.observability.logging import correlation_scope
 from recomendaciones.observability.metrics import Metrics
 from recomendaciones.storage.cache.client import CacheClient
 from recomendaciones.storage.cache.filters import FiltersCache, RetiredCache
@@ -125,7 +126,9 @@ def create_app(settings: Settings, services: ApiServices | None = None) -> FastA
     @app.middleware("http")
     async def measure(request: Request, call_next):  # noqa: ANN001, ANN202 — latencia por endpoint (FR-042)
         started = time.perf_counter()
-        response = await call_next(request)
+        with correlation_scope(request.headers.get("X-Correlation-ID")) as correlation_id:
+            response = await call_next(request)
+        response.headers["X-Correlation-ID"] = correlation_id
         route = request.scope.get("route")
         endpoint = getattr(route, "path", "sin-ruta")
         services.metrics.observe("reco_request_duration_seconds", time.perf_counter() - started, endpoint=endpoint)

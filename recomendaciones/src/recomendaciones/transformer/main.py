@@ -8,6 +8,9 @@ def run() -> None:
     from recomendaciones.config.bootstrap import settings_or_exit
 
     settings = settings_or_exit("transformer")
+    from recomendaciones.observability.logging import configure_logging
+
+    configure_logging("transformer", secrets=(settings.internal_api_key.get_secret_value(),))
     from recomendaciones.transformer.runtime import run_once
 
     raise SystemExit(run_once(settings))
