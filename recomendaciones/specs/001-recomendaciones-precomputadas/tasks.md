@@ -263,7 +263,7 @@ pertenecer al Milestone 11)*:
 - [X] T053 [P] [US4] Endpoint de declaración de gustos en `src/recomendaciones/api/routes/declaraciones.py` (TDD)
 - [X] T054 [US4] Herencia de tags entre módulos en `src/recomendaciones/api/services/declaracion.py` (TDD)
 - [X] T055 [US4] Rechazo por módulo sin declaración en `src/recomendaciones/api/routes/recommendations.py` (TDD)
-- [ ] T063 [US6] Recálculo de popularidad por ventana en `src/recomendaciones/batch/popularidad.py` (TDD)
+- [X] T063 [US6] Recálculo de popularidad por ventana en `src/recomendaciones/batch/popularidad.py` (TDD)
 - [X] T064 [US2] Persistencia de la señal del evento y materialización de su exclusión en `src/recomendaciones/worker/signals.py` (TDD)
 
 ### Fase 2 — Robustez operativa
@@ -2446,20 +2446,20 @@ Es el **único escritor** de `item_popularity` (DI-13). T038 la consume; T029 no
 > `fallback` seguiría siendo inalcanzable. La dependencia arrastra la fase.
 
 **Criterios de aceptación**:
-- [ ] La ventana es parámetro de §4 y es **menor** que el horizonte de retención de FR-068b
-- [ ] El resultado se escribe por `config_version`; cambiar de versión no pisa la anterior
-- [ ] `popularity_confidence_z` se lee de configuración, no se codifica
-- [ ] El puntaje es el **límite inferior del intervalo de Wilson** sobre la tasa de conversión a
+- [X] La ventana es parámetro de §4 y es **menor** que el horizonte de retención de FR-068b
+- [X] El resultado se escribe por `config_version`; cambiar de versión no pisa la anterior
+- [X] `popularity_confidence_z` se lee de configuración, no se codifica
+- [X] El puntaje es el **límite inferior del intervalo de Wilson** sobre la tasa de conversión a
       like entre quienes interactuaron (FR-033a3), no el volumen bruto de likes
-- [ ] Se respetan `FR-033a3a` y `FR-033a3b` (tratamiento del denominador y de los casos sin
+- [X] Se respetan `FR-033a3a` y `FR-033a3b` (tratamiento del denominador y de los casos sin
       interacción), `FR-033a4` y `FR-033a5`
-- [ ] `CHECK (popularity_score BETWEEN 0 AND 1)` y `CHECK (like_count <= engaged_user_count)`
+- [X] `CHECK (popularity_score BETWEEN 0 AND 1)` y `CHECK (like_count <= engaged_user_count)`
       (DI-26) se sostienen sobre todo lo escrito
-- [ ] `computed_at` se escribe por fila, de modo que un batch **parcialmente fallido** sea
+- [X] `computed_at` se escribe por fila, de modo que un batch **parcialmente fallido** sea
       detectable (RD-13) y alimente `catalog_popularity_last_success_timestamp`
-- [ ] **Sin criterio de cuota**: la cuota vive en **T065** (RD-102). *(Se había movido a T038 el
+- [X] **Sin criterio de cuota**: la cuota vive en **T065** (RD-102). *(Se había movido a T038 el
       2026-09-22; RD-102 la sacó del respaldo.)*
-- [ ] **Escribe `item_promotions`** (RD-102, FR-033a6e): inserta la fila la **primera** vez que
+- [X] **Escribe `item_promotions`** (RD-102, FR-033a6e): inserta la fila la **primera** vez que
       `engaged_user_count ≥ emergent_evidence_threshold`; **nunca** borra ni actualiza una existente
       (DI-27). Es el único escritor de la tabla
 
