@@ -283,7 +283,7 @@ pertenecer al Milestone 11)*:
 - [ ] T057 Purga de señales de actividad con guarda de exclusión en `src/recomendaciones/batch/purga_senales.py` (TDD)
 - [ ] T060 [US2] Disparador de recálculo por conteo e invalidación en el mismo acto en `src/recomendaciones/worker/trigger.py` (TDD)
 - [ ] T061 Ponderación regional del término colaborativo en `src/recomendaciones/engine/collaborative.py` (TDD)
-- [ ] T062 [US6] Señal de resultado obsoleto como campo aparte en `src/recomendaciones/api/schemas/respuesta.py` (TDD)
+- [X] T062 [US6] Señal de resultado obsoleto como campo aparte en `src/recomendaciones/api/schemas/respuesta.py` (TDD)
 - [ ] T065 [US2] Cuota de novedades en el top-N personalizado en `src/recomendaciones/engine/postprocess.py` (TDD)
 
 ### Fase 3 — Optimización y cierre
@@ -2412,13 +2412,13 @@ exhaustividad acordada en DEP-6 y obligaría a renegociar el contrato de lectura
 **Dep.**: T055, T049
 
 **Criterios de aceptación**:
-- [ ] El enum de estados conserva **cinco** miembros
-- [ ] El campo se llama **`stale_available`** (booleano) y vale `true` sólo cuando se sirve respaldo
+- [X] El enum de estados conserva **cinco** miembros
+- [X] El campo se llama **`stale_available`** (booleano) y vale `true` sólo cuando se sirve respaldo
       existiendo personalizado vencido dentro del límite (RD-107)
-- [ ] **`prefer=stale`**: con obsoleto disponible, se sirve como `personalized_stale` tras las mismas
+- [X] **`prefer=stale`**: con obsoleto disponible, se sirve como `personalized_stale` tras las mismas
       guardas de edad, exclusión y vigencia; sin obsoleto, rige la precedencia normal. Sin el
       parámetro, la precedencia no cambia
-- [ ] La precedencia de FR-056 aplica sólo a solicitudes que **pasaron** precondiciones
+- [X] La precedencia de FR-056 aplica sólo a solicitudes que **pasaron** precondiciones
 
 **Tests**: `tests/contract/test_estado_obsoleto.py` — respaldo con obsoleto → `stale_available: true`;
 mismo estado con `prefer=stale` → `personalized_stale` filtrado; `prefer=stale` sin obsoleto →
