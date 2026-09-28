@@ -228,7 +228,7 @@ pertenecer al Milestone 11)*:
 
 - [ ] T001 Estructura del paquete y entrypoints en `src/recomendaciones/{api,engine,config,worker,transformer,batch,storage,observability,shared}/`
 - [X] T002 Configuración por entorno y gestión de la API key interna en `src/recomendaciones/config/settings.py` (TDD)
-- [ ] T003 Esquema DB Recomendaciones + Alembic en `src/recomendaciones/storage/db/models.py` (TDD)
+- [X] T003 Esquema DB Recomendaciones + Alembic en `src/recomendaciones/storage/db/models.py` (TDD)
 - [ ] T004 [P] Configuración versionada del motor + loader validante en `src/recomendaciones/config/engine_config/v1.yaml` (TDD)
 - [ ] T005 [P] Modelo de dominio compartido y errores tipados en `src/recomendaciones/shared/domain.py` (TDD)
 - [ ] T006 [P] Test de arquitectura: `api/` no importa `engine/` en `tests/unit/test_architecture.py`
@@ -376,35 +376,35 @@ un ítem sin clasificación tratable como apto.
 **Dep.**: T001
 
 **Criterios de aceptación**:
-- [ ] Las **18** tablas existen con sus claves e índices; `item_vectors.vector` es pgvector
-- [ ] `user_suppressions` (§2.15): PK `user_id` **sin FK** a `users` —sobrevive al `CASCADE`—, `state`
+- [X] Las **18** tablas existen con sus claves e índices; `item_vectors.vector` es pgvector
+- [X] `user_suppressions` (§2.15): PK `user_id` **sin FK** a `users` —sobrevive al `CASCADE`—, `state`
       enum(`in_progress`,`completed`,`failed`), `CHECK ((state = 'completed') = (verified_at IS NOT NULL))`,
       índice parcial `idx_suppressions_open` (RD-101)
-- [ ] `item_promotions` (§2.16): PK `item_id` con FK **`RESTRICT`** a `items`, `config_version` FK
+- [X] `item_promotions` (§2.16): PK `item_id` con FK **`RESTRICT`** a `items`, `config_version` FK
       **`RESTRICT`** (RD-102)
-- [ ] `user_signals` tiene `idx_signals_user_received (user_id, received_at)` para el conteo de FR-080a
+- [X] `user_signals` tiene `idx_signals_user_received (user_id, received_at)` para el conteo de FR-080a
       (RD-104)
-- [ ] `users`: `birth_date NOT NULL`, **`region NOT NULL` sin default** (FR-079, RD-61, RD-85),
+- [X] `users`: `birth_date NOT NULL`, **`region NOT NULL` sin default** (FR-079, RD-61, RD-85),
       `max_age_ordinal`, `age_derived_at`, `age_config_version`. **Sin** `max_age_rating` (RD-2) y
       **sin** `age_resolution`
-- [ ] `item_vectors`: `vocab_version` **en la PK** (RD-22) y `NOT NULL` (FR-010f)
-- [ ] `items.age_rating` es `NOT NULL` y su default es el valor más restrictivo del catálogo
-- [ ] `item_popularity`: **PK compuesta `(item_id, config_version)`** (RD-12, RD-13)
-- [ ] `user_exclusions`: **sin `is_permanent`**, con FK **`RESTRICT`** hacia `items` (RD-35)
-- [ ] `engine_config_versions`: **trigger de inmutabilidad** (RD-37) e **índice parcial único** sobre
+- [X] `item_vectors`: `vocab_version` **en la PK** (RD-22) y `NOT NULL` (FR-010f)
+- [X] `items.age_rating` es `NOT NULL` y su default es el valor más restrictivo del catálogo
+- [X] `item_popularity`: **PK compuesta `(item_id, config_version)`** (RD-12, RD-13)
+- [X] `user_exclusions`: **sin `is_permanent`**, con FK **`RESTRICT`** hacia `items` (RD-35)
+- [X] `engine_config_versions`: **trigger de inmutabilidad** (RD-37) e **índice parcial único** sobre
       `deactivated_at IS NULL`: a lo sumo una versión activa (DI-7, FR-025b)
-- [ ] `user_declared_tags`: PK `(user_id, module, tag_name)`, FK `user_id` **`ON DELETE CASCADE`** y FK
+- [X] `user_declared_tags`: PK `(user_id, module, tag_name)`, FK `user_id` **`ON DELETE CASCADE`** y FK
       `tag_name` **`ON DELETE RESTRICT`** (§2.14) — la asimetría es deliberada: un tag no puede
       desaparecer del catálogo dejando declaraciones colgadas en silencio
-- [ ] `tag_modules`, `vocab_versions`, `vocab_version_tags` existen con sus claves (§2.12, §2.13)
-- [ ] `user_profiles` admite exactamente los módulos `peliculas`, `juegos`, `general` (constraint)
-- [ ] `processed_events.event_id` es único (FR-011)
-- [ ] `user_signals.origin_interaction_id` es `NOT NULL UNIQUE` (DEP-8, DI-21)
-- [ ] **Toda FK declara su política `ON DELETE`.** Es criterio explícito del documento, que registra
+- [X] `tag_modules`, `vocab_versions`, `vocab_version_tags` existen con sus claves (§2.12, §2.13)
+- [X] `user_profiles` admite exactamente los módulos `peliculas`, `juegos`, `general` (constraint)
+- [X] `processed_events.event_id` es único (FR-011)
+- [X] `user_signals.origin_interaction_id` es `NOT NULL UNIQUE` (DEP-8, DI-21)
+- [X] **Toda FK declara su política `ON DELETE`.** Es criterio explícito del documento, que registra
       **cuatro omisiones históricas** (RD-19, RD-31, RD-35, RD-43): una FK sin política no es un olvido
       menor, es el patrón que más veces se repitió
-- [ ] `upgrade` y `downgrade` se aplican limpio sobre base vacía y sobre base poblada
-- [ ] `INV-2`: toda información necesaria para recalcular un top-N reside acá. **Matiz de FR-080b**: el
+- [X] `upgrade` y `downgrade` se aplican limpio sobre base vacía y sobre base poblada
+- [X] `INV-2`: toda información necesaria para recalcular un top-N reside acá. **Matiz de FR-080b**: el
       top-N *resultante* **no** se persiste —vive solo en Redis y se recomputa (§3.3)—; lo que reside
       acá son sus **insumos**
 

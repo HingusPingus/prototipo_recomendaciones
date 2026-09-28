@@ -25,7 +25,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture(scope="session")
 def pg_container() -> Iterator[object]:
-    from testcontainers.postgres import PostgresContainer
+    from testcontainers.community.postgres import PostgresContainer
 
     with PostgresContainer(PG_IMAGE, username="reco", password="reco", dbname="recomendaciones") as pg:
         yield pg
@@ -48,7 +48,7 @@ def alembic_config(url: str):  # noqa: ANN201 — alembic.config.Config
 
 @pytest.fixture(scope="session")
 def redis_container() -> Iterator[object]:
-    from testcontainers.redis import RedisContainer
+    from testcontainers.community.redis import RedisContainer
 
     with RedisContainer(REDIS_IMAGE) as rc:
         yield rc
@@ -63,7 +63,7 @@ def redis_url(redis_container: object) -> str:
 
 @pytest.fixture(scope="session")
 def rabbit_container() -> Iterator[object]:
-    from testcontainers.rabbitmq import RabbitMqContainer
+    from testcontainers.community.rabbitmq import RabbitMqContainer
 
     with RabbitMqContainer(RABBIT_IMAGE) as rc:
         yield rc

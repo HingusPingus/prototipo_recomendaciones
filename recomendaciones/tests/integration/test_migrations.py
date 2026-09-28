@@ -191,7 +191,8 @@ def test_profile_with_invalid_scope_violates_constraint(engine: sa.Engine) -> No
     ids=["sin-birth_date", "sin-region", "region-minuscula", "region-3-letras"],
 )
 def test_user_ingest_constraints(engine: sa.Engine, overrides: dict[str, object]) -> None:
-    with pytest.raises(IntegrityError), engine.begin() as conn:
+    # NOT NULL / CHECK → IntegrityError; longitud de char(2) → DataError. Ambos rechazan la fila.
+    with pytest.raises(DBAPIError), engine.begin() as conn:
         _seed_user(conn, _seed_config(conn), **overrides)
 
 
@@ -239,7 +240,7 @@ def test_config_immutability_trigger(engine: sa.Engine) -> None:
     with engine.begin() as conn:
         _seed_config(conn, "sha256:a")
     with pytest.raises(DBAPIError), engine.begin() as conn:
-        conn.execute(sa.text("UPDATE engine_config_versions SET payload = '{\"x\":1}'::jsonb"))
+        conn.execute(sa.text("UPDATE engine_config_versions SET payload = CAST(:p AS jsonb)"), {"p": '{"x": 1}'})
     with engine.begin() as conn:
         conn.execute(sa.text("UPDATE engine_config_versions SET deactivated_at = now()"))
     with pytest.raises(DBAPIError), engine.begin() as conn:
