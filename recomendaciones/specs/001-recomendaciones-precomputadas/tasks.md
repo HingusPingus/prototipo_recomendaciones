@@ -281,7 +281,7 @@ pertenecer al Milestone 11)*:
 - [ ] T052 [US3] Tests de ciclo de vida del ítem en `tests/invariants/test_item_lifecycle.py` (TDD)
 - [ ] T056 Perfil vectorial derivado puro en `src/recomendaciones/engine/profile.py` (TDD)
 - [ ] T057 Purga de señales de actividad con guarda de exclusión en `src/recomendaciones/batch/purga_senales.py` (TDD)
-- [ ] T060 [US2] Disparador de recálculo por conteo e invalidación en el mismo acto en `src/recomendaciones/worker/trigger.py` (TDD)
+- [X] T060 [US2] Disparador de recálculo por conteo e invalidación en el mismo acto en `src/recomendaciones/worker/trigger.py` (TDD)
 - [ ] T061 Ponderación regional del término colaborativo en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [X] T062 [US6] Señal de resultado obsoleto como campo aparte en `src/recomendaciones/api/schemas/respuesta.py` (TDD)
 - [ ] T065 [US2] Cuota de novedades en el top-N personalizado en `src/recomendaciones/engine/postprocess.py` (TDD)
@@ -2351,15 +2351,15 @@ que el sistema sirve un resultado que ya sabe obsoleto.
 conteo ocurre sobre la señal que persiste T064.)*
 
 **Criterios de aceptación**:
-- [ ] El conteo umbral es parámetro de §4, no constante en código
-- [ ] El conteo es una consulta sobre `user_signals` (`received_at` posterior al último cálculo del
+- [X] El conteo umbral es parámetro de §4, no constante en código
+- [X] El conteo es una consulta sobre `user_signals` (`received_at` posterior al último cálculo del
       perfil de ese módulo), filtrada por el módulo del ítem; no existe columna ni clave de contador
       (RD-104). El reinicio es consecuencia de recalcular ese módulo
-- [ ] Alcanzar el umbral en el módulo M recalcula M; el opuesto solo si corresponde propagar (FR-010a)
-- [ ] Causa e invalidación son atómicas respecto del lector: no hay lectura intermedia del valor viejo
-- [ ] FR-080b se respeta: el top-N reside **únicamente en Redis**; se persisten sus insumos, no él
-- [ ] Redis primero, Postgres después (FR-080c)
-- [ ] Un evento que no alcanza el umbral queda en `processed_events` con resultado `signal_recorded`
+- [X] Alcanzar el umbral en el módulo M recalcula M; el opuesto solo si corresponde propagar (FR-010a)
+- [X] Causa e invalidación son atómicas respecto del lector: no hay lectura intermedia del valor viejo
+- [X] FR-080b se respeta: el top-N reside **únicamente en Redis**; se persisten sus insumos, no él
+- [X] Redis primero, Postgres después (FR-080c)
+- [X] Un evento que no alcanza el umbral queda en `processed_events` con resultado `signal_recorded`
       (RD-95)
 
 > *SC-022 (sin invalidación masiva por cambio de configuración) estaba atribuido acá; es propiedad de

@@ -23,6 +23,7 @@ from recomendaciones.worker.handler import ActualizarHandler, Recomputer
 from recomendaciones.worker.idempotency import EventIdempotency
 from recomendaciones.worker.requests_stream import RecomputeRequestConsumer
 from recomendaciones.worker.signals import SignalIngestor
+from recomendaciones.worker.trigger import InteractionTrigger
 from recomendaciones.worker.topology import actualizar_topology
 
 log = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ def build_worker(runtime: Runtime) -> tuple[EventConsumer, RecomputeRequestConsu
             runtime.cache, runtime.factory, ttl_dedupe_seconds=runtime.ttls.dedupe, retention_hours=settings.idempotency_retention_hours
         ),
         ingestor=SignalIngestor(runtime.factory, ExclusionResolver(filters.invalidate), runtime.metrics),
-        should_recompute=lambda event: True,  # Fase 1: recalcula por evento; el umbral de FR-080a llega con T060
+        should_recompute=InteractionTrigger(runtime.factory, settings.interaction_recalc_threshold, cache=runtime.cache).should_recompute,
         recompute=recomputer,
     )
     events = EventConsumer(
