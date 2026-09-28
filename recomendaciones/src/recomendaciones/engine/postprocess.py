@@ -7,10 +7,11 @@ parámetro, flag o rama que la desactive (FR-029, FR-054).
 from __future__ import annotations
 
 import math
+import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from recomendaciones.engine.scoring import Candidate, ScoredCandidate, tiebreak_key
+from recomendaciones.engine.scoring import Candidate, ScoredCandidate, ScoringResult, tiebreak_key
 from recomendaciones.shared.domain import ExclusionSet
 from recomendaciones.shared.errors import ExclusionSetUnavailable
 
@@ -119,3 +120,105 @@ def _mmr_stage(
     input_ids = {s.candidate.item_id for s in scored}
     assert {s.candidate.item_id for s in selected} <= input_ids, "MMR reintrodujo un ítem (FR-031)"
     return MMRResult(tuple(selected), relaxations)
+
+
+# --- Pipeline con orden estructural (T016) ------------------------------------------------------
+#
+# Cada etapa devuelve un tipo que solo la siguiente acepta: el orden edad → exclusión → MMR (→ cuota,
+# T065) es una propiedad de los tipos, no una convención de llamada. La única entrada pública es
+# `postprocess`; las etapas no forman parte de la superficie del módulo.
+
+
+@dataclass(frozen=True, slots=True)
+class PostprocessRequest:
+    user_max_age_ordinal: int
+    exclusions: ExclusionSet | None
+    lambda_mmr: float
+    max_cluster_share: float
+    limit: int  # top_n_max en el personalizado; fallback_stored_size en el respaldo
+    cluster_of: ClusterOf
+
+
+@dataclass(frozen=True, slots=True)
+class RankedItem:
+    item_id: uuid.UUID
+    rank: int
+    score: float
+    min_age_ordinal: int
+
+
+@dataclass(frozen=True, slots=True)
+class PostprocessResult:
+    items: tuple[RankedItem, ...]
+    config_version: str
+    discarded: dict[str, int]
+    relaxations: int
+
+    @property
+    def empty(self) -> bool:
+        return not self.items
+
+
+@dataclass(frozen=True, slots=True)
+class _AgeFiltered:
+    items: tuple[ScoredCandidate, ...]
+    config_version: str
+    discarded: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _ExclusionFiltered:
+    items: tuple[ScoredCandidate, ...]
+    config_version: str
+    discarded: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _Diversified:
+    items: tuple[ScoredCandidate, ...]
+    config_version: str
+    discarded: dict[str, int]
+    relaxations: int
+
+
+def _filter_age(scoring: ScoringResult, req: PostprocessRequest) -> _AgeFiltered:
+    if not isinstance(scoring, ScoringResult):
+        raise TypeError("la etapa de edad recibe la salida del scoring")
+    kept = _age_stage(scoring.ranked, req.user_max_age_ordinal)
+    return _AgeFiltered(tuple(kept), scoring.config_version, {"age": len(scoring.ranked) - len(kept)})
+
+
+def _exclude(stage: _AgeFiltered, req: PostprocessRequest) -> _ExclusionFiltered:
+    if not isinstance(stage, _AgeFiltered):
+        raise TypeError("la exclusión solo corre sobre la salida del filtro de edad (FR-028)")
+    kept = _exclusion_stage(stage.items, req.exclusions)
+    return _ExclusionFiltered(
+        tuple(kept), stage.config_version, {**stage.discarded, "exclusion": len(stage.items) - len(kept)}
+    )
+
+
+def _diversify(stage: _ExclusionFiltered, req: PostprocessRequest) -> _Diversified:
+    if not isinstance(stage, _ExclusionFiltered):
+        raise TypeError("MMR solo corre sobre candidatos ya filtrados por edad y exclusión (FR-028, FR-031)")
+    result = _mmr_stage(
+        stage.items,
+        lambda_mmr=req.lambda_mmr,
+        max_cluster_share=req.max_cluster_share,
+        limit=req.limit,
+        cluster_of=req.cluster_of,
+    )
+    dropped = len(stage.items) - len(result.selected) - max(0, len(stage.items) - req.limit)
+    return _Diversified(result.selected, stage.config_version, {**stage.discarded, "mmr": dropped}, result.relaxations)
+
+
+def postprocess(scoring: ScoringResult, req: PostprocessRequest) -> PostprocessResult:
+    """Única entrada pública: scoring → edad → exclusión → MMR. Vacío tras filtrar ⟹ vacío explícito."""
+    final = _diversify(_exclude(_filter_age(scoring, req), req), req)
+    items = tuple(
+        RankedItem(s.candidate.item_id, rank, s.score, s.candidate.min_age_ordinal)
+        for rank, s in enumerate(final.items, start=1)
+    )
+    return PostprocessResult(items, final.config_version, final.discarded, final.relaxations)
+
+
+__all__ = ["postprocess", "PostprocessRequest", "PostprocessResult", "RankedItem", "max_cluster_share"]

@@ -241,7 +241,7 @@ pertenecer al Milestone 11)*:
 - [X] T013 [US5] Filtro de edad por `age_rating` (fail-closed) en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [X] T014 [US5] Filtro de exclusión en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [X] T015 Diversificación MMR en `src/recomendaciones/engine/postprocess.py` (TDD)
-- [ ] T016 [US5] Pipeline de post-proceso con orden garantizado en `src/recomendaciones/engine/postprocess.py` (TDD)
+- [X] T016 [US5] Pipeline de post-proceso con orden garantizado en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T017 [US5] Batería exhaustiva de invariantes en `tests/invariants/` (TDD)
 - [ ] T018 Cliente Redis y esquema de claves en `src/recomendaciones/storage/cache/keys.py` (TDD)
 - [ ] T019 Escritura del top-N con score y `config_version` en `src/recomendaciones/storage/cache/repository.py` (TDD)
@@ -843,10 +843,10 @@ sea una propiedad del tipo y no una convención de llamada.
 **Dep.**: T013, T014, T015
 
 **Criterios de aceptación**:
-- [ ] El orden está garantizado estructuralmente: no es posible invocar MMR antes de los filtros
-- [ ] La función expone una sola entrada pública; las etapas no son invocables sueltas desde fuera
-- [ ] Cada etapa registra cuántos candidatos descartó, para auditoría
-- [ ] Conjunto vacío tras filtrar → resultado vacío explícito, nunca relleno con no aptos (FR-033)
+- [X] El orden está garantizado estructuralmente: no es posible invocar MMR antes de los filtros
+- [X] La función expone una sola entrada pública; las etapas no son invocables sueltas desde fuera
+- [X] Cada etapa registra cuántos candidatos descartó, para auditoría
+- [X] Conjunto vacío tras filtrar → resultado vacío explícito, nunca relleno con no aptos (FR-033)
 
 **🔴 Paso 1 — Rojo** (`tests/invariants/test_pipeline_order.py`): para toda entrada, la salida
 satisface simultáneamente las tres restricciones (edad, exclusión, subconjunto); las etapas no son
