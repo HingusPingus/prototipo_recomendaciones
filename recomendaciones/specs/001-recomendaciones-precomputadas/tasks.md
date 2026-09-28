@@ -1840,13 +1840,13 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 **Dep.**: T049 (los artefactos de contrato deben existir antes de validarlos)
 
 **Criterios de aceptación**:
-- [ ] **Cada** evento consumido se valida contra su schema oficial de `api-general`:
+- [X] **Cada** evento consumido se valida contra su schema oficial de `api-general`:
       `recomendacion.actualizar` y la **baja de cuenta** (CR-19, RD-111)
-- [ ] La respuesta de lectura se valida contra el OpenAPI publicado
-- [ ] Existe un test que **falla si un campo requerido desaparece** del contrato
-- [ ] Cubre las dependencias externas **vigentes**: DEP-1, DEP-2, DEP-5…DEP-11. *(Decía «DEP-1..DEP-6», que incluía la vacante DEP-3 y la resuelta DEP-4 y omitía DEP-7…DEP-11)*
+- [X] La respuesta de lectura se valida contra el OpenAPI publicado
+- [X] Existe un test que **falla si un campo requerido desaparece** del contrato
+- [X] Cubre las dependencias externas **vigentes**: DEP-1, DEP-2, DEP-5…DEP-11. *(Decía «DEP-1..DEP-6», que incluía la vacante DEP-3 y la resuelta DEP-4 y omitía DEP-7…DEP-11)*
 - [ ] Es gate bloqueante: contract test roto = no hay merge (Principio VI)
-- [ ] **SC-013** — 100 % de los endpoints expuestos y del evento consumido pasa la validación de contrato
+- [X] **SC-013** — 100 % de los endpoints expuestos y del evento consumido pasa la validación de contrato
 
 **Tests**: es la tarea de test. Verificación: eliminar `signal_type` del schema del doble debe hacerla fallar.
 
@@ -1889,11 +1889,11 @@ de gustos. Ninguno es opcional. *(Decía «los nueve que el plan declara»; la l
 **Dep.**: T017, T043, T044
 
 **Criterios de aceptación**:
-- [ ] Gates bloqueantes: invariantes (T017), contract (T043), arquitectura (T006), críticos (T044)
-- [ ] Los tests de integración corren con testcontainers reales, no mocks
-- [ ] La cobertura de `engine/` y `postprocess` es reportada; caída bajo el umbral bloquea
-- [ ] El pipeline falla si `v1.yaml` no valida contra el loader
-- [ ] **Test de mutación** sobre `engine/postprocess.py`: si una mutación del filtro de edad o de
+- [X] Gates bloqueantes: invariantes (T017), contract (T043), arquitectura (T006), críticos (T044)
+- [X] Los tests de integración corren con testcontainers reales, no mocks
+- [X] La cobertura de `engine/` y `postprocess` es reportada; caída bajo el umbral bloquea
+- [X] El pipeline falla si `v1.yaml` no valida contra el loader
+- [X] **Test de mutación** sobre `engine/postprocess.py`: si una mutación del filtro de edad o de
       exclusión sobrevive, el pipeline falla. Es la verificación de que los tests de T017 tienen poder
       de detección real y no solo cobertura de líneas
 - [ ] Ningún gate puede saltarse con un flag desde el PR
