@@ -237,7 +237,7 @@ pertenecer al Milestone 11)*:
 - [X] T009 [P] Señal content-based en `src/recomendaciones/engine/content.py` (TDD)
 - [X] T010 [P] Señal colaborativa (k vecinos) en `src/recomendaciones/engine/collaborative.py` (TDD)
 - [X] T011 [P] [US4] Señal cross-module en `src/recomendaciones/engine/cross_module.py` (TDD)
-- [ ] T012 Combinación lineal y desempate determinista en `src/recomendaciones/engine/scoring.py` (TDD)
+- [X] T012 Combinación lineal y desempate determinista en `src/recomendaciones/engine/scoring.py` (TDD)
 - [ ] T013 [US5] Filtro de edad por `age_rating` (fail-closed) en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T014 [US5] Filtro de exclusión en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T015 Diversificación MMR en `src/recomendaciones/engine/postprocess.py` (TDD)
@@ -701,17 +701,17 @@ Desempate por criterio secundario estable (FR-070).
 **Dep.**: T009, T010, T011
 
 **Criterios de aceptación**:
-- [ ] Los pesos se leen de configuración; **cero constantes numéricas** en el módulo (FR-025)
-- [ ] El resultado es idéntico entre ejecuciones con la misma entrada y `config_version` (SC-021)
-- [ ] El desempate es determinista y **nunca** usa el orden de iteración (FR-070).
+- [X] Los pesos se leen de configuración; **cero constantes numéricas** en el módulo (FR-025)
+- [X] El resultado es idéntico entre ejecuciones con la misma entrada y `config_version` (SC-021)
+- [X] El desempate es determinista y **nunca** usa el orden de iteración (FR-070).
       ⚠️ **Corregido el 2026-09-22**: este criterio exigía leer `tiebreak_criteria` de configuración,
       parámetro que **RD-10 eliminó del esquema** y que T004 ahora manda rechazar en el loader. El
       criterio pedía usar algo que el sistema ya no acepta
-- [ ] El `config_version` usado viaja en la salida del scoring, no se pierde
-- [ ] **Los candidatos se restringen a `items.status = 'available'`** (FR-072, §4.4 punto 1), vía
+- [X] El `config_version` usado viaja en la salida del scoring, no se pierde
+- [X] **Los candidatos se restringen a `items.status = 'available'`** (FR-072, §4.4 punto 1), vía
       `WHERE status = 'available'` sobre `idx_items_candidates`. Un ítem retirado no entra al
       ranking: excluirlo después sería reordenar una lista ya contaminada
-- [ ] **SC-021** queda verificado por el test de reproducibilidad de esta tarea
+- [X] **SC-021** queda verificado por el test de reproducibilidad de esta tarea
 
 **🔴 Paso 1 — Rojo** (`tests/unit/test_scoring.py`): reproducibilidad exacta en 100 corridas con el
 orden de entrada barajado; cambiar `config_version` cambia el resultado de forma trazable; el módulo
