@@ -32,6 +32,43 @@ class CollaborativeResult:
     neighbors: tuple[Neighbor, ...]
 
 
+def select_neighbors(
+    target: TagVector | None,
+    others: Mapping[uuid.UUID, TagVector],
+    k: int,
+    *,
+    weights: Mapping[uuid.UUID, float] | None = None,
+) -> tuple[Neighbor, ...]:
+    """Vecindario final: los `k` de mayor similitud efectiva estrictamente positiva (FR-023, FR-096)."""
+    if target is None:
+        return ()
+    scored: list[Neighbor] = []
+    for user_id in sorted(others, key=str):
+        sim = target.cosine(others[user_id])
+        if weights is not None:
+            sim *= weights.get(user_id, 1.0)
+        if sim > 0:
+            scored.append(Neighbor(user_id, sim))
+    scored.sort(key=lambda n: (-n.similarity, str(n.user_id)))
+    return tuple(scored[:k])
+
+
+def score_from_neighbors(
+    neighborhood: tuple[Neighbor, ...],
+    likes: Mapping[uuid.UUID, frozenset[uuid.UUID]],
+    candidates: Iterable[uuid.UUID],
+) -> dict[uuid.UUID, float]:
+    mass = {item: 0.0 for item in candidates}
+    if not neighborhood:
+        return mass
+    total = sum(n.similarity for n in neighborhood)
+    for neighbor in neighborhood:  # orden fijo: la suma en coma flotante es reproducible
+        for item in sorted(likes.get(neighbor.user_id, frozenset()), key=str):
+            if item in mass:
+                mass[item] += neighbor.similarity
+    return {item: m / total for item, m in mass.items()}
+
+
 def collaborative_scores(
     target: TagVector | None,
     others: Mapping[uuid.UUID, TagVector],
@@ -41,27 +78,5 @@ def collaborative_scores(
     *,
     weights: Mapping[uuid.UUID, float] | None = None,
 ) -> CollaborativeResult:
-    candidate_list = list(candidates)
-    zero = {item: 0.0 for item in candidate_list}
-    if target is None:
-        return CollaborativeResult(zero, ())
-
-    scored: list[Neighbor] = []
-    for user_id in sorted(others, key=str):
-        sim = target.cosine(others[user_id])
-        if weights is not None:
-            sim *= weights.get(user_id, 1.0)
-        if sim > 0:
-            scored.append(Neighbor(user_id, sim))
-    scored.sort(key=lambda n: (-n.similarity, str(n.user_id)))
-    neighborhood = tuple(scored[:k])
-    if not neighborhood:
-        return CollaborativeResult(zero, ())
-
-    total = sum(n.similarity for n in neighborhood)
-    mass = dict(zero)
-    for neighbor in neighborhood:  # orden fijo: la suma en coma flotante es reproducible
-        for item in sorted(likes.get(neighbor.user_id, frozenset()), key=str):
-            if item in mass:
-                mass[item] += neighbor.similarity
-    return CollaborativeResult({item: m / total for item, m in mass.items()}, neighborhood)
+    neighborhood = select_neighbors(target, others, k, weights=weights)
+    return CollaborativeResult(score_from_neighbors(neighborhood, likes, list(candidates)), neighborhood)
