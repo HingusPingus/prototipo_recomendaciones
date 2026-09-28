@@ -244,7 +244,7 @@ pertenecer al Milestone 11)*:
 - [X] T016 [US5] Pipeline de post-proceso con orden garantizado en `src/recomendaciones/engine/postprocess.py` (TDD)
 - [ ] T017 [US5] Batería exhaustiva de invariantes en `tests/invariants/` (TDD)
 - [X] T018 Cliente Redis y esquema de claves en `src/recomendaciones/storage/cache/keys.py` (TDD)
-- [ ] T019 Escritura del top-N con score y `config_version` en `src/recomendaciones/storage/cache/repository.py` (TDD)
+- [X] T019 Escritura del top-N con score y `config_version` en `src/recomendaciones/storage/cache/repository.py` (TDD)
 - [ ] T020 [US6] Política de cache miss y señalización de recálculo en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [ ] T021 [P] [US6] Comportamiento ante Redis caído en `src/recomendaciones/storage/cache/client.py` (TDD)
 - [ ] T022 [US6] Reconstrucción total tras pérdida de Redis en `src/recomendaciones/batch/warmup.py` (TDD)
@@ -967,13 +967,13 @@ catálogo etario, y se sirve con la etiqueta `v1`.
 **Dep.**: T018, T016
 
 **Criterios de aceptación**:
-- [ ] Cada entrada persiste `config_version` y `computed_at` (trazabilidad exigida por Q4)
-- [ ] `items` se guarda con **`min(top_n_max, candidatos)`** ítems, no con el `top_n` de ninguna
+- [X] Cada entrada persiste `config_version` y `computed_at` (trazabilidad exigida por Q4)
+- [X] `items` se guarda con **`min(top_n_max, candidatos)`** ítems, no con el `top_n` de ninguna
       solicitud: el truncado ocurre al servir (`data-model.md` §3.2, RD-102, RD-111)
-- [ ] La escritura del top-N vigente y su copia obsoleta es consistente entre sí
-- [ ] Serialización y deserialización son simétricas — round-trip exacto
-- [ ] Una entrada escrita con una `config_version` retirada no se sirve como vigente
-- [ ] **SC-004** — 100 % de los top-N servidos incluyen la versión de configuración del motor
+- [X] La escritura del top-N vigente y su copia obsoleta es consistente entre sí
+- [X] Serialización y deserialización son simétricas — round-trip exacto
+- [X] Una entrada escrita con una `config_version` retirada no se sirve como vigente
+- [X] **SC-004** — 100 % de los top-N servidos incluyen la versión de configuración del motor
 
 **Tests**: `tests/integration/test_cache_repository.py` — round-trip; la respuesta permite reconstruir con qué configuración se generó.
 
