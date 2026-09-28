@@ -34,7 +34,9 @@ del último `reco-batch popularity`.
 **Qué significa**: el job de refresco etario no completó una corrida en más de 26 h. Los usuarios que
 cumplen años quedan sub-permitidos (degradación conservadora, no incidente de seguridad).
 **Primer paso**: revisar el log y el estado del CronJob del refresco etario.
-**Acción**: ejecutarlo manualmente e investigar la causa.
+**Acción**: ejecutarlo manualmente (`reco-batch age-refresh`; es idempotente) e investigar la causa. La
+sincronización diaria también corrige el ordinal de quien ya cruzó el umbral, de modo que un día perdido se
+repara solo en la corrida siguiente de cualquiera de los dos.
 
 ### VectorRecomputeLag
 **Qué significa**: hay vectores de la versión activa sin recalcular hace más de 26 h.
@@ -173,11 +175,154 @@ revisar el worker. **Escalamiento de severidad alta** (FR-095a): responsable del
 
 ## Procedimientos
 
+> Convenciones: `$PG` es una sesión `psql` contra DB Recomendaciones; `$REDIS` es `redis-cli -u <RECO_REDIS_URL>`;
+> `<cfg>` es la `config_version` activa (`curl -s :8000/health | jq -r .config_version`). Los nombres de
+> deployments y CronJobs dependen del despliegue: acá se nombra el **proceso** (`reco-api`, `reco-worker`,
+> `reco-transformer`, `reco-batch <job>`).
+
 ### Reconstrucción tras pérdida total de Redis
-*(T022, T046 — procedimiento completo en la sección de T046.)*
+
+**Cuándo**: Redis volvió a estar disponible pero sin su contenido (reinicio sin persistencia, failover a una
+réplica vacía, `FLUSHALL` accidental). Mientras Redis estuvo caído la API respondió `503`
+([RedisUnavailable503](#redisunavailable503)); eso **no** es este procedimiento, es esperar a que vuelva.
+
+**Qué se pierde y qué no**: Redis es caché (INV-2). Todo lo que contiene se reconstruye desde Postgres; no hay
+que restaurar ningún backup de Redis, y **no conviene** hacerlo: un volcado viejo reintroduce resultados
+calculados con datos anteriores (las guardas del request path los filtran, pero no hay razón para servirlos).
+
+**Duración esperable**: el respaldo vuelve en minutos (pasos 3–4); lo personalizado, al ritmo de
+`RECO_WARMUP_RATE_PER_SECOND` × usuarios declarados (con 50/s, 100 000 pares ≈ 35 min) más la capacidad de
+los workers. Durante ese lapso la API sirve `fallback` o `empty_pending`: es **degradación de calidad, no
+de disponibilidad**, y no requiere comunicar incidente a `api-general` salvo que el paso 4 falle.
+
+1. **Confirmar el diagnóstico** (1 min).
+   ```
+   curl -s :8000/health/ready | jq .checks.redis      # "ok": Redis responde
+   $REDIS DBSIZE                                      # ≈ 0 (o muy bajo): se perdió el contenido
+   $REDIS EXISTS fallback:v<cfg>:peliculas            # 0
+   ```
+   Si `checks.redis` no es `ok`, Redis sigue caído: restablecerlo primero y volver a este paso.
+2. **Verificar que los workers consumen** (1 min). El worker recrea el grupo de `recompute:requests` solo
+   (desde la corrección registrada en `docs/validation/runbook-dry-run.md`). Comprobarlo:
+   ```
+   $REDIS XINFO GROUPS recompute:requests            # debe listar "recompute-workers"
+   curl -s <worker>:8081/health/ready | jq .
+   ```
+   Si el Stream no existe todavía, `XINFO` responde `ERR no such key`: es normal hasta que algo se encole.
+   Si tras el paso 5 el grupo no aparece en 1 min, reiniciar los workers (`reco-worker`); es seguro.
+3. **Reconstruir el respaldo** (1–3 min). Es lo primero porque es lo que la API sirve mientras tanto:
+   ```
+   reco-batch fallback
+   $REDIS EXISTS fallback:v<cfg>:peliculas fallback:v<cfg>:juegos     # 2
+   ```
+   Si falla por popularidad ausente o vieja, correr antes `reco-batch popularity` (ver
+   [PopularityStale](#popularitystale)) y repetir.
+4. **Comprobar el servicio** (1 min). Una lectura de un usuario declarado cualquiera:
+   ```
+   curl -s -H "X-Internal-API-Key: $KEY" ":8000/internal/v1/recommendations/<user_id>?module=peliculas" | jq .result_type
+   ```
+   Debe ser `fallback` (o `empty_no_candidates` si el catálogo del módulo está vacío). `filters:` y
+   `retired:` se repueblan solos desde Postgres en la primera lectura de cada clave: no hay paso para ellos.
+5. **Lanzar el warm-up** (minutos a decenas de minutos).
+   ```
+   reco-batch warmup
+   ```
+   Encola un recálculo por módulo declarado de cada usuario, los más activos primero, a tasa limitada. Es
+   **reanudable**: si se interrumpe, relanzarlo omite los pares que ya tienen `reco:` vigente. Nunca lo
+   dispara el tráfico: correrlo es una decisión del operador.
+6. **Seguir el progreso.**
+   ```
+   $REDIS XLEN recompute:requests
+   $REDIS XPENDING recompute:requests recompute-workers
+   ```
+   y en Prometheus `recompute_requests_pending`, `rate(reco_recompute_total{status="written"}[5m])` y la
+   proporción `reco_cache_hits_total{result_type="personalized"}`. [HitRateDrop](#hitratedrop) se apaga
+   sola cuando lo personalizado supera la mitad.
+7. **Cerrar**: `recompute_requests_pending` vuelve a su valor de régimen y `reco_cache_hits_total` muestra
+   mayoría de `personalized`. Registrar en el incidente la hora de pérdida, la de fin del paso 3 y la de fin
+   del paso 6.
+
+**Qué NO hacer**: no reiniciar la API en bucle (no ayuda: el `503` ya terminó); no correr el warm-up varias
+veces en paralelo (no duplica trabajo gracias a `recompute:lock`, pero multiplica la carga sobre Postgres);
+no subir `RECO_WARMUP_RATE_PER_SECOND` sin mirar la latencia de recálculo.
 
 ### Cambio de config_version
-*(T046.)*
+
+**Principio**: la configuración del motor vive en el repo (`src/recomendaciones/config/engine_config/vN.yaml`)
+y su identidad es el hash del contenido. Una versión desactivada **no se reactiva**: el rollback se hace
+**hacia adelante**, con una versión nueva y otro `version_label` (RD-94, DI-24).
+
+**Desplegar una versión nueva**:
+1. Crear `vN+1.yaml` (no editar `vN.yaml`: su hash cambiaría y dejaría de ser la versión registrada) con un
+   `version_label` nuevo. Validar localmente: `pytest tests/unit/test_config_loader.py` y
+   `python -c "from recomendaciones.config.loader import load_engine_config as l; print(l('vN+1.yaml').config_version)"`.
+2. **¿Cambia `age_rating_catalog`?** Si **no**, seguir al paso 3: los resultados de `vN` siguen siendo
+   legibles hasta `TTL_STALE` y no hay invalidación masiva (RD-103, SC-022). Si **sí**, es una migración de
+   escala etaria: coordinar antes con `api-general` (el enum `age_rating` existe en ambos repos), y tras el
+   paso 3 correr `reco-batch age-refresh` y `reco-transformer` para rederivar usuarios e ítems; hasta que
+   termine, los usuarios bajo la escala vieja reciben `503` (DI-23, alerta
+   [AgeStaleConfigUsers](#agestaleconfigusers)).
+3. Apuntar `RECO_ENGINE_CONFIG_FILE=vN+1.yaml` y desplegar **todos** los procesos. El primero que arranca
+   registra la versión en `engine_config_versions` y desactiva la anterior; los demás la encuentran activa.
+4. Verificar: `reco_active_config_version` por `component` muestra la misma versión en todas las instancias
+   (si no, [ConfigVersionInconsistent](#configversioninconsistent) salta a los 10 min).
+5. Correr `reco-batch popularity` y `reco-batch fallback`: la popularidad y el respaldo se escriben por
+   `config_version` y la nueva arranca sin filas. Lo personalizado se recalcula por el curso normal (umbral de
+   interacciones, misses y declaraciones); si se quiere acelerar, `reco-batch warmup`.
+
+**Revertir**: copiar el contenido de `vN.yaml` a `vN+2.yaml` con otro `version_label` y desplegar como arriba.
+Apuntar de nuevo a `vN.yaml` **falla al arrancar** a propósito, con un mensaje que indica esto mismo.
+
+**Regeneración de vocabulario**: no es un paso manual. El job de vocabulario corre al final de cada
+`reco-transformer`; si el conjunto de tags cambió, escribe los vectores de la versión nueva **junto a** los
+vigentes y la activa en un único `UPDATE` (RD-22). Para forzarla, re-ejecutar `reco-transformer`. Una
+transición interrumpida se reintenta desde cero en la corrida siguiente ([VocabTransitionStalled](#vocabtransitionstalled)).
+Los perfiles de usuario se reconstruyen bajo la versión nueva en su próximo recálculo.
 
 ### Reproceso desde DLQ
-*(T046.)*
+
+**Principio**: un mensaje en DLQ ya fue reintentado (`retries_exhausted`) o es inválido
+(`invalid_payload`, `contract_violation`). Reprocesarlo sin corregir la causa lo devuelve a la DLQ. El
+reproceso es **seguro** de repetir: el worker deduplica por `event_id` y la señal por
+`origin_interaction_id`.
+
+Colas (prefijo según entorno): `recomendaciones.recomendacion-actualizar.dlq` y
+`recomendaciones.usuario-eliminado.dlq`.
+
+1. **Clasificar** por el encabezado `x-dlq-reason` (consola de RabbitMQ → la cola DLQ → *Get messages* con
+   *Ack mode: Nack message requeue true*, que no los consume):
+   - `invalid_payload` / `contract_violation`: el productor envió algo que el contrato no admite. **No
+     reprocesar**: escalar a `api-general` con `x-dlq-cause` y el `event_id`. Si el productor reemite el
+     evento corregido, llega por la cola normal. Los mensajes de la DLQ se descartan después de registrarlos.
+   - `retries_exhausted`: falla transitoria que duró más que los reintentos (Postgres o Redis caídos).
+     Reprocesables **una vez restablecida la dependencia**.
+2. **Verificar** que la causa se fue: `curl <worker>:8081/health/ready` con todos los checks en `ok`.
+3. **Mover** los `retries_exhausted` a la cola principal con una *shovel* de un solo uso (consola →
+   *Admin → Shovel Management*, o por CLI):
+   ```
+   rabbitmqctl set_parameter shovel dlq-reproceso '{"src-uri":"amqp://","src-queue":"recomendaciones.recomendacion-actualizar.dlq","dest-uri":"amqp://","dest-queue":"recomendaciones.recomendacion-actualizar","src-delete-after":"queue-length"}'
+   ```
+   `src-delete-after: queue-length` la hace moverse solo lo que había al crearla y borrarse sola. Si la DLQ
+   mezcla motivos, mover primero a mano los inválidos a una cola aparte (o descartarlos tras registrarlos).
+4. **Seguir**: `reco_dlq_messages_total` no debe crecer y `reco_queue_depth` vuelve a su régimen. Mensajes
+   que regresan a la DLQ con el mismo motivo indican que la causa sigue: parar y volver al paso 2.
+
+**Cuánto esperar**: los eventos tienen valor mientras la señal es útil; más allá de
+`RECO_EVENT_REDELIVERY_WINDOW_HOURS` la sincronización diaria ya trajo la misma interacción desde
+`api-general` (es idempotente por `origin_interaction_id`), de modo que una DLQ vieja de `recomendacion.actualizar`
+puede descartarse sin pérdida. Los de `usuario.eliminado` **nunca** se descartan: son supresiones
+pendientes (FR-091) y se reprocesan siempre.
+
+### Jobs periódicos
+
+| Job | Frecuencia | Qué hace | Si falla |
+|---|---|---|---|
+| `reco-transformer` | diaria (o más) | sincroniza y regenera vocabulario | [CatalogSyncStale](#catalogsyncstale) |
+| `reco-batch popularity` | diaria | Wilson por ventana, promociones | [PopularityStale](#popularitystale) |
+| `reco-batch fallback` | tras `popularity`, y cada `TTL_FALLBACK` | top-N de respaldo | [HitRateDrop](#hitratedrop) |
+| `reco-batch age-refresh` | diaria, fuera de pico | cruces de umbral etario y escala no compatible | [AgeRefreshStale](#agerefreshstale) |
+| `reco-batch purge-signals` | diaria o semanal | purga por retención con guarda de exclusión | [SignalsPurgeDeferred](#signalspurgedeferred) |
+
+**Reducir `RECO_SIGNAL_RETENTION_DAYS` exige aprobación registrada** (RD-54): la purga es irreversible. Cada
+corrida registra en el log el valor vigente (`reco_signal_retention_days`), de modo que una reducción no
+aprobada sea detectable después. Aumentarlo es configuración normal.
