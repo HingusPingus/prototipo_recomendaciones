@@ -49,7 +49,7 @@ META = {
  "T033": ("M7","api","feature","P0-bloqueante","size-M"),
  "T034": ("M7","api","feature","P1-alta","size-M"),
  "T035": ("M7","api","feature","P1-alta","size-S"),
- "T036": ("M7","api","feature","P0-bloqueante","size-M"),
+ # T036 retirada el 2026-09-27 (RD-95): no se genera. Su incidencia #36 se cierra como «no se hará».
  "T037": ("M7","api","feature","P0-bloqueante","size-M"),
  "T038": ("M7","engine","feature","P0-bloqueante","size-M"),
  "T039": ("M8","observability","observability","P2-media","size-M"),
@@ -64,6 +64,23 @@ META = {
  "T050": ("M9","api","test","P2-media","size-M"),
  "T047": ("M10","api","docs","P2-media","size-S"),
  "T048": ("M10","infra","docs","P1-alta","size-M"),
+ # Milestone 11 (2026-09-27). Talla por contenido de la tarea, con la misma vara que T001–T050: S hasta
+ # ~5 criterios en un módulo; M hasta ~14 criterios o 2–3 módulos; L cuando cruza procesos y almacenes.
+ "T051": ("M11","worker","feature","P1-alta","size-M"),          # 2 selecciones, invalidación, métricas, scheduler
+ "T052": ("M11","data-transformer","test","P2-media","size-M"),  # suite exhaustiva del retiro
+ "T053": ("M11","api","feature","P0-bloqueante","size-M"),       # endpoint + contrato + invalidación + XADD + 409
+ "T054": ("M11","api","feature","P1-alta","size-S"),             # función pura de derivación de herencia
+ "T055": ("M11","api","feature","P0-bloqueante","size-S"),       # chequeo sobre `filters:` + error tipado
+ "T056": ("M11","engine","refactor","P2-media","size-S"),        # garantía estructural sobre el perfil de T008
+ "T057": ("M11","database","feature","P2-media","size-M"),       # batch de purga con guarda y métricas
+ "T058": ("M11","worker","feature","P1-alta","size-L"),          # evento de baja, 5 tablas, Redis en toda versión, aborto
+ "T059": ("M11","observability","observability","P1-alta","size-M"),  # verificación, reintento acotado, alerta probada
+ "T060": ("M11","worker","feature","P2-media","size-M"),         # conteo por (usuario, módulo) + atomicidad
+ "T061": ("M11","engine","feature","P1-alta","size-M"),          # segmentación regional del término colaborativo
+ "T062": ("M11","api","feature","P2-media","size-M"),            # `stale_available` + `prefer=stale` con guardas
+ "T063": ("M11","engine","feature","P0-bloqueante","size-M"),    # Wilson por ventana + promociones
+ "T064": ("M11","worker","feature","P0-bloqueante","size-M"),    # persistencia de señal, dedupe, DLQ, resolutor
+ "T065": ("M11","engine","feature","P2-media","size-M"),         # colocación de cuota con propiedades de truncado
 }
 
 MILESTONES = {
@@ -72,12 +89,14 @@ MILESTONES = {
  "M5":"M5 - Worker asincrono", "M6":"M6 - Data Transformer",
  "M7":"M7 - API de lectura", "M8":"M8 - Observabilidad y operacion",
  "M9":"M9 - Testing y verificacion", "M10":"M10 - Cierre",
+ "M11":"M11 - Requisitos de clarificacion",
 }
 
-CRITICAL = ["T001","T004","T007","T008","T012","T015","T016","T019","T020",
-            "T033","T036","T038","T037","T049","T043","T044","T045","T048"]
-SECURITY = ["T013","T014","T017","T037","T044"]
-TECHDEBT = ["T018","T014","T004","T019","T036","T020"]
+# Ruta crítica recalculada el 2026-09-27 desde las líneas `Dep.` de tasks.md (ver sección «Ruta crítica»).
+CRITICAL = ["T001","T004","T007","T008","T009","T012","T015","T016","T019","T020",
+            "T033","T039","T042","T046","T048"]
+SECURITY = ["T013","T014","T017","T037","T044","T051"]
+TECHDEBT = ["T018","T014","T004","T019","T020"]
 
 INV = {
  "INV-1":"Cero computo pesado en el request path (FR-003, Principio III). La API no importa `engine/` ni consulta Postgres en el camino normal.",
@@ -189,8 +208,17 @@ def verb_title(tid):
     return f"[{ms}] {tid} — {tasks[tid]['title']}"
 
 if __name__ == "__main__":
-    dry = "--dry-run" in sys.argv
     manifest = {}
+    # Una tarea presente en tasks.md sin metadatos antes se salteaba en silencio: el backlog y las
+    # incidencias divergían sin aviso. Ahora se reporta y el script termina con error.
+    sin_meta = sorted(set(tasks) - set(META))
+    retiradas = sorted(set(META) - set(tasks))
+    if sin_meta or retiradas:
+        if sin_meta:
+            print("ERROR: tareas de tasks.md sin metadatos en META (no se generarian):", ", ".join(sin_meta))
+        if retiradas:
+            print("ERROR: tareas en META que ya no existen en tasks.md:", ", ".join(retiradas))
+        sys.exit(1)
     for tid in META:
         body = build(tid)
         (OUT / f"{tid}.md").write_text(body, encoding="utf-8")
@@ -198,5 +226,5 @@ if __name__ == "__main__":
                              labels=labels_for(tid), deps=deps_of(tid),
                              priority=META[tid][3], size=META[tid][4],
                              critical=tid in CRITICAL)
-    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))
+    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"OK: {len(manifest)} issues preparados en {OUT}")

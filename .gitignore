@@ -1,0 +1,7 @@
+# Entornos y artefactos de Python: nunca se versionan.
+# El .venv que estuvo versionado era un entorno Linux de otra máquina, inutilizable en las demás.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

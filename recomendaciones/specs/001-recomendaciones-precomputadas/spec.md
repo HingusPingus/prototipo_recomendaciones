@@ -114,6 +114,79 @@
 
 - **Q**: Cierre de siete ítems bloqueantes de `checklists/requirements-clarify-2026-09-14.md`. → **A**: **CHK071**: la familia de supresión se renumera `FR-070a…e` → **FR-091…FR-095**; `FR-070` (desempate) no cambia y los identificadores viejos quedan **retirados y no reasignables** (RD-81). Se renumera la supresión porque el desempate tiene 6 referencias en `tasks.md` y ella ninguna. **CHK031**: el mínimo de cinco tags disponibles se declara **supuesto**, no requisito, con su costo escrito — si falla, ningún usuario del módulo es atendible y no hay texto que diga cuál regla cede (RD-82, *Assumptions*). **CHK045**: la supresión **aborta** el recálculo en curso mediante marca consultada **inmediatamente antes de escribir**; §7.11 paso 2 decía «suprimir el bloqueo», que **no detiene al worker que ya lo tomó** y empeoraba la carrera (FR-092a, RD-82). **CHK046**: la verificación de supresión recibe **observador** —métrica con valor esperado 0 y dueño— y **escalamiento acotado**; un fallo que nadie observa no es un fallo (FR-095a, RD-83). **CHK055**: se declara `collab_min_neighbors` = 10 (FR-096, RD-84); FR-081b garantizaba peso extrarregional positivo, pero un peso minúsculo es indistinguible de cero tras el **corte top-k del k-NN** — el requisito se cumplía en la fórmula y se incumplía en el resultado. **CHK061 + CHK062**: verificado que el top-N **vive solo en Redis** (ninguna de las 16 tablas lo persiste; §3.3 lo recomputa), de modo que FR-080 **no coordina dos almacenes** (FR-080b); la regla única **«Redis primero, siempre»** (FR-080c) unifica actualización y supresión y disuelve la contradicción aparente. **CHK053**: la política de ingesta de §7.5 se extiende a `region` de forma literal con contador propio, y se declara **DEP-11** (backfill previo al despliegue): sin él, **todo usuario preexistente deja de recibir recomendaciones simultáneamente** — correcto según FR-079 y catastrófico a la vez (RD-85). **Desfasajes corregidos en el mismo pase**: §4.3 afirmaba que `region` es nulable y que nadie la lee (RD-85); §7.11 omitía `user_declared_tags` del CASCADE y contaba «cuatro tablas» en vez de cinco (RD-86); RD-57 arrastraba NC-19 como abierto cuando FR-080a ya lo fijó en 10.
 
+### Session 2026-09-27 — saneamiento de consistencia (sin decisiones de producto)
+
+No se abrió ninguna pregunta nueva: cada cambio **propaga** una decisión ya registrada a texto que
+había quedado escrito antes de ella. Lo que requería decidir quedó fuera y listado aparte.
+
+- **US1 (escenario 1)**: «ordenada por score descendente» → orden de **ranking** del post-procesado.
+  La diversificación obligatoria de FR-028 produce, por construcción, un orden no monótono en score.
+- **US2 y FR-010**: el worker persiste la señal de cada evento y recalcula al alcanzar el umbral de
+  FR-080a (Q17.7, RD-57, RD-63). La redacción anterior recalculaba por cada evento.
+- **US4, SC-010, SC-024 y FR-033g**: condicionados a la declaración de gustos (FR-082…FR-088,
+  RD-68…RD-70). Sin declaración la solicitud se rechaza (FR-088) y el «usuario sin actividad» ya no
+  depende del respaldo más allá del primer recálculo. Se agrega el escenario 7 de US4 (rechazo).
+- **US6, FR-034 y FR-035**: el respaldo precede al obsoleto, con la señal de FR-056a (Q17.8,
+  RD-56). La redacción anterior era la del stale-while-revalidate del 2026-09-07.
+- **FR-061**: el evento incluye el **identificador de interacción** del origen (CR-17), sin el cual
+  una interacción recibida por evento y luego por sincronización se contaría dos veces (DI-21).
+- **Edge cases**: ítem sin tags → rechazo en ingesta (FR-021b); edad no disponible → irrepresentable
+  (FR-079, CR-1); ítem de la actividad sin tags → ítem aún no sincronizado; rollback de
+  configuración → hacia adelante (DI-24, RD-94).
+- **Entidades clave y supuestos**: respaldo por Wilson (RD-44), perfil sembrado por la declaración
+  (RD-68), nueva entidad *Declaración de gustos*, valores ya fijados vs. pendientes de calibrar,
+  ubicación real del prototipo.
+
+### Session 2026-09-27 — decisiones del autor sobre la lista del saneamiento
+
+- **Q**: FR-089 exige un endpoint de escritura y la constitución v1.0.0 declaraba la API estrictamente de
+  solo lectura. ¿Cuál cede? → **A**: **Se enmienda la constitución a v1.1.0** con una **única excepción de
+  escritura** en el Principio III, acotada a validar, resolver herencia y persistir la declaración de gustos
+  de forma síncrona, sin ejecutar el motor. No se extiende por analogía (RD-98).
+- **Q**: ¿El consumo modifica el perfil con peso 0,3 (RD-73) o no lo modifica (FR-022b)? → **A**: **No lo
+  modifica**; el parámetro se elimina (RD-99). FR-022b, US5-AS8 y SC-019 quedan como estaban.
+- **Q**: ¿Por qué canal pide la API un recálculo ante miss o declaración? → **A**: **Stream de Redis
+  interno** `recompute:requests`, consumido por el worker con grupo de consumidores; no es contrato entre
+  repositorios ni pasa por el broker de `notificaciones` (RD-100).
+- **Q**: ¿Qué dispara la supresión a pedido y dónde se registra? → **A**: un **evento de baja de cuenta**
+  publicado por `api-general` (DEP-12, CR-19), y una tabla propia de constancia que también actúa como
+  lápida contra la rematerialización (FR-091a, FR-091b, RD-101).
+- **Q**: ¿Cómo se ordena por afinidad con el usuario una cuota que vive en un respaldo global? →
+  **A**: **no se puede**: la cuota se traslada al **top-N personalizado** como paso (4) del
+  post-procesamiento, en posiciones fijas que sobreviven a cualquier truncado; la promoción al conjunto
+  general se **registra** porque es definitiva y no derivable (FR-028, FR-033a6…FR-033a8, RD-102).
+- **Q**: ¿Cómo se siguen sirviendo los top-N previos tras un cambio de versión si la clave lleva la
+  versión? → **A**: la lectura consulta también las versiones recientes **con el mismo catálogo etario**;
+  si el catálogo etario cambió, no se sirven (FR-025c, SC-022, RD-103).
+- **Q**: ¿Dónde vive el contador de FR-080a? → **A**: **en ningún lado**: se cuenta sobre las señales
+  recibidas desde el último cálculo (RD-104).
+- **Q**: Suavizado IDF, vecinos con similitud no positiva y umbral de SC-001. → **A**:
+  `ln((1+N)/(1+df))+1`; se **excluyen**; **50 ms p95** (FR-022, FR-023, SC-001, RD-105).
+- **Q**: ¿Qué significa «volumen de likes suficiente» en FR-033a2? → **A**: **no hay umbral**. Sin likes,
+  todo ítem tiene puntaje 0 y el respaldo se ordena por el desempate determinista; queda vacío solo si
+  no hay ítems vigentes (FR-033a2, RD-106).
+- **Q**: ¿El contrato de lectura pagina? ¿Cómo se «consulta» el obsoleto de FR-056a? → **A**: **no
+  pagina**: un único parámetro `top_n`. La señal es el campo `stale_available` y el usuario lo pide con
+  `prefer=stale` (FR-005, FR-056a, RD-107).
+- **Q**: ¿El conteo de FR-080a es por usuario o por (usuario, módulo)? → **A**: **por (usuario, módulo)**
+  (FR-080a, RD-104).
+- **Q**: Valores pendientes de calibración. → **A**: `popularity_window_days` = **90**,
+  `emergent_evidence_threshold` = **20**, `recompute_requests_maxlen` = **100 000**; cluster = **tag
+  principal del ítem** y `diversity_max_cluster_share` = **0,4**, aplicado como tope en la selección; D3:
+  vecinos **calculados en cada recálculo** (FR-071, FR-071a, SC-011, RD-108).
+- **Q**: ¿El usuario puede modificar o retirar su declaración (CHK038)? → **A**: **No**: es definitiva
+  (FR-086a, RD-109).
+- **Q**: ¿Muchos dislikes pueden anular un tag declarado (CHK037)? → **A**: **Sí, su peso**: puede llegar
+  a cero o volverse negativo; la declaración no se borra (FR-086b, RD-109).
+- **Q**: ¿Los requisitos FR-079…FR-096 tienen criterios de éxito (CHK072)? → **A**: **se agregan
+  SC-028…SC-031**: datos de alta, declaración de gustos, supresión y ponderación regional.
+- **Q**: ¿Quién mide la línea de base sin segmentación regional (CHK059)? → **A**: **fuera del alcance
+  del MVP**: es una evaluación offline que solo se ejecuta si se activa la condición de revisión de
+  FR-081, desplegando una versión de configuración nueva con el factor en `0` (FR-090a).
+- **Q**: Irreversibilidad, ventanas de FR-068b y DEP-10 como supuesto (CHK050, CHK051, CHK065). →
+  **A**: se agrega **FR-068e**; FR-068b enumera sus ventanas en lista cerrada; el mínimo de tags
+  elegibles pasa a ser parte de **DEP-10**, con métrica y alerta (RD-110).
+
 ## Dependencias Externas Bloqueantes
 
 > Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature
@@ -126,12 +199,14 @@
 | DEP-2 | Marca temporal por señal de actividad | FR-029d, FR-062 | No puede resolverse el conflicto entre señales contradictorias |
 | DEP-8 | **Identificador propio de cada interacción**, único y no reutilizado | FR-011, FR-069, DI-21 | **Sostiene la idempotencia de ingesta.** Sin él, una reentrega con marca temporal alterada entra como interacción nueva: no viola ninguna restricción y el síntoma aparece después como popularidad inflada sin causa aparente |
 | DEP-9 | **Notificación de cada transición de estado como emisión propia**, con identificador nuevo. El origen **puede** almacenar estado; lo que no puede es dejar una transición sin emitir o reemitirla bajo el identificador anterior | FR-029d, FR-029e, FR-068a, y toda la temporalidad del motor | Este repositorio recibiría estado y no historial. La ventana de popularidad pierde sentido, el filtrado colaborativo pierde temporalidad y la purga se deshace en cada sincronización |
-| DEP-4 | ~~Fuente de popularidad global por ítem~~ — **resuelto**: se deriva del volumen de likes propio (FR-033a). No es dependencia externa. | FR-033a | — |
+| ~~DEP-3~~ | **Vacante a propósito**: el identificador fue retirado y no se reasigna, por el historial de identificadores recolocados (RD-72). Su contenido original —identificador único de evento— vive en FR-061 | — | — |
+| DEP-4 | ~~Fuente de popularidad global por ítem~~ — **resuelto**: se deriva de las señales propias del sistema (FR-033a, Wilson FR-033a3). No es dependencia externa. | FR-033a | — |
 | DEP-7 | **Tags temáticos por ítem** —exigencia *por unidad*: todo ítem trae al menos un tag; presupone a DEP-10, que provee el vocabulario del que esos tags salen (CHK067)— | FR-022a, FR-026, FR-032, y todo el término content-based | **El más grave en cuanto al motor**, aunque no en cuanto a la cobertura de usuarios: esa distinción la fija DEP-10 (CHK068). Sin tags el término `α = 0,5` no se degrada: no existe. También quedan sin sustento el cruce entre módulos (`γ`) y la diversificación MMR, que mide diversidad **sobre clusters de tags**. Faltaba en esta tabla: DEP-1 lo daba por supuesto |
 | DEP-5 | **Fecha de nacimiento** del usuario, obligatoria y no nula | FR-030, FR-051 | **El usuario se rechaza en la ingesta** y no recibe recomendaciones. Ya no existe el modo degradado de «restricción máxima»: la fecha es condición de admisión (CR-1) |
 | DEP-6 | Acuerdo sobre el conjunto de estados de respuesta | FR-006, FR-056, FR-057, **FR-088** | El contrato de lectura no puede cerrarse. **El acuerdo debe constatar que la ausencia de declaración NO amplía el conjunto**: es precondición incumplida y se rechaza antes de la precedencia de FR-056, de modo que los estados siguen siendo cinco (CHK039) |
 | DEP-11 | **Backfill de `region` en los usuarios preexistentes**, completado por `api-general` **antes** del despliegue | FR-079, FR-079a, CR-1, CR-5 | El día del despliegue, **todo usuario preexistente deja de recibir recomendaciones simultáneamente**: sin `region` el registro se rechaza en la ingesta (§7.5) y el usuario queda fuera del universo recomendable. Es el comportamiento **correcto** según FR-079 y es **catastrófico** al mismo tiempo; merece estar escrito antes de ocurrir, no después. No se mitiga con valor por defecto ni centinela: FR-079 lo prohíbe y `data-model.md` §4.3 lo prohíbe por nombre —«nada de inferencia por IP, por idioma ni por ningún otro medio»—, porque inferirla la convertiría en dato propio y violaría el Principio I (RD-85, CHK053) |
-| DEP-10 | **Vocabulario de tags normalizado del catálogo**, del que se ofrecen las opciones de declaración —exigencia *sobre el conjunto*, no por ítem: es el universo elegible, y no se satisface porque cada ítem traiga tags (CHK067)— | FR-082, FR-083, RD-68 | **Sin él no hay de dónde elegir**: la declaración no puede presentarse y, por FR-088, ningún usuario nuevo puede recibir recomendaciones. Los tags se originan en APIs externas (Steam y equivalentes) y llegan normalizados vía `api-general`: la normalización **no ocurre acá**, y una variación en su criterio cambia el conjunto elegible sin aviso. Es dependencia de **disponibilidad y estabilidad**, no de construcción — el catálogo ya existe poblado. **No se reutiliza DEP-3**, vacante |
+| DEP-10 | **Vocabulario de tags normalizado del catálogo**, del que se ofrecen las opciones de declaración —exigencia *sobre el conjunto*, no por ítem: es el universo elegible, y no se satisface porque cada ítem traiga tags (CHK067)—, con **al menos `declared_tags_min` (5) tags elegibles por módulo** *(antes un supuesto aparte; integrado el 2026-09-27, CHK065, RD-110)* | FR-082, FR-083, RD-68 | **Sin él no hay de dónde elegir**: la declaración no puede presentarse y, por FR-088, ningún usuario nuevo puede recibir recomendaciones. Los tags se originan en APIs externas (Steam y equivalentes) y llegan normalizados vía `api-general`: la normalización **no ocurre acá**, y una variación en su criterio cambia el conjunto elegible sin aviso. Es dependencia de **disponibilidad y estabilidad**, no de construcción — el catálogo ya existe poblado. **Con menos de 5 tags elegibles en un módulo**, FR-083 impide completar la declaración y FR-088 rechaza a todos: el módulo queda **no disponible** —ninguna de las dos reglas cede— y lo delata la métrica `declarable_tags_total{module}` con alerta bajo `declared_tags_min`. **No se reutiliza DEP-3**, vacante |
+| DEP-12 | **Notificación de baja de cuenta** como evento propio (nombre propuesto `usuario.eliminado`), con identificador único de evento, identificador del usuario y marca temporal; contrato definido en `api-general` (CR-19) | FR-091a, FR-091…FR-095a | **La supresión no tiene disparo**: por sincronización la baja se ve como ausencia, que se trata como proyección rancia y no como supresión. Este repositorio retendría los datos de quien pidió ser eliminado (RD-101) |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -157,9 +232,10 @@ latencia.
 **Acceptance Scenarios**:
 
 1. **Given** un usuario con top-N precomputado vigente para `peliculas`, **When** `api-general`
-   solicita sus recomendaciones, **Then** recibe la lista ordenada por score descendente, con score
-   y versión de configuración por ítem, marcada como vigente, sin que el servicio ejecute cálculo
-   alguno.
+   solicita sus recomendaciones, **Then** recibe la lista en el orden de ranking que produjo el
+   post-procesamiento —que incluye la diversificación de FR-028, de modo que el score no es
+   necesariamente monótono en la posición—, con posición, score y versión de configuración por ítem
+   (FR-004), marcada como vigente, sin que el servicio ejecute cálculo alguno.
 2. **Given** una solicitud con tamaño de página menor a la cantidad disponible, **When** se
    consulta, **Then** se devuelve exactamente ese tamaño respetando el orden y con información
    suficiente para pedir la página siguiente.
@@ -176,8 +252,9 @@ latencia.
 ### User Story 2 - Recálculo asíncrono al recibir `recomendacion.actualizar` (Priority: P1)
 
 Cuando la actividad de un usuario cambia, `api-general` publica el evento
-`recomendacion.actualizar`. El worker lo consume, recalcula el top-N del usuario para el o los
-módulos afectados aplicando el motor híbrido y el post-procesamiento obligatorio, y deja el
+`recomendacion.actualizar`. El worker lo consume, persiste la señal que el evento transporta y,
+cuando el usuario acumula el umbral de interacciones de FR-080a, recalcula el top-N del usuario para
+el o los módulos afectados aplicando el motor híbrido y el post-procesamiento obligatorio, y deja el
 resultado disponible para lectura.
 
 **Why this priority**: Sin recálculo, el top-N nunca se actualiza ni se puede reconstruir tras una
@@ -191,9 +268,10 @@ configuración.
 **Acceptance Scenarios**:
 
 1. **Given** un usuario con perfil de tags y actividad materializados, **When** llega un
-   `recomendacion.actualizar` válido para ese usuario, **Then** el worker calcula el top-N, aplica
-   edad → exclusión → MMR en ese orden y persiste el resultado con su versión de configuración y
-   marca temporal.
+   `recomendacion.actualizar` válido para ese usuario que completa el umbral de interacciones de
+   FR-080a, **Then** el worker persiste la señal, calcula el top-N, aplica edad → exclusión → MMR en
+   ese orden y persiste el resultado con su versión de configuración y marca temporal. Un evento
+   que **no** completa el umbral persiste la señal y materializa su exclusión, sin recalcular.
 2. **Given** el mismo evento entregado dos o más veces, **When** el worker lo procesa, **Then** el
    resultado final es idéntico al de un único procesamiento (idempotencia), sin duplicación ni
    corrupción del top-N.
@@ -254,33 +332,41 @@ recursos ajenos.
 ### User Story 4 - Cold start cruzado entre módulos (Priority: P2)
 
 Un usuario con historial únicamente en películas pide recomendaciones de juegos (o viceversa) y
-recibe resultados relevantes gracias a la señal cruzada sobre su perfil de tags generales.
+recibe resultados relevantes gracias a la señal cruzada sobre su perfil de tags generales. Como todo
+módulo exige declaración de gustos al primer ingreso (FR-082, FR-084, FR-088), el usuario ya declaró
+en juegos; la señal cruzada es lo que aporta su historial de películas a ese módulo, además de lo
+que heredó por tags compartidos (FR-085).
 
 **Why this priority**: Es el diferencial funcional del producto, pero depende de que la lectura y
 el recálculo básicos ya funcionen.
 
-**Independent Test**: Con un usuario cuya actividad existe solo en un módulo, se verifica que el
-top-N del otro módulo no sea vacío y que sus ítems compartan tags con el perfil general.
+**Independent Test**: Con un usuario cuya actividad existe solo en un módulo y que declaró sus gustos
+en el otro, se verifica que el top-N del otro módulo no sea vacío y que sus ítems compartan tags con
+el perfil general.
 
 **Acceptance Scenarios**:
 
-1. **Given** un usuario con actividad solo en `peliculas`, **When** se recalcula y se consulta su
-   top-N de `juegos`, **Then** el resultado no es vacío y los ítems presentan afinidad de tags con
-   su perfil general.
-2. **Given** un usuario totalmente nuevo sin actividad en ningún módulo, **When** se consulta,
-   **Then** recibe el top-N de respaldo del módulo —populares diversificados por MMR— marcado
-   explícitamente como resultado no personalizado, sin error y sin violar ningún filtro obligatorio.
+1. **Given** un usuario con actividad solo en `peliculas` y con declaración de gustos en `juegos`
+   (FR-084), **When** se recalcula y se consulta su top-N de `juegos`, **Then** el resultado no es
+   vacío y los ítems presentan afinidad de tags con su perfil general.
+2. **Given** un usuario nuevo, sin actividad en ningún módulo, que ya declaró sus gustos en el módulo
+   (FR-082) y cuyo top-N personalizado todavía no se calculó, **When** se consulta, **Then** recibe el
+   top-N de respaldo del módulo —populares diversificados por MMR— marcado explícitamente como
+   resultado no personalizado, sin error y sin violar ningún filtro obligatorio.
 3. **Given** un usuario nuevo menor de edad, **When** recibe el top-N de respaldo, **Then** ningún
    ítem supera su `age_rating` permitido: el respaldo se filtra por las restricciones del usuario
    concreto antes de servirse.
 4. **Given** el top-N de respaldo de un módulo, **When** se inspecciona su composición, **Then**
    presenta variedad de clusters de tags y no está dominado por un único género popular.
-5. **Given** un usuario nuevo que registra su primera señal de preferencia, **When** se completa el
-   recálculo, **Then** sus recomendaciones pasan a ser personalizadas y dejan de marcarse como
-   respaldo.
+5. **Given** un usuario nuevo cuya declaración de gustos quedó persistida, **When** se completa el
+   recálculo asíncrono que la declaración dispara (FR-089b), **Then** sus recomendaciones pasan a ser
+   personalizadas y dejan de marcarse como respaldo.
 6. **Given** una consulta que se resuelve con el top-N de respaldo, **When** se atiende, **Then** el
    servicio no ejecuta scoring, similitud ni diversificación durante el request: el respaldo ya
    estaba precomputado y solo se le aplican los filtros del usuario.
+7. **Given** un usuario **sin** declaración de gustos en el módulo consultado, **When** se consulta,
+   **Then** la solicitud se rechaza como precondición incumplida (FR-088), sin respaldo y sin un
+   sexto estado de respuesta.
 
 ---
 
@@ -327,9 +413,10 @@ a la diversificación y las respuestas obsoletas.
 ### User Story 6 - Comportamiento ante cache miss y pérdida de caché (Priority: P2)
 
 Cuando el top-N vigente de un usuario no está disponible (expiración o pérdida total), el servicio
-aplica una estrategia de *stale-while-revalidate*: sirve el último resultado conocido marcándolo
-como obsoleto, o un resultado vacío marcado como pendiente si no existe ninguno, y en ambos casos
-señaliza el recálculo por vía asíncrona, sin calcular en línea.
+resuelve la respuesta por la precedencia de FR-056: sirve el respaldo del módulo si existe —avisando,
+por FR-056a, que hay un personalizado obsoleto consultable—; si no hay respaldo servible, sirve el
+último resultado conocido marcándolo como obsoleto; y si tampoco existe, un resultado vacío marcado
+como pendiente. En todos los casos señaliza el recálculo por vía asíncrona, sin calcular en línea.
 
 **Why this priority**: Define el comportamiento del sistema ante su modo de fallo más frecuente y
 garantiza que la caché sea reconstruible.
@@ -341,12 +428,14 @@ pesado en el request y la señalización del recálculo.
 **Acceptance Scenarios**:
 
 1. **Given** un usuario cuyo top-N venció pero cuyo último resultado conocido aún se conserva,
-   **When** `api-general` consulta, **Then** recibe ese resultado marcado explícitamente como
-   obsoleto, con su marca temporal de cálculo y su versión de configuración, sin que el servicio
-   ejecute scoring, similitud ni diversificación durante el request.
-2. **Given** un usuario sin ningún top-N conocido (pérdida total o usuario nunca calculado),
-   **When** consulta, **Then** recibe un top-N vacío marcado explícitamente como "recálculo
-   pendiente", diferenciable de un top-N vacío por ausencia de candidatos válidos.
+   **When** `api-general` consulta, **Then** recibe el respaldo del módulo marcado como no
+   personalizado, junto con la señal de FR-056a de que existe un personalizado obsoleto consultable;
+   si no hay respaldo servible, recibe ese resultado marcado explícitamente como obsoleto, con su
+   marca temporal de cálculo y su versión de configuración. En ningún caso el servicio ejecuta
+   scoring, similitud ni diversificación durante el request.
+2. **Given** un usuario sin ningún top-N conocido (pérdida total o usuario nunca calculado) y sin
+   respaldo servible, **When** consulta, **Then** recibe un top-N vacío marcado explícitamente como
+   "recálculo pendiente", diferenciable de un top-N vacío por ausencia de candidatos válidos.
 3. **Given** cualquiera de los dos casos anteriores, **When** se atiende la solicitud, **Then** el
    servicio señaliza el recálculo por vía asíncrona, con protección contra señalizaciones
    redundantes para el mismo usuario y módulo dentro de una ventana acordada.
@@ -415,20 +504,24 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   tags se convierte en penalización y el ítem permanece excluido.
 - **Señal de preferencia sobre un ítem que ya no existe en el catálogo**: no rompe el cálculo del
   perfil y se ignora de forma registrada.
-- **Ítem sin tags o con tags vacíos**: queda excluido de los candidatos de forma explícita en lugar
-  de recibir un score indefinido.
+- **Ítem sin tags o con tags vacíos**: se rechaza en la ingesta y queda registrado como anomalía de
+  contrato (FR-021b, RD-60); nunca llega a ser candidato ni recibe un score indefinido.
 - **`age_rating` ausente o desconocido en un ítem**: se trata como no apto por defecto (falla
   segura), nunca como apto.
-- **Edad o fecha de nacimiento del usuario no disponible**: se aplica la restricción de edad más
-  conservadora disponible; jamás se omite el filtro.
+- **Fecha de nacimiento del usuario no disponible**: el caso no es representable. El usuario se
+  rechaza en la ingesta (FR-079, CR-1, DEP-5) y no existe en el universo recomendable; el antiguo
+  modo degradado de «restricción máxima» (FR-052) está retirado. Jamás se omite el filtro.
 - **Top-N obsoleto cuyo conjunto de exclusión o cuya edad del usuario cambiaron desde el cálculo**:
   los filtros obligatorios se reevalúan sobre el resultado obsoleto antes de servirlo.
 - **Top-N obsoleto extremadamente antiguo**: existe un límite de antigüedad más allá del cual el
   resultado deja de servirse y se responde como "recálculo pendiente".
 - **Evento `recomendacion.actualizar` para un módulo desconocido**: se rechaza con dead-letter y no
   altera ningún top-N existente.
-- **Ítem de la actividad sin tags o con tags desconocidos**: no se puede evaluar la condición de
-  propagación; se recalcula únicamente el módulo de la actividad y se registra la limitación.
+- **Ítem de la actividad todavía no sincronizado** (el evento llega antes que el catálogo que lo
+  contiene): la señal no puede persistirse —su ítem no existe localmente— ni puede evaluarse la
+  condición de propagación. Se registra de forma explícita, sin reintento ni dead-letter, y la
+  sincronización de actividad la incorpora después; la deduplicación por identificador de origen
+  (FR-011a) impide que se cuente dos veces. Un ítem sincronizado siempre tiene tags (FR-021b).
 - **Tag que pasa a ser compartido al incorporarse un ítem nuevo del otro módulo**: la propagación
   aplica a partir de la siguiente sincronización que actualice el vocabulario compartido; los
   top-N previos se consideran vigentes hasta su próximo recálculo.
@@ -438,20 +531,27 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **Ráfaga de eventos para el mismo usuario**: los recálculos se consolidan de modo que el resultado
   final refleje el estado más reciente sin trabajo redundante innecesario.
 - **Avalancha de misses simultáneos tras una pérdida total de caché**: la señalización de recálculo
-  se agrupa para no saturar el broker ni el worker.
+  se agrupa —a lo sumo una solicitud por usuario y módulo dentro de la ventana de supresión— y el canal
+  interno de solicitudes tiene longitud acotada, para no saturar al worker (RD-100).
 - **Cambio de la versión de configuración del motor con top-N vigentes**: conviven resultados de
   distintas versiones, cada uno correctamente etiquetado, hasta que sean recalculados; no se
-  invalida ni se recalcula nada de forma masiva.
+  invalida ni se recalcula nada de forma masiva. **Excepción**: si la versión nueva cambia el catálogo
+  etario, los resultados anteriores dejan de servirse (FR-025c, RD-103).
 - **Top-N etiquetado con una versión de configuración que ya no existe en el repo**: sigue
   sirviéndose tal cual, pero la discrepancia queda registrada para poder auditarla.
 - **Despliegue con archivo de configuración ausente, malformado o con pesos inconsistentes**: el
   componente no arranca y lo señala explícitamente, en lugar de aplicar valores por defecto.
-- **Rollback a una versión de configuración anterior**: es posible revirtiendo el cambio en el repo
-  y desplegando; los top-N generados con la versión revertida siguen siendo válidos y distinguibles.
+- **Rollback a una versión de configuración anterior**: se realiza **hacia adelante**. Una versión
+  desactivada no se reactiva (DI-24, RD-37); volver a valores anteriores es desplegar una versión
+  **nueva** cuyo contenido los replica, con su propio identificador (RD-94). Los top-N generados con
+  cualquier versión previa siguen siendo interpretables y distinguibles por su `config_version`.
 - **Sincronización parcial interrumpida**: no deja el estado materializado en una condición
   inconsistente que el motor pueda leer como válida.
 - **Broker de RabbitMQ no disponible**: la lectura de recomendaciones sigue funcionando sobre lo ya
-  precomputado; la señalización de recálculo se degrada de forma controlada y registrada.
+  precomputado, y las solicitudes internas de recálculo siguen emitiéndose porque no pasan por el broker
+  (RD-100). Lo que se detiene es la llegada de eventos `recomendacion.actualizar` y de bajas de cuenta,
+  que se procesan cuando el broker vuelve.
+- **Usuario suprimido que el origen todavía lista**: la sincronización no lo rematerializa (FR-091b).
 
 ## Requirements *(mandatory)*
 
@@ -468,8 +568,11 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   dentro del ciclo del request.
 - **FR-004**: Cada ítem devuelto MUST incluir su identificador, su posición en el ranking, su score
   y la versión de configuración del motor que lo generó.
-- **FR-005**: La operación MUST admitir tamaño de resultado configurable y paginación, con límites
-  máximos validados; una solicitud fuera de esos límites MUST rechazarse con error explícito.
+- **FR-005**: La operación MUST admitir un único parámetro de tamaño de resultado, `top_n`, con
+  límites validados; una solicitud fuera de esos límites MUST rechazarse con error explícito. La
+  operación MUST NOT paginar: devuelve el resultado completo del tamaño pedido en una sola respuesta.
+  *(Decía «tamaño configurable y paginación»; con `top_n ≤ 50` una segunda página no tiene objeto y
+  un cursor sobre un resultado que puede recalcularse entre llamadas no sería estable. RD-107.)*
 - **FR-006a**: El tamaño de resultado solicitado MUST estar comprendido en `[top_n_min, top_n_max]`, con
   **`top_n_min` = 10**, y toda solicitud por debajo del mínimo MUST rechazarse con error explícito, igual
   que las que exceden el máximo (FR-005). El mínimo MUST declararse como requisito del contrato y MUST
@@ -489,9 +592,10 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 
 - **FR-009**: El servicio MUST consumir el evento `recomendacion.actualizar` según el JSON Schema
   documentado en `api-general`, sin redefinirlo localmente.
-- **FR-010**: El worker MUST recalcular el top-N del usuario para el módulo de la actividad
-  indicada, aplicar el post-procesamiento obligatorio y persistir el resultado en la caché,
-  dejándolo marcado como vigente.
+- **FR-010**: El worker MUST persistir la señal que transporta cada evento (FR-029e) y, cuando el
+  usuario alcance el umbral de interacciones de FR-080a, MUST recalcular el top-N del usuario para el
+  módulo de la actividad indicada, aplicar el post-procesamiento obligatorio y persistir el
+  resultado en la caché, dejándolo marcado como vigente.
 - **FR-010a**: El worker MUST recalcular además el top-N del módulo opuesto cuando al menos uno de
   los tags del ítem de la actividad pertenezca al vocabulario de tags compartido entre módulos;
   cuando ninguno lo sea, MUST NOT recalcular el módulo opuesto.
@@ -542,7 +646,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-021**: El score de un ítem candidato MUST resultar de la combinación lineal de tres señales
   con pesos alpha (content-based), beta (colaborativo) y gamma (cross-module boost).
 - **FR-022**: La señal content-based MUST basarse en la similitud coseno entre el vector TF-IDF del
-  perfil de tags del usuario y el vector de tags del ítem.
+  perfil de tags del usuario y el vector de tags del ítem. El IDF MUST usar la forma suavizada
+  `ln((1 + N) / (1 + df)) + 1`, que nunca divide por cero ni anula un tag presente en todo el catálogo
+  (RD-105).
 - **FR-022a**: El perfil de tags del usuario MUST construirse únicamente a partir de señales
   explícitas de preferencia: los likes MUST reforzar los tags del ítem y los dislikes MUST
   penalizarlos, con magnitudes definidas en la configuración versionada del motor.
@@ -551,7 +657,8 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-022c**: El perfil resultante MUST permanecer en un rango acotado y numéricamente estable
   aunque un usuario acumule muchas señales negativas sobre un mismo tag.
 - **FR-023**: La señal colaborativa MUST agregar ítems likeados por los k usuarios más similares al
-  usuario objetivo.
+  usuario objetivo. Los usuarios con similitud **menor o igual a cero** MUST NOT contarse como vecinos
+  (RD-105).
 - **FR-024**: La señal cross-module boost MUST derivarse del perfil de tags generales del usuario y
   aplicarse entre módulos (películas ↔ juegos) para atender el cold start cruzado.
 - **FR-025**: Los pesos alpha/beta/gamma, el valor de k, las magnitudes de refuerzo/penalización y
@@ -564,7 +671,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   momento dado; el MVP MUST NOT admitir varias versiones activas simultáneas.
 - **FR-025c**: Un cambio de versión de configuración MUST NOT invalidar ni recalcular masivamente
   los top-N existentes: estos MUST seguir sirviéndose, etiquetados con la versión que los generó,
-  hasta que un recálculo natural los reemplace.
+  hasta que un recálculo natural los reemplace. **Excepción**: si la versión nueva cambia el catálogo
+  etario, los top-N de versiones anteriores MUST NOT servirse, porque su filtrado etario pertenece a otra
+  escala; la seguridad prevalece sobre la continuidad (RD-103).
 - **FR-025d**: La versión de configuración activa MUST ser consultable en tiempo de ejecución (por
   health check o métrica), para poder verificar qué configuración está produciendo los recálculos
   actuales.
@@ -577,7 +686,8 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 
 - **FR-028**: El post-procesamiento MUST ejecutarse siempre en este orden: (1) filtro de edad por
   `age_rating`, (2) filtro de exclusión de ítems vistos/jugados/dislikeados, (3) diversificación por
-  MMR.
+  MMR, (4) colocación de la cuota de novedades (FR-033a6, RD-102). El paso (4) solo reubica candidatos
+  que ya superaron (1) y (2).
 - **FR-029**: El filtro de edad y el filtro de exclusión MUST ser invariantes no desactivables: no
   existe configuración, bandera ni excepción de rendimiento que los omita.
 - **FR-029a**: El conjunto de exclusión MUST incluir todo ítem sobre el que el usuario registró un
@@ -657,6 +767,11 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-091**: La supresión de un usuario a pedido MUST eliminar **todos** los datos de su alcance,
   incluidos los almacenados en caché. MUST NOT considerarse suprimido un dato cuya eliminación se
   delegue en el vencimiento de su tiempo de vida.
+- **FR-091a**: La supresión MUST dispararse por la **notificación de baja de cuenta** de `api-general`
+  (DEP-12), procesada con idempotencia por identificador de evento. La ausencia de un usuario en una
+  sincronización MUST NOT interpretarse como baja (RD-101).
+- **FR-091b**: Un usuario suprimido MUST NOT volver a materializarse aunque el origen lo siga listando:
+  la constancia de la supresión actúa como lápida (DI-29, RD-101).
 - **FR-092**: La supresión MUST invalidar la caché **antes** de eliminar el dato de origen. Un recálculo
   iniciado antes de la supresión MUST NOT poder reescribir datos ya eliminados.
 - **FR-092a**: Ante un recálculo en curso, la supresión MUST **abortarlo**, y MUST NOT esperar a que
@@ -740,23 +855,28 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-033a4**: El puntaje de popularidad MUST estar **materializado** antes de servirse: MUST NOT
   calcularse durante la atención de una solicitud ni durante el ordenamiento del respaldo (FR-003).
   Un ítem sin señales en la ventana MUST tener puntaje cero y MUST seguir siendo representable.
-- **FR-033a6**: El respaldo global MUST reservar una **proporción del resultado**, declarada en
-  configuración versionada (`fallback_new_item_quota_ratio` = 0,20), a ítems cuya evidencia acumulada no alcance un umbral mínimo,
-  ordenados entre sí por **afinidad con el perfil del usuario** (FR-033a6f1). La cuota MUST ser un
-  **máximo, no un mínimo**: si no hay suficientes ítems poco evidenciados, las posiciones sobrantes MUST
-  ocuparse por puntaje ordinario y MUST NOT quedar vacías.
+- **FR-033a6**: El **top-N personalizado** MUST reservar una **proporción del resultado**, declarada en
+  configuración versionada (`fallback_new_item_quota_ratio` = 0,20; el prefijo es histórico), a ítems del
+  **conjunto emergente**, ordenados entre sí por **afinidad con el perfil del usuario** (FR-033a6f1). La
+  cuota MUST ser un **máximo, no un mínimo**: si no hay suficientes ítems emergentes, las posiciones
+  sobrantes MUST ocuparse por el orden ordinario y MUST NOT quedar vacías. La cuota MUST aplicarse al
+  precomputar (paso 4 de FR-028): el k-ésimo emergente ocupa la posición `ceil(k / ratio)` de una lista de
+  longitud `top_n_max`. El respaldo global (FR-033c) **no lleva cuota**.
+  > **Trasladada del respaldo al personalizado el 2026-09-27 (RD-102)**: el orden por afinidad con el
+  > usuario no es computable sobre una lista global (FR-033c) ni al servir (FR-033d).
   > Dos correcciones respecto de la redacción anterior: la cuota era un conteo fijo de 3 posiciones
   > (RD-66, revertido por RD-77) y el orden interno era «por antigüedad de incorporación», criterio que
   > **RD-70 había eliminado por no ser computable** —`items` no tiene ese atributo y RD-10 prohíbe
   > agregarlo— sin que este enunciado se actualizara.
-- **FR-033a6a**: La cuota efectiva MUST calcularse sobre el `top_n` **de la solicitud atendida**
-  (FR-006, FR-006a), mediante `cuota = floor( top_n × fallback_new_item_quota_ratio )`, sin piso ni
-  clamp. El redondeo MUST ser hacia abajo, con el efecto conocido de que la porción real oscila por
+- **FR-033a6a**: La cuota efectiva MUST corresponder al `top_n` **de la solicitud atendida**
+  (FR-006, FR-006a): `cuota = floor( top_n × fallback_new_item_quota_ratio )`, sin piso ni
+  clamp. Con la colocación de FR-033a6, truncar la lista a `top_n` produce exactamente esa cuota sin
+  cálculo al servir (RD-102). El redondeo MUST ser hacia abajo, con el efecto conocido de que la porción real oscila por
   debajo del 20 % dentro de cada tramo —en `top_n` = 14 la cuota es 2, el 14 %—: es inherente a una cuota
   entera sobre un resultado entero. Con `top_n_min` = 10 la cuota **nunca baja de 2**, de modo que el
   apagado por redondeo a cero que motivaba un piso es **irrepresentable** y el piso se elimina (RD-80).
 - **FR-033a6b**: La cuota efectiva MUST ser estrictamente menor que el `top_n` atendido. Una cuota que
-  iguale al tamaño del resultado convertiría al respaldo en una lista de novedades, que es un
+  iguale al tamaño del resultado lo convertiría en una lista de novedades, que es un
   comportamiento distinto del especificado y no un caso extremo del mismo. La garantía MUST sostenerse en
   la **validación de arranque** —`0 < fallback_new_item_quota_ratio < 1` junto con
   `10 ≤ top_n_min ≤ top_n_default ≤ top_n_max`— y MUST NOT depender de un clamp en la fórmula: con
@@ -765,9 +885,12 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-033a6c**: El catálogo de respaldo MUST particionarse en **dos conjuntos disjuntos y
   exhaustivos**: el **conjunto emergente**, con los ítems cuya evidencia acumulada no alcanza el
   umbral, y el **conjunto general**, con el resto. Todo ítem incorporado MUST entrar al conjunto
-  emergente. La pertenencia MUST derivarse del mismo par numerador/denominador que sostiene el puntaje
-  (FR-033a5) y MUST NOT almacenarse como estado independiente, para que no pueda divergir del dato que
-  la determina.
+  emergente. La pertenencia al conjunto general MUST **registrarse** como hecho de promoción, escrito una
+  sola vez cuando la evidencia alcanza `emergent_evidence_threshold`, y MUST NOT recalcularse desde los
+  recuentos vigentes: la promoción es definitiva (FR-033a6e) y la evidencia se mide sobre una ventana
+  móvil, de modo que un hecho pasado no es derivable del dato actual (RD-102).
+  > La redacción anterior mandaba derivar la pertenencia y no almacenarla, lo que hacía incumplible
+  > FR-033a6e. Corregido el 2026-09-27.
 - **FR-033a6d**: El conjunto emergente MUST ordenarse por un criterio **propio**, y ese criterio MUST
   NOT ser el puntaje de FR-033a3. Ordenar por Wilson dentro del conjunto emergente reproduciría el
   sesgo que la partición existe para neutralizar, porque todos sus miembros tienen poca evidencia por
@@ -786,26 +909,31 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-033a6f1**: El conjunto emergente MUST ordenarse por **afinidad con el perfil del usuario**
   (FR-087), con el mismo criterio de contenido que ordena el resto del resultado y **sin usar el
   puntaje de popularidad**, que FR-033a6d prohíbe. La cuota de FR-033a6 deja de ser un orden global y
-  pasa a resolverse por usuario.
+  pasa a resolverse por usuario, en el recálculo asíncrono (RD-102).
 - **FR-033a6f2**: La exposición de los ítems emergentes MUST repartirse como **consecuencia de la
   diversidad de perfiles**, y el sistema MUST NOT introducir aleatoriedad para lograrla. Usuarios con
   gustos distintos ven emergentes distintos; un criterio de orden único y global es lo que produciría
   el bucle en que unos pocos ítems acaparan la exposición y el resto nunca acumula evidencia.
-- **FR-033a7**: Los ítems admitidos por la cuota MUST NOT recibir un puntaje alterado. Su puntaje de
-  popularidad sigue siendo el de FR-033a3; lo que cambia es el **lugar donde se los ordena**, no el
-  valor que los mide. Un puntaje artificialmente elevado contaminaría toda comparación posterior y
+- **FR-033a7**: Los ítems admitidos por la cuota MUST NOT recibir un puntaje alterado. Su score es el
+  que calculó el motor y su puntaje de popularidad sigue siendo el de FR-033a3; lo que cambia es el
+  **lugar donde se los ordena**, no el valor que los mide. Un puntaje artificialmente elevado contaminaría toda comparación posterior y
   dejaría de ser reconstruible a partir del numerador y el denominador (FR-033a5).
-- **FR-033a8**: El sistema MUST exponer qué proporción del respaldo servido provino de la cuota
-  (`fallback_new_item_share`, métrica observada — no confundir con el parámetro, que es un conteo de
-  posiciones). MUST distinguirse la cuota **disponible** de la **efectivamente ocupada**: si las
+- **FR-033a8**: El sistema MUST exponer qué proporción del top-N personalizado servido provino de la cuota
+  (`fallback_new_item_share`, métrica observada — no confundir con el parámetro de configuración
+  `fallback_new_item_quota_ratio`, que es la proporción **configurada**; RD-77, RD-80). MUST distinguirse la cuota **disponible** de la **efectivamente ocupada**: si las
   posiciones se llenan sistemáticamente por puntaje ordinario, el problema no es el tamaño de la cuota
   sino el umbral de evidencia que define quién puede entrar en ella, y sin esa distinción ambos casos
   se ven iguales.
 - **FR-033a5**: El numerador y el denominador MUST persistirse junto al puntaje, de modo que un
   cambio del nivel de confianza pueda recalcularse **sin recorrer el historial de señales**.
-- **FR-033a2**: Mientras no exista volumen de likes suficiente para poblar el respaldo, la respuesta
-  MUST reportarse como *sin candidatos* según la precedencia de FR-056. MUST NOT sustituirse por
-  ningún otro criterio de ordenamiento no declarado en configuración.
+- **FR-033a2**: El respaldo MUST construirse aunque no existan likes: un ítem sin evidencia tiene
+  puntaje 0 (FR-033a3) y los empates se resuelven por el desempate determinista de FR-070. El respaldo
+  MUST quedar vacío —y la respuesta reportarse como *sin candidatos*— solo cuando no hay ítems vigentes
+  del módulo que superen los filtros del usuario. MUST NOT sustituirse por ningún otro criterio de
+  ordenamiento no declarado en configuración.
+  > La redacción anterior vaciaba el respaldo «mientras no exista volumen de likes suficiente», sin
+  > umbral definido, y contradecía SC-024 y el edge case de catálogo sin likes. Corregido el 2026-09-27
+  > (RD-106).
 - **FR-033b**: El top-N de respaldo MUST diversificarse por MMR sobre el espacio de tags, de modo
   que exponga distintos clusters en lugar de concentrarse en el género globalmente dominante.
 - **FR-033c**: El top-N de respaldo MUST precomputarse de forma global por módulo mediante un
@@ -823,15 +951,21 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-033f**: Si tras aplicar los filtros del usuario el respaldo queda por debajo del tamaño
   solicitado, MUST devolverse lo disponible sin completar con ítems no aptos; el respaldo
   precomputado MUST dimensionarse con margen suficiente para absorber el filtrado habitual.
-- **FR-033g**: En cuanto el usuario acumule actividad suficiente para generar un perfil de tags, sus
-  recomendaciones MUST pasar a ser personalizadas y dejar de marcarse como respaldo.
+- **FR-033g**: En cuanto exista un top-N personalizado vigente para el usuario y el módulo —el primero
+  se produce en el recálculo asíncrono que dispara su declaración de gustos (FR-082, FR-089b), sin
+  esperar actividad—, sus recomendaciones MUST servirse personalizadas y dejar de marcarse como
+  respaldo.
 
 **Cache miss y resiliencia**
 
-- **FR-034**: Ante ausencia de un top-N vigente, el servicio MUST aplicar *stale-while-revalidate*:
-  si conserva un resultado previo dentro del límite de antigüedad admitido, MUST servirlo marcado
-  como obsoleto; en caso contrario MUST devolver un top-N vacío marcado como recálculo pendiente.
-- **FR-035**: Ante cualquiera de esos dos casos, el servicio MUST señalizar el recálculo por vía
+- **FR-034**: Ante ausencia de un top-N vigente, el servicio MUST resolver la respuesta por la
+  precedencia de FR-056: servir el **respaldo** si existe uno servible —señalando por FR-056a la
+  existencia de un personalizado obsoleto, si lo hay—; en su defecto, el **resultado previo** dentro
+  del límite de antigüedad admitido (FR-037), marcado como obsoleto; y en su defecto, un top-N vacío
+  marcado como recálculo pendiente.
+  > Ajustado el 2026-09-27 a la decisión Q17.8 (RD-56), que fijó que el respaldo precede al obsoleto.
+  > La redacción anterior —servir el obsoleto primero— era la de la sesión 2026-09-07 y quedó superada.
+- **FR-035**: Ante cualquier respuesta a una solicitud sin top-N vigente, el servicio MUST señalizar el recálculo por vía
   asíncrona, con protección contra señalizaciones redundantes para el mismo usuario y módulo dentro
   de una ventana acordada.
 - **FR-036**: Un resultado obsoleto MUST reevaluarse contra los filtros obligatorios vigentes antes
@@ -915,6 +1049,11 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   sigue siendo *respaldo* —la precedencia de FR-056 no cambia—, pero la existencia del personalizado
   vencido MUST NOT quedar oculta: el usuario MUST poder optar por verlo. Esa señal MUST distinguirse
   del estado, para que un cliente que la ignore siga comportándose correctamente.
+  La señal MUST ser el campo booleano `stale_available`, y la opción de verlo MUST ser el parámetro
+  `prefer=stale` de la misma operación: con él, si existe un personalizado obsoleto dentro del límite
+  de antigüedad, MUST servirse como *personalizada obsoleta*, pasando por las mismas guardas; si no
+  existe, rige la precedencia normal. El parámetro MUST NOT alterar la precedencia de las solicitudes
+  que no lo envían (RD-107).
 - **FR-057**: El conjunto de estados de respuesta MUST tratarse como parte del contrato compartido:
   agregar, quitar o resignificar un estado MUST requerir coordinación y aprobación de `api-general`
   antes de mergear.
@@ -932,9 +1071,14 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 **Contrato de datos requerido a `api-general` (resuelto en revisión 2026-09-08)**
 
 - **FR-061**: El evento `recomendacion.actualizar` MUST incluir, como mínimo: un **identificador
-  único de evento** estable ante reentregas, el identificador del usuario, el módulo afectado, el
-  ítem involucrado, el **tipo de señal** y su **marca temporal**. La ausencia de cualquiera de estos
-  campos MUST considerarse un contrato insuficiente que impide implementar la feature.
+  único de evento** estable ante reentregas, el **identificador de la interacción** asignado por el
+  origen (el mismo que expone la actividad, CR-17), el identificador del usuario, el módulo afectado,
+  el ítem involucrado, el **tipo de señal** y su **marca temporal**. La ausencia de cualquiera de
+  estos campos MUST considerarse un contrato insuficiente que impide implementar la feature.
+  > El identificador de interacción se agregó el 2026-09-27: sin él, una misma interacción que llega
+  > por el evento y luego por la sincronización de actividad no puede deduplicarse (FR-011a, DI-21), y
+  > la popularidad se inflaría. Los dos identificadores son distintos a propósito: el de evento
+  > protege el **recálculo** (FR-011) y el de interacción protege la **ingesta** (FR-011a).
 - **FR-062**: El endpoint de actividad MUST permitir distinguir el tipo de señal (like, dislike,
   consumo) y su marca temporal por registro.
 - **FR-063**: MUST mantenerse en este repo un documento único que enumere todos los campos
@@ -964,9 +1108,13 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   configuración obligatorio por entorno. Las señales cuya antigüedad supere ese horizonte MUST
   purgarse. No MUST existir un modo de operación sin política de supresión.
 - **FR-068b**: El horizonte de retención MUST ser estrictamente mayor que toda ventana operativa
-  que dependa de las señales —en particular la ventana de popularidad y el período de retención de
-  la marca de idempotencia—. La validación MUST ocurrir al cargar la configuración y MUST impedir
-  el arranque si no se cumple, en lugar de manifestarse como degradación silenciosa.
+  que dependa de las señales. Esas ventanas son, en **lista cerrada**: (1) la ventana de popularidad
+  (`popularity_window_days`), (2) la retención de la marca de idempotencia de eventos (`TTL_DEDUPE` y
+  `processed_events`) y (3) la ventana de reentrega del broker (`event_redelivery_window_hours`,
+  parámetro operativo que declara la reentrega máxima configurada en RabbitMQ). La validación MUST
+  ocurrir al cargar la configuración, MUST comparar contra **las tres** y MUST impedir el arranque si
+  no se cumple, en lugar de manifestarse como degradación silenciosa. Toda ventana nueva que dependa de
+  las señales MUST agregarse a esta lista y a la validación en el mismo cambio (RD-110).
 - **FR-068c**: Antes de purgar una señal de consumo, el procedimiento MUST verificar que la
   exclusión permanente correspondiente ya esté materializada. Una señal cuya exclusión no esté
   materializada MUST NOT purgarse.
@@ -977,6 +1125,13 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-068d1**: El sistema MUST exponer, como medida **informativa y sin umbral de alerta**, cuántas
   exclusiones han quedado huérfanas de señal. No sostiene ninguna decisión operativa —dado FR-068d,
   la orfandad es el régimen normal, no una anomalía—, y MUST NOT usarse para disparar acciones.
+- **FR-068e**: El sistema MUST tratar como **irreversibles** las operaciones sobre datos que no pueden
+  recuperarse desde ningún origen: `user_signals` purgadas, `user_declared_tags`, `user_exclusions`,
+  `user_suppressions` e `item_promotions`. En particular: (a) reducir `signal_retention_days` destruye
+  historial en la siguiente purga y MUST requerir aprobación explícita (RD-54), mientras que aumentarlo
+  es un cambio ordinario; (b) la pérdida de esas tablas no se repara recomputando, de modo que su
+  respaldo es obligación operativa declarada (RD-71). Ningún procedimiento automático MUST borrar esos
+  datos fuera de la purga por antigüedad (FR-068a) y de la supresión a pedido (FR-091) (RD-110).
 - **FR-082**: El usuario MUST declarar un conjunto de **tags de gusto por módulo**, y ese conjunto
   MUST persistirse. Es el **único insumo funcional del motor que no se deriva de señal alguna**: el
   usuario lo enuncia en lugar de revelarlo al usar el sistema. MUST NOT existir un módulo activo para
@@ -996,6 +1151,14 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   feedback MUST modular el **peso** del tag en el perfil, no la pertenencia del tag a la declaración.
   Un dislike sobre un ítem MUST reducir la contribución de sus tags al perfil; MUST NOT borrar una
   declaración del usuario, que es un enunciado suyo y no una inferencia del sistema.
+- **FR-086a**: La declaración de un módulo MUST ser **definitiva**: el usuario MUST NOT poder modificarla
+  ni retirarla. Una segunda declaración para un módulo ya declarado MUST rechazarse como conflicto, sin
+  alterar la existente. La única vía por la que una declaración desaparece es la supresión de la cuenta
+  (FR-091) (RD-109).
+- **FR-086b**: Los dislikes MAY llevar la contribución de un tag declarado a **cero o a un valor
+  negativo** en el perfil. Es comportamiento esperado y MUST NOT tratarse como retiro: la fila de la
+  declaración sigue existiendo, sigue contando para el mínimo (FR-083, DI-28) y el tag vuelve a pesar si
+  llegan likes posteriores (RD-109).
 - **FR-087**: El perfil vectorial del usuario MUST ser **derivado y reconstruible** a partir de los
   tags declarados y de las señales vigentes. MUST NOT actualizarse de forma incremental sobre su valor
   anterior, ni MUST existir un estado del perfil que no pueda recomputarse desde sus insumos. Si las
@@ -1009,7 +1172,8 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-089**: Este servicio MUST exponer un **endpoint de escritura** para registrar la declaración de
   gustos. Es una **excepción declarada** a la regla de que la API solo lee: la declaración no proviene
   de ninguna fuente externa y su autoridad nace en este repositorio (FR-082), de modo que ningún otro
-  componente puede escribirla.
+  componente puede escribirla. La excepción está **declarada en la constitución v1.1.0**, Principio III
+  (RD-98); ningún otro endpoint puede invocarla por analogía.
 - **FR-089a**: El endpoint de declaración MUST responder de forma **síncrona** confirmando la
   persistencia, y MUST NOT delegarla a un proceso asíncrono. El usuario que acaba de elegir sus tags
   espera recomendaciones a continuación; una confirmación que no garantice la escritura produciría un
@@ -1027,7 +1191,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   propósito es que el camino de segmentación se ejerza en producción desde el primer despliegue, en lugar
   de estrenarse el día que alguien cambie el valor sobre tráfico real. Costo aceptado: `v1` no observa la
   línea de base sin segmentación, de modo que la condición de revisión de FR-081 exige poner el factor en
-  `0` deliberadamente para medir (RD-79).
+  `0` deliberadamente para medir (RD-79). Esa medición queda **fuera del alcance del MVP**: es una
+  evaluación offline que se ejecuta solo si la condición de revisión se activa, desplegando una versión
+  de configuración nueva con el factor en `0` —rollback hacia adelante, RD-94— (CHK059).
   > Revierte la prescripción de RD-74 (`v1` desactivada). No revierte la **capacidad**: FR-090 sigue
   > exigiendo que `0` sea representable, que es lo que RD-76 corrigió.
 - **FR-081**: La segmentación regional del término colaborativo MUST implementarse como **ponderación**,
@@ -1070,8 +1236,11 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   durante `TTL_FRESH` (24 h), que es exactamente la vía que FR-080 prohíbe.
 - **FR-080a**: El recálculo del top-N de un usuario MUST dispararse al acumular un número de
   interacciones nuevas declarado en **configuración versionada**, y ese umbral MUST NOT quedar
-  implícito en el código. El conteo MUST llevarse por usuario y MUST reiniciarse al recalcular. El
-  valor inicial de ese umbral es **10 interacciones**.
+  implícito en el código. El conteo MUST llevarse **por (usuario, módulo)** —el módulo es el del ítem de
+  la señal— y MUST reiniciarse al recalcular ese módulo. Alcanzar el umbral MUST recalcular ese módulo,
+  y el opuesto solo si corresponde propagar (FR-010a). El valor inicial de ese umbral es **10
+  interacciones**. El conteo se **deriva** de las señales recibidas desde el último cálculo del perfil de
+  ese módulo y no se almacena; el reinicio es consecuencia de recalcular (RD-104).
 - **FR-069**: Un evento duplicado que llegue **después** de expirar su marca de idempotencia MUST
   poder reprocesarse sin corromper el estado: el resultado MUST ser equivalente al ya existente.
 
@@ -1083,12 +1252,21 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-071**: La diversidad MUST medirse como la **proporción máxima del top-N atribuible a un mismo
   cluster de tags**, con la definición de cluster y el umbral máximo declarados en la configuración
   versionada. Esta métrica MUST ser evaluable de forma automatizada sobre cualquier top-N producido.
+  El **cluster** de un ítem es su **tag principal**: el de mayor peso en su vector, con desempate por
+  nombre de tag. El umbral inicial es `diversity_max_cluster_share` = **0,4** (RD-108).
+- **FR-071a**: El umbral MUST aplicarse como **tope** durante la selección, no solo medirse después: al
+  ocupar la posición `p`, un candidato MUST NOT elegirse si con él su cluster superaría
+  `ceil(diversity_max_cluster_share × p)`. Así el tope vale para **todo prefijo**, y por lo tanto para
+  cualquier `top_n`. Si todos los candidatos restantes pertenecen a clusters ya topados, el tope MUST
+  relajarse para esa posición en lugar de acortar la lista, y cada relajación MUST contarse en una
+  métrica. Rige igual para el respaldo (SC-025) y para la colocación de la cuota (FR-033a6).
 
 ### Key Entities
 
 - **Perfil de tags de usuario**: representación ponderada de las preferencias de un usuario sobre el
   vocabulario de tags; distingue el perfil por módulo del perfil general usado para la señal
-  cruzada. Derivado de la actividad sincronizada; no es fuente de verdad.
+  cruzada. Derivado de la declaración de gustos y de las señales vigentes (FR-087); reconstruible,
+  no es fuente de verdad.
 - **Vector de tags de ítem**: representación de una película o juego en el espacio de tags, junto
   con su `age_rating` y el módulo al que pertenece.
 - **Vocabulario de tags compartido**: espacio vectorial **único** para ambos módulos, dentro del
@@ -1103,14 +1281,23 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   exclusión, porque determina su reversibilidad: la de consumo es permanente y la de dislike puede
   revertirse por un like posterior.
 - **Señal de preferencia**: registro de un like o un dislike del usuario sobre un ítem, con su marca
-  temporal. Es la única fuente que modifica el perfil de tags (refuerzo o penalización); el consumo
-  no lo hace.
+  temporal. Junto con la declaración de gustos, es lo que modifica el perfil de tags (refuerzo o
+  penalización); el consumo no lo hace. Llega por la sincronización de actividad o por el evento
+  `recomendacion.actualizar`, identificada por el identificador de interacción del origen.
+- **Declaración de gustos**: conjunto de tags que el usuario declara por módulo al ingresar por
+  primera vez a él (mínimo `declared_tags_min`). Es el único dato cuya autoridad nace en este
+  repositorio; siembra el perfil antes de la primera señal y no caduca (FR-082…FR-089).
 - **Top-N precomputado**: lista ordenada de ítems recomendados para un par (usuario, módulo), con
   score por ítem, versión de configuración, marca temporal de cálculo y estado de frescura
   (vigente / obsoleto / recálculo pendiente).
-- **Top-N de respaldo por módulo**: lista global de ítems populares (por volumen de likes)
-  diversificada por MMR, precomputada de forma asíncrona por módulo y no por usuario. Se usa ante
-  cold start puro y se filtra por las restricciones del usuario concreto al servirse.
+- **Top-N de respaldo por módulo**: lista global de ítems populares (límite inferior de Wilson sobre
+  la conversión a like, FR-033a3) diversificada por MMR, precomputada de forma asíncrona por módulo y
+  no por usuario. Se sirve mientras el usuario no tenga un top-N personalizado vigente y se filtra
+  por las restricciones del usuario concreto al servirse. No lleva cuota de novedades (RD-102).
+- **Promoción de ítem**: hecho definitivo de que un ítem alcanzó la evidencia que lo saca del conjunto
+  emergente; determina qué ítems pueden ocupar la cuota de novedades del top-N personalizado.
+- **Supresión de usuario**: constancia de una baja de cuenta procesada —estado, intentos y
+  verificación—, que conserva solo el identificador y marcas temporales y bloquea la rematerialización.
 - **Versión de configuración del motor**: identificador único de un conjunto concreto de pesos
   alpha/beta/gamma, valor de k, magnitudes de refuerzo/penalización y parámetros de
   post-procesamiento. Vive en un archivo versionado dentro del repo y se despliega con el código;
@@ -1119,14 +1306,16 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **Registro de sincronización**: estado y resultado de cada corrida del Data Transformer, con su
   marca temporal, para poder evaluar la frescura de los datos materializados.
 - **Evento de actualización**: solicitud asíncrona de recálculo para un usuario (y módulo), con su
-  identificador único que habilita el procesamiento idempotente.
+  identificador único que habilita el procesamiento idempotente. Las solicitudes **internas** de
+  recálculo (miss, declaración, warm-up) no son eventos del broker sino entradas de un canal propio del
+  repositorio (RD-100).
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: La latencia de la operación de lectura del top-N permanece dentro del mismo umbral
-  acordado (p95) cuando el catálogo crece al menos 10× respecto de la línea base; la variación
+- **SC-001**: La latencia de la operación de lectura del top-N permanece en **p95 ≤ 50 ms**, medida en el
+  servicio (RD-105), cuando el catálogo crece al menos 10× respecto de la línea base; la variación
   atribuible al tamaño del catálogo es inferior al 10 %.
 - **SC-002**: **0 %** de ítems que violen el filtro de edad en cualquier respuesta emitida —vigente
   u obsoleta— medido sobre el 100 % de las respuestas de una batería de verificación con usuarios de
@@ -1146,10 +1335,13 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **SC-009**: **0 %** de los requests de lectura ejecutan operaciones de scoring, similitud o
   diversificación, verificable por instrumentación, incluidos los requests que resultan en cache
   miss.
-- **SC-010**: Para usuarios con actividad en un solo módulo, al menos el 90 % obtiene un top-N no
-  vacío en el módulo opuesto (efectividad del cold start cruzado).
-- **SC-011**: Ningún top-N de tamaño N concentra más de un porcentaje máximo acordado de ítems
-  provenientes de un mismo cluster de tags, verificable con la métrica de diversidad definida.
+- **SC-010**: Para usuarios con actividad en un solo módulo y declaración de gustos en el opuesto
+  (FR-084), al menos el 90 % obtiene un top-N no vacío en el módulo opuesto (efectividad del cold
+  start cruzado). Sin declaración en el opuesto la solicitud se rechaza por FR-088 y no entra en la
+  medición.
+- **SC-011**: Ningún top-N de tamaño N concentra más de `ceil(0,4 × N)` ítems de un mismo cluster de
+  tags (tag principal, FR-071), salvo las posiciones donde FR-071a relajó el tope por falta de
+  candidatos de otros clusters, que se cuentan y se reportan.
 - **SC-012**: **0** conexiones directas a bases de datos de otros repos y **0** rutas de acceso desde
   los frontends, verificable por revisión de configuración de red y dependencias.
 - **SC-013**: El **100 %** de los endpoints expuestos y del evento consumido pasa la validación
@@ -1174,26 +1366,41 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   reproduce exactamente el mismo top-N en el **100 %** de los casos, condición necesaria para la
   evaluación offline exigida antes de cambiar los pesos.
 - **SC-022**: Un cambio de versión de configuración provoca **0** invalidaciones masivas y **0**
-  respuestas sin etiqueta de versión; el **100 %** de los top-N previos sigue siendo servible.
+  respuestas sin etiqueta de versión; el **100 %** de los top-N previos sigue siendo servible, salvo
+  cuando la versión nueva cambia el catálogo etario (FR-025c, RD-103).
 - **SC-023**: La versión de configuración activa es consultable en tiempo de ejecución el **100 %**
   del tiempo de operación de cada componente.
-- **SC-024**: El **100 %** de los usuarios sin actividad recibe un top-N de respaldo no vacío en
-  ambos módulos, salvo que sus propios filtros obligatorios agoten los candidatos disponibles.
+- **SC-024**: El **100 %** de los usuarios con declaración de gustos en un módulo y sin top-N
+  personalizado vigente en él recibe un top-N de respaldo no vacío de ese módulo, salvo que sus
+  propios filtros obligatorios agoten los candidatos disponibles.
 - **SC-025**: El top-N de respaldo cumple el mismo umbral de diversidad exigido en SC-011: ningún
   cluster de tags supera el porcentaje máximo acordado.
 - **SC-026**: **0 %** de los top-N de respaldo servidos contiene ítems que violen el filtro de edad
   o de exclusión del usuario que los recibe.
 - **SC-027**: El **100 %** de las respuestas de respaldo se marca como no personalizada, siendo
   distinguible de una recomendación personalizada y de ambos tipos de resultado vacío.
+- **SC-028**: El **100 %** de los usuarios sin `birth_date` o sin `region` válida se rechaza en la
+  ingesta y queda contado en `contract_violations_total` con el campo correspondiente; **0** usuarios se
+  materializan con un valor por defecto o inferido (FR-079, FR-079a).
+- **SC-029**: El **100 %** de las declaraciones válidas se confirma de forma síncrona con **0**
+  ejecuciones del motor; el **100 %** de las lecturas de un módulo sin declaración se rechaza como
+  precondición incumplida, sin un sexto estado; y el **100 %** de las segundas declaraciones de un mismo
+  módulo se rechaza sin alterar la existente (FR-082…FR-089b, FR-086a).
+- **SC-030**: El **100 %** de las supresiones termina con **0** filas y **0** claves del usuario,
+  verificado y registrado, o en estado fallido visible con alerta; **0** usuarios suprimidos vuelven a
+  materializarse (FR-091…FR-095a).
+- **SC-031**: Con `region_weight_factor = 0`, el top-N es **idéntico** al calculado sin región en el
+  **100 %** de los casos de prueba; con cualquier valor admisible, el **100 %** de los recálculos
+  colaborativos usa al menos `collab_min_neighbors` vecinos con peso no despreciable o registra que no
+  los hubo (FR-081…FR-081b, FR-090, FR-096).
 
 ## Assumptions
 
-- **El vocabulario de tags de cada módulo ofrece al menos `declared_tags_min` (5) tags distintos y
-  elegibles.** Se asume; no se verifica ni se valida al arrancar. **Costo explícito de asumirlo**: si no
-  se cumpliera, FR-083 impediría completar la declaración y FR-088 impediría atender al usuario, de modo
-  que **ningún usuario de ese módulo sería atendible** — y **no hay texto que resuelva cuál de las dos
-  reglas cede**. Es una apuesta consciente sobre un dato que provee `api-general` (DEP-10), no un hueco
-  por olvido: quedó registrada en RD-82 tras verificarse en CHK031.
+- ~~El vocabulario de tags de cada módulo ofrece al menos `declared_tags_min` (5) tags distintos y
+  elegibles.~~ **Movido a DEP-10 el 2026-09-27** (CHK065, RD-110): era una condición sobre un dato de
+  `api-general` y por eso pertenece a las dependencias bloqueantes, no a los supuestos. Ahora se
+  **observa** (métrica y alerta) y se resuelve qué regla cede: ninguna; el módulo queda no disponible.
+  Registrado originalmente en RD-82 (CHK031).
 - El consumidor exclusivo de este servicio es `api-general`; ningún frontend lo consulta directa ni
   indirectamente sin pasar por él.
 - El contrato del evento `recomendacion.actualizar` y los contratos REST relevantes ya existen o
@@ -1209,18 +1416,23 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   de entorno.
 - El vocabulario de tags es compartido entre módulos, lo que hace posible la señal cruzada
   películas ↔ juegos.
-- La edad o fecha de nacimiento del usuario es obtenible desde `api-general`; cuando no lo sea, se
-  aplica la política conservadora descrita en los edge cases.
+- La fecha de nacimiento y la región del usuario son obtenibles desde `api-general` (CR-1, CR-5); un
+  usuario sin alguna de ellas se rechaza en la ingesta (FR-079) — no existe política degradada.
 - El MVP usa TF-IDF y similitud coseno; no se entrenan modelos de deep learning ni embeddings
   aprendidos.
-- Los valores concretos de N por defecto, tamaño máximo de página, umbral de latencia p95, valor de
-  k, pesos iniciales alpha/beta/gamma, parámetro de compensación de MMR, política de expiración de
-  la caché, límite máximo de antigüedad para servir resultados obsoletos, ventana de supresión de
-  señales de recálculo, frecuencia de sincronización, tamaño y periodicidad de actualización del
-  top-N de respaldo, umbral de actividad mínima para considerar a un usuario personalizable, y
-  porcentaje máximo por cluster se acordarán durante la planificación: la spec fija que deben
-  existir, ser configurables y ser medibles, no sus valores.
-- El prototipo Python existente en la raíz del workspace es material de referencia del
-  comportamiento esperado y no condiciona el diseño de la solución.
+- La spec fija que los parámetros deben existir, ser configurables y ser medibles; sus valores viven
+  en `data-model.md` §4 (motor) y §3.1 (TTLs). **Ya fijados**: `top_n` en `[10, 50]` con defecto 20,
+  `k` = 20, α/β/γ = 0,5/0,3/0,2, `lambda_mmr` = 0,7, TTLs de caché (vigente 24 h, obsoleto 7 d,
+  filtros 1 h, respaldo 6 h), ventana de supresión de señales de recálculo (5 min), latencia p95 de
+  50 ms (SC-001, RD-105), `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
+  `recompute_requests_maxlen` = 100 000, cluster = tag principal con `diversity_max_cluster_share` = 0,4
+  (RD-108). **Pendientes de calibrar**: frecuencia de sincronización, periodicidad del respaldo y
+  `event_redelivery_window_hours`, que debe copiarse de la configuración real del broker de
+  `notificaciones`. El «umbral de actividad mínima para considerar a un
+  usuario personalizable» dejó de existir: la declaración de gustos personaliza desde el primer
+  recálculo (FR-033g).
+- El prototipo Python de `Prototipo-Referencia/` es material de referencia del comportamiento
+  esperado y no condiciona el diseño de la solución.
 - El broker de RabbitMQ es provisto y operado por el repo `notificaciones`; esta feature actúa
-  únicamente como cliente consumidor.
+  únicamente como cliente consumidor. La coordinación interna entre sus procesos usa Redis, no el broker
+  (RD-100).

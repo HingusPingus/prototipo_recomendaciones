@@ -1,3 +1,22 @@
+<!--
+Sync Impact Report
+- Version change: 1.0.0 → 1.1.0 (MINOR: excepción acotada al Principio III y aclaración en
+  Restricciones Técnicas; ningún principio se elimina ni se redefine de forma incompatible).
+- Modified principles:
+  - III. Cómputo Pesado Fuera del Request Path — se agrega la única excepción de escritura: el
+    registro de la declaración de gustos (FR-089 de la feature 001), sin cómputo.
+- Added sections: ninguna. Restricciones Técnicas y de Seguridad suma una aclaración sobre la
+  coordinación interna entre procesos del repo.
+- Removed sections: ninguna.
+- Templates: plan-template.md, spec-template.md y tasks-template.md no referencian estos
+  principios por texto; sin cambios necesarios.
+- Follow-up TODOs: ninguno. RATIFICATION_DATE se fija en 2026-09-07, fecha del commit 1826b12
+  («ratificar recomendaciones constitución v1.0.0»); era TODO(2026-09-07). La corrección viaja dentro
+  de esta misma enmienda, todavía no aprobada, en lugar de abrir un PATCH aparte.
+- Motivo: la spec de la feature 001 declaraba una excepción de escritura que la constitución no
+  admitía (tensión detectada en el saneamiento del 2026-09-27).
+-->
+
 # RecoMe · Recomendaciones Constitution
 
 Repositorio: `recomendaciones` (GitHub: `prototipo_recomendaciones`).
@@ -40,7 +59,8 @@ eventos y de API son del sistema, no del repo.
 
 ### III. Cómputo Pesado Fuera del Request Path (NO NEGOCIABLE)
 
-La API de Recomendaciones es estrictamente de solo lectura sobre resultados precomputados: en
+La API de Recomendaciones es estrictamente de solo lectura sobre resultados precomputados —con la
+única excepción de escritura que cierra este principio—: en
 tiempo de request lee el top-N por usuario y por módulo (películas/juegos) desde Redis y nada
 más. Ningún endpoint puede disparar —ni sincrónicamente, ni "en background del request"— cálculo
 de scoring híbrido, TF-IDF, similitud coseno, vecinos colaborativos, cross-module boost ni
@@ -50,6 +70,14 @@ se responde de forma degradada y determinística (fallback documentado sobre dat
 materializados, respuesta vacía o error controlado) y, si corresponde, señaliza el recálculo por
 vía asíncrona: jamás se resuelve calculando en línea. Objetivo explícito: latencia constante e
 independiente del tamaño del catálogo.
+
+**Única excepción de escritura (desde v1.1.0)**: la API expone un endpoint para registrar la
+declaración de gustos del usuario por módulo, el único dato cuya autoridad nace en este repositorio
+y que ningún otro componente puede escribir. Esa escritura MUST limitarse a validar la declaración,
+resolver lo que se hereda entre módulos y persistirla, con confirmación síncrona; MUST NOT ejecutar
+el motor ni ningún cómputo proporcional al catálogo, y MUST delegar el recálculo a la vía
+asíncrona. La excepción no se extiende por analogía: cualquier otra escritura, o un segundo dato de
+autoría local, exige un componente propio o una nueva enmienda.
 
 ### IV. Pipeline de Sincronización Unidireccional
 
@@ -124,6 +152,11 @@ que su estado debe ser observable sin inspección manual. Requisitos mínimos:
   transformación en Python/pandas, mensajería vía RabbitMQ (broker hosteado por el repo
   `notificaciones`, contratos documentados en api-general).
 - Un exchange/cola por tipo de evento; el worker no consume eventos ajenos a su responsabilidad.
+- Todo evento que cruce la frontera del repo viaja por RabbitMQ y tiene contrato en api-general. La
+  coordinación **interna** entre procesos de este repo —p. ej. las solicitudes de recálculo que la
+  API emite ante un miss— puede apoyarse en Redis, siempre que sean indicaciones reconstruibles cuya
+  pérdida se recupere sola (un miss posterior vuelve a emitirlas): no es mensajería entre repos ni
+  convierte a Redis en fuente de verdad.
 - Toda llamada REST saliente hacia api-general usa la API key interna del entorno; la
   autenticación/autorización de usuarios finales es responsabilidad de api-general y no se
   reimplementa acá.
@@ -172,4 +205,4 @@ Las violaciones detectadas en producción se tratan como incidentes y requieren 
 priorizada. La guía operativa del día a día vive en el README del repo y en la documentación de
 contratos de api-general.
 
-**Version**: 1.0.0 | **Ratified**: TODO(2026-09-07) | **Last Amended**: 2026-09-07
+**Version**: 1.1.0 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-27

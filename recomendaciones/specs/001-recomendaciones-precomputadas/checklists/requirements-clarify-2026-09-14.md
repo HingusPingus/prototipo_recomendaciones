@@ -2,7 +2,7 @@
 
 **Archivo**: `checklists/requirements-clarify-2026-09-14.md`
 **Creado**: 2026-09-17 | **Audiencia**: autor de la spec | **Profundidad**: estándar
-**Estado**: abierto para revisión — **ningún ítem tildado**
+**Estado**: **cerrado** — **46/46 tildados** (2026-09-27, a pedido del autor), 0 bloqueantes 🔴 abiertos *(el encabezado decía «ningún ítem tildado», anterior al cierre del 2026-09-22; recontado 2026-09-27)*
 
 ---
 
@@ -33,36 +33,47 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   texto que indique cuál de las dos reglas cede**. [Gap: FR-083, FR-088, DEP-10]
   > ✅ **RESUELTO (2026-09-22)** — declarado como **supuesto** en `spec.md` §*Assumptions*, con el costo escrito sin atenuar; RD-82. No se agregó CR-19 ni validación de arranque: no se introduce camino de código para un caso que no se espera.
 
-- [ ] **CHK032** ¿El valor del mínimo está declarado como **configuración versionada** y no como constante
+- [x] **CHK032** ¿El valor del mínimo está declarado como **configuración versionada** y no como constante
   del texto? Responde FR-083: `declared_tags_min`, valor inicial 5, con prohibición explícita de quedar
   implícito en el código. Verificar que `data-model.md` §4 lo liste con el mismo nombre y valor.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — `data-model.md` §4 lista `declared_tags_min` = 5 con el mismo nombre (RD-68).
 
-- [ ] **CHK033** ¿El **momento** de la declaración es inequívoco? FR-084 lo fija al primer ingreso al
+- [x] **CHK033** ¿El **momento** de la declaración es inequívoco? FR-084 lo fija al primer ingreso al
   módulo y no al alta de la cuenta. Verificar que ningún otro requisito —en particular FR-079a, que
   enumera lo obligatorio del formulario de alta— dé a entender lo contrario.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — FR-079a enumera solo `birth_date` y `region`; RD-69 declara «FR-079a no se toca».
 
-- [ ] **CHK034** ¿Está resuelto sin ambigüedad qué pasa con un usuario **activo en un solo módulo**?
+- [x] **CHK034** ¿Está resuelto sin ambigüedad qué pasa con un usuario **activo en un solo módulo**?
   FR-084 declara que la declaración de un módulo no es condición para operar en el otro. Verificar que
   FR-088 no lo contradiga al rechazar por ausencia de declaración sin acotar el rechazo al módulo pedido.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — FR-088 rechaza por **módulo**; T055: «declarado en uno y no en el otro → rechazo sólo en el segundo».
 
-- [ ] **CHK035** ¿La herencia entre módulos de FR-085 distingue con claridad **incorporarse al insumo** de
+- [x] **CHK035** ¿La herencia entre módulos de FR-085 distingue con claridad **incorporarse al insumo** de
   **contar para el mínimo**? FR-085 lo enuncia: los tags compartidos se incorporan pero no cuentan para el
   mínimo de FR-083. Verificar que la distinción sea verificable con un caso concreto —usuario con 5 tags
   compartidos y 0 propios en el módulo nuevo— y que el resultado esperado sea deducible del texto.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — caso concreto fijado en T054 (5 heredados / 0 propios → rechazo) y RD-97 (la herencia es derivada, nunca persistida).
 
-- [ ] **CHK036** ¿Está definido qué es «vocabulario compartido» de forma comprobable? FR-085 remite a
+- [x] **CHK036** ¿Está definido qué es «vocabulario compartido» de forma comprobable? FR-085 remite a
   FR-010b y a `tag_modules`. Verificar que la pertenencia de un tag a más de un módulo sea consultable y
   que no dependa de un criterio no persistido.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — la pertenencia vive en `tag_modules` (`data-model.md` §2.12), persistida y consultable; «compartido» = pertenece a más de un módulo.
 
-- [ ] **CHK037** ¿La no caducidad de FR-086 es compatible con el efecto del feedback? FR-086 separa
+- [x] **CHK037** ¿La no caducidad de FR-086 es compatible con el efecto del feedback? FR-086 separa
   **peso** en el perfil de **pertenencia** a la declaración: un dislike reduce la contribución, no borra
   la declaración. Verificar que FR-087 —perfil derivado y reconstruible— no introduzca un camino por el
   que un peso nulo equivalga en la práctica a la eliminación del tag.
+  > ⏳ **Revisado 2026-09-27: pendiente de decisión** — un dislike sobre todos los ítems de un tag declarado puede llevar su contribución a cero o por debajo (pesos con signo, RD-68) sin borrar la fila; si eso equivale en la práctica a eliminarlo es una decisión de producto.
+  >
+  > ✅ **Resuelto 2026-09-27 por decisión del autor** — FR-086b: los dislikes pueden llevar el peso de un tag declarado a cero o a negativo; la declaración no se borra y sigue contando para el mínimo (RD-109).
 
-- [ ] **CHK038** ¿Existe requisito que permita al usuario **modificar o retirar** su declaración? FR-086
+- [x] **CHK038** ¿Existe requisito que permita al usuario **modificar o retirar** su declaración? FR-086
   prohíbe que caduque o se elimine *por efecto del feedback*, lo cual no es lo mismo que prohibir el
   cambio deliberado. Si la edición está fuera de alcance, debe estar declarada como tal.
   [Gap: FR-086, FR-089]
+  > ⏳ **Revisado 2026-09-27: pendiente de decisión** — no existe requisito de edición o retiro deliberado de la declaración; debe decidirse si entra o se declara fuera de alcance (condiciona RD-97).
+  >
+  > ✅ **Resuelto 2026-09-27 por decisión del autor** — FR-086a: la declaración es definitiva; el usuario no puede modificarla ni retirarla, y una segunda declaración del mismo módulo se rechaza (RD-109).
 
 - [x] **CHK039** 🔴 ¿El rechazo de FR-088 y la precedencia de estados de FR-056 están libres de conflicto?
   FR-088 califica la ausencia de declaración como **precondición incumplida** y prohíbe expresamente
@@ -71,29 +82,34 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   conjunto.
   > ✅ **RESUELTO (2026-09-22)** — FR-056 acotado a solicitudes que superaron precondiciones; DEP-6 ampliada con FR-088.
 
-- [ ] **CHK040** ¿La excepción de FR-089 —endpoint de escritura en una API declarada de solo lectura—
+- [x] **CHK040** ¿La excepción de FR-089 —endpoint de escritura en una API declarada de solo lectura—
   está acotada de forma verificable? Responde FR-089b: el endpoint valida, resuelve herencia y persiste,
   y tiene prohibido ejecutar el motor o cómputo proporcional al catálogo. Verificar que el límite sea
   auditable sin leer la implementación.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — FR-089b enumera las tres operaciones admitidas; T053 lo vuelve auditable con un test que falla si se invoca el motor.
 
-- [ ] **CHK041** ¿**FR-089b es verificable**, o solo enunciable? «MUST NOT ejecutar cómputo proporcional
+- [x] **CHK041** ¿**FR-089b es verificable**, o solo enunciable? «MUST NOT ejecutar cómputo proporcional
   al catálogo» necesita un criterio observable —cota de latencia, ausencia de lectura sobre tablas
   derivadas, o equivalente— para poder fallar un test. Si no lo tiene, es una intención, no un requisito.
   [Gap: FR-089b]
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — criterio observable en T053: el test falla si el motor es invocado (ausencia de llamada, no latencia).
 
-- [ ] **CHK042** ¿La confirmación síncrona de FR-089a tiene justificación trazable y condición de
+- [x] **CHK042** ¿La confirmación síncrona de FR-089a tiene justificación trazable y condición de
   revisión? FR-089a la funda en que una confirmación asíncrona haría que FR-088 rechazara al usuario por
   no haber declarado lo que acaba de declarar. Verificar que la dependencia entre ambos quede explícita en
   el texto y no solo en RD-75.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — la dependencia FR-089a ↔ FR-088 está en el texto de FR-089a, no solo en RD-75.
 
-- [ ] **CHK043** ¿La tabla `user_declared_tags` (§2.14) tiene política de borrado declarada en **ambas**
+- [x] **CHK043** ¿La tabla `user_declared_tags` (§2.14) tiene política de borrado declarada en **ambas**
   claves foráneas? El modelo especifica `user_id` con `ON DELETE CASCADE` y `tag_name` con `ON DELETE
   RESTRICT`. Verificar que RESTRICT sobre el tag sea coherente con la recomposición de vocabulario: un
   tag retirado del catálogo con declaraciones vivas bloquearía la operación.
+  > ✅ **Resuelto 2026-09-27** — la restricción no bloquea la recomposición: recomponer crea una versión nueva de vocabulario y no borra filas de `tags`; un tag declarado fuera del vocabulario vigente pesa 0 y la declaración sigue contando (`data-model.md` §2.14).
 
-- [ ] **CHK044** ¿DI-28 está declarado como invariante **no verificable por esquema**? El mínimo de cinco
+- [x] **CHK044** ¿DI-28 está declarado como invariante **no verificable por esquema**? El mínimo de cinco
   tags no es expresable como restricción de tabla. Verificar que la excepción esté escrita como tal y que
   se designe la capa responsable de sostenerlo.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — DI-28 declarado como excepción no verificable por esquema (`data-model.md` §2.14 y §6, `plan.md` Anexo B); lo sostienen la transacción de declaración y T017.
 
 ---
 
@@ -114,34 +130,43 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   [Gap parcial: FR-095]
   > ✅ **RESUELTO (2026-09-22)** — FR-095a: métrica con valor esperado 0, acción alerta y dueño; reintento acotado con escalamiento a estado **fallido visible**. RD-83.
 
-- [ ] **CHK047** ¿El alcance de la constancia de FR-095 está acotado para no reintroducir el dato
+- [x] **CHK047** ¿El alcance de la constancia de FR-095 está acotado para no reintroducir el dato
   suprimido? FR-095 lo acota: identificador y marca temporal, nada más. Verificar que ese alcance sea
   suficiente para auditar y que no se solape con la retención de señales de FR-068a.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — FR-095 acota la constancia a identificador y marca temporal.
 
 - [x] **CHK048** ¿«Cada almacén de su alcance» de FR-095 es enumerable sin ambigüedad? El texto nombra
   tablas normalizadas y claves de caché de ámbito de usuario. Verificar contra `data-model.md` §2 y §3 que
   la enumeración sea cerrada y que ninguna de las 7 familias de claves Redis quede fuera por omisión.
   > ✅ **RESUELTO (2026-09-22)** — `data-model.md` §7.11 incorpora `user_declared_tags`: cinco tablas, no cuatro. RD-86.
 
-- [ ] **CHK049** ¿FR-093 cubre **toda versión de configuración**, incluidas las inactivas? El texto lo
+- [x] **CHK049** ¿FR-093 cubre **toda versión de configuración**, incluidas las inactivas? El texto lo
   afirma. Verificar que sea consistente con el versionado de claves `reco:v{cfg}:…`: una supresión que
   recorra solo la versión activa dejaría residuo en las anteriores, que es exactamente el fallo que
   FR-094 manda tratar como fallo y no como éxito degradado.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — `data-model.md` §7.11 paso 1 invalida «para **toda** `config_version` y módulo»; T058 lo exige.
 
-- [ ] **CHK050** ¿La spec declara explícitamente **qué no se puede deshacer**? RD-71 identifica tres
+- [x] **CHK050** ¿La spec declara explícitamente **qué no se puede deshacer**? RD-71 identifica tres
   entidades no regenerables (`user_signals`, `user_declared_tags`, `user_exclusions`) y RD-53 registra que
   el horizonte de retención puede acortarse pero **no alargarse**. Verificar que esa irreversibilidad esté
   enunciada en `spec.md` y no solo en el registro de decisión. [Gap probable: FR-068a, FR-091]
+  > ⚠️ **Revisado 2026-09-27, no se cumple** — la irreversibilidad consta en el registro de clarificación de `spec.md` (RD-71, horizonte que se acorta pero no se alarga), pero en ningún FR.
+  >
+  > ✅ **Resuelto 2026-09-27 por decisión del autor** — FR-068e declara la irreversibilidad como requisito: cinco tablas no recuperables y reducción de la retención con aprobación (RD-110).
 
-- [ ] **CHK051** ¿FR-068b es verificable al arrancar? Exige que el horizonte de retención sea
+- [x] **CHK051** ¿FR-068b es verificable al arrancar? Exige que el horizonte de retención sea
   **estrictamente mayor** que toda ventana operativa. Verificar que todas las ventanas involucradas
   —`popularity_window_days` entre ellas— estén enumeradas, ya que una ventana no listada haría la
   comprobación incompleta sin que nadie lo note.
+  > ⚠️ **Revisado 2026-09-27, no se cumple** — FR-068b dice «en particular» y nombra dos ventanas; RD-46 identifica una tercera —la reentrega de RabbitMQ— que el requisito no enumera.
+  >
+  > ✅ **Resuelto 2026-09-27 por decisión del autor** — FR-068b enumera sus ventanas en lista cerrada —popularidad, idempotencia y reentrega del broker (`event_redelivery_window_hours`)— y T004 valida las tres (RD-110).
 
-- [ ] **CHK052** ¿FR-068d y FR-068d1 están libres de conflicto? FR-068d exige que la exclusión persista
+- [x] **CHK052** ¿FR-068d y FR-068d1 están libres de conflicto? FR-068d exige que la exclusión persista
   aunque su señal de origen se haya purgado; FR-068d1 expone cuántas exclusiones quedaron huérfanas como
   medida **informativa y sin umbral de alerta**. Verificar que la métrica no induzca una acción correctiva
   que FR-068d prohíbe.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — FR-068d1 prohíbe usarla para disparar acciones; T042 exige verificar que **no** tenga alerta.
 
 ---
 
@@ -155,9 +180,10 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   rechaza, lo completa o lo deja inatendible. [Gap: FR-079, FR-079a, CR-1]
   > ✅ **RESUELTO (2026-09-22)** — `data-model.md` §7.5 extendida a `region` con contador propio, §4.3 corregida, y **DEP-11** declarada (backfill previo al despliegue). RD-85.
 
-- [ ] **CHK054** ¿La obligatoriedad de FR-079a está acoplada a su consecuencia? El texto la justifica: un
+- [x] **CHK054** ¿La obligatoriedad de FR-079a está acoplada a su consecuencia? El texto la justifica: un
   alta sin ambos datos produce un usuario que el motor no puede atender, y ambos condicionan el rechazo en
   la ingesta (FR-079, CR-1). Verificar que CR-1 exija efectivamente ambos campos.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — `birth_date` la exige CR-1 y `region` la exige CR-5 (modificada por RD-52): entre ambas cláusulas cubren los dos campos.
 
 - [x] **CHK055** 🔴 ¿La «degradación continua» de FR-081a tiene **criterio verificable**? El requisito
   exige que en una región poco poblada el término colaborativo siga produciendo resultado en lugar de
@@ -166,29 +192,34 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   distinguir «degradó» de «se apagó». Sin él, el requisito no es falsable. [Gap: FR-081a]
   > ✅ **RESUELTO (2026-09-22)** — FR-096: `collab_min_neighbors` = 10 en `data-model.md` §4. El criterio falsable es el tamaño del vecindario, no el dominio del factor. RD-84.
 
-- [ ] **CHK056** ¿El dominio de FR-081b y el valor inicial de FR-090a son coherentes? FR-081b fija
+- [x] **CHK056** ¿El dominio de FR-081b y el valor inicial de FR-090a son coherentes? FR-081b fija
   `0 <= region_weight_factor < 1`, inclusivo abajo y estricto arriba; FR-090a fija el arranque en **0,1**,
   que cae dentro del dominio. Verificar que `data-model.md` §4 declare el mismo intervalo y el mismo
   valor, con el límite inferior **inclusivo** — excluirlo volvía irrepresentable el neutro (RD-76).
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — `data-model.md` §4 declara `0 <= region_weight_factor < 1`, límite inferior inclusivo, y el valor 0,1.
 
-- [ ] **CHK057** ¿La prohibición del filtro duro es irrepresentable y no solo desaconsejada? FR-081a la
+- [x] **CHK057** ¿La prohibición del filtro duro es irrepresentable y no solo desaconsejada? FR-081a la
   enuncia y FR-081b la traduce en el extremo superior estricto del dominio. Verificar que la restricción
   viva en la **validación de carga de configuración** y no en una convención.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — la restricción vive en la validación de carga (`data-model.md` §4) y en T004.
 
-- [ ] **CHK058** ¿FR-090 y FR-090a están libres de conflicto? FR-090 exige que la segmentación *pueda*
+- [x] **CHK058** ¿FR-090 y FR-090a están libres de conflicto? FR-090 exige que la segmentación *pueda*
   desactivarse (`factor = 0`); FR-090a exige que `v1` arranque **activo** en 0,1 y prohíbe arrancar
   desactivado. Verificar que la distinción capacidad/prescripción sea explícita, ya que RD-74 había
   prescrito lo contrario y fue revertida por RD-79.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — FR-090a separa capacidad y prescripción de forma explícita («revierte la prescripción de RD-74… no revierte la capacidad»).
 
-- [ ] **CHK059** ¿El costo declarado en FR-090a tiene condición de revisión asociada? El texto admite que
+- [x] **CHK059** ¿El costo declarado en FR-090a tiene condición de revisión asociada? El texto admite que
   `v1` **no observa la línea de base sin segmentación** y que medirla exige poner el factor en 0
   deliberadamente. Verificar que esa acción quede asignada a alguien o a alguna fase, o declarada fuera de
   alcance.
+  > ✅ **Resuelto 2026-09-27** — la medición de línea de base queda declarada **fuera del alcance del MVP** en FR-090a: evaluación offline que solo corre si se activa la condición de revisión de FR-081, con una versión de configuración nueva.
 
-- [ ] **CHK060** ¿El nombre `region_weight_factor` induce a error sobre lo que mide? RD-76 lo registra
+- [x] **CHK060** ¿El nombre `region_weight_factor` induce a error sobre lo que mide? RD-76 lo registra
   expresamente: el parámetro mide **intensidad de segmentación**, de modo que `0` es el neutro y el nombre
   «se lee al revés». Verificar que la semántica esté escrita **donde el parámetro se declara** y no solo
   en el registro de decisión.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — `data-model.md` §4 escribe la semántica y la advertencia «el nombre se lee al revés» donde declara el parámetro; FR-081b la repite.
 
 ---
 
@@ -208,14 +239,19 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   que no se lean como reglas de orden contradictorias para el mismo par de almacenes.
   > ✅ **RESUELTO (2026-09-22)** — disuelto por FR-080c: la regla única de orden cubre actualización y supresión sin modificar FR-080 ni FR-092.
 
-- [ ] **CHK063** ¿El umbral de FR-080a está declarado como configuración versionada? El texto lo exige
+- [x] **CHK063** ¿El umbral de FR-080a está declarado como configuración versionada? El texto lo exige
   explícitamente, prohíbe que quede implícito en el código y fija el valor inicial en **10 interacciones**.
   Verificar que `data-model.md` §4 lo clasifique como **operativo** y no como parámetro del motor —RD-63 y
   RD-13 fundan esa clasificación en que no altera el valor del top-N, solo cuándo se recomputa—.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — `data-model.md` §4 lo clasifica como operativo: no altera el valor del top-N, solo cuándo se recomputa.
 
-- [ ] **CHK064** ¿El conteo de FR-080a tiene reglas completas? El texto fija que se lleva **por usuario** y
+- [x] **CHK064** ¿El conteo de FR-080a tiene reglas completas? El texto fija que se lleva **por usuario** y
   que **se reinicia al recalcular**. Verificar que esté resuelto si el conteo es por módulo o global al
   usuario, dado que el resto del modelo está segmentado por módulo.
+  > ⏳ **Revisado 2026-09-27: pendiente de decisión** — FR-080a fija el conteo «por usuario» pero no dice qué módulos recalcula al alcanzarlo, ni dónde vive el contador (ninguna entidad lo contiene).
+  > 🔄 *Mismo día, tras las decisiones del autor*: **dónde vive** quedó resuelto por RD-104 (derivado de `user_signals`, no almacenado). Sigue abierto **por usuario o por (usuario, módulo)** y qué módulos recalcula.
+  >
+  > ✅ **Resuelto 2026-09-27 por decisión del autor** — conteo por (usuario, módulo), derivado de `user_signals`; alcanzar el umbral recalcula ese módulo y el opuesto solo si corresponde propagar (FR-080a, RD-104).
 
 ---
 
@@ -223,14 +259,18 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
 
 *(DEP-7, DEP-8, DEP-9, DEP-10)*
 
-- [ ] **CHK065** ¿Las cuatro están declaradas como **bloqueantes** y no como supuestos? Las cuatro figuran
+- [x] **CHK065** ¿Las cuatro están declaradas como **bloqueantes** y no como supuestos? Las cuatro figuran
   en la tabla «Dependencias Externas Bloqueantes» de `spec.md`. Verificar que ninguna aparezca además como
   supuesto en otra sección, lo que debilitaría su carácter.
+  > ⚠️ **Revisado 2026-09-27, no se cumple** — DEP-10 aparece además en *Assumptions* (mínimo de 5 tags, RD-82). Fue deliberado al cerrar CHK031, pero es exactamente lo que este ítem pide revisar.
+  >
+  > ✅ **Resuelto 2026-09-27 por decisión del autor** — el mínimo de tags elegibles pasó de *Assumptions* a DEP-10, con métrica `declarable_tags_total{module}` y alerta (RD-110).
 
-- [ ] **CHK066** ¿Cada una declara su **consecuencia de incumplimiento** en términos de comportamiento
+- [x] **CHK066** ¿Cada una declara su **consecuencia de incumplimiento** en términos de comportamiento
   observable? Responden las cuatro: DEP-7 «el término `α = 0,5` no se degrada: no existe»; DEP-8 sostiene
   la idempotencia de ingesta; DEP-9 condiciona la emisión por transición; DEP-10 «sin él no hay de dónde
   elegir». Verificar que ninguna consecuencia esté formulada como riesgo genérico.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — las consecuencias de DEP-7…DEP-10 están formuladas como comportamiento observable en la tabla de `spec.md`.
 
 - [x] **CHK067** 🔴 ¿DEP-10 está correctamente acoplada a FR-082 y FR-083? La tabla la vincula a FR-082,
   FR-083 y RD-68. Verificar que el acoplamiento sea de **vocabulario disponible**, no de tags por ítem
@@ -243,13 +283,15 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   consecuencia esté en el texto de la dependencia y no solo en RD-72.
   > ✅ **RESUELTO (2026-09-22)** — separados los ejes de severidad: DEP-7 para el motor, DEP-10 para la cobertura de usuarios.
 
-- [ ] **CHK069** ¿DEP-9 distingue lo que el origen **puede** hacer de lo que **no puede**? El texto lo
+- [x] **CHK069** ¿DEP-9 distingue lo que el origen **puede** hacer de lo que **no puede**? El texto lo
   hace: el origen puede almacenar estado; lo que no puede es dejar una transición sin emitir o reemitirla
   bajo el identificador anterior. Verificar que sea consistente con FR-029e y FR-029e1.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — DEP-9 distingue «puede almacenar estado» de «no puede omitir la emisión»; coincide con FR-029e y FR-029e1.
 
-- [ ] **CHK070** ¿DEP-3 está declarada como **vacante a propósito**? El identificador fue retirado y no se
+- [x] **CHK070** ¿DEP-3 está declarada como **vacante a propósito**? El identificador fue retirado y no se
   reutiliza, por historial de colisiones. Verificar que la tabla lo indique explícitamente, de modo que un
   lector no lo interprete como omisión.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — la tabla de `spec.md` incluye desde el 2026-09-27 una fila `~~DEP-3~~` «vacante a propósito».
 
 ---
 
@@ -263,11 +305,14 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   [Conflicto confirmado: `spec.md` línea ~560 vs ~930]
   > ✅ **RESUELTO (2026-09-22)** — renumerada la familia de supresión a FR-091…FR-095; RD-81. Identificadores viejos retirados y no reasignables.
 
-- [ ] **CHK072** ¿Todo FR nuevo tiene al menos un **SC que lo verifique**, o está declarado como no
+- [x] **CHK072** ¿Todo FR nuevo tiene al menos un **SC que lo verifique**, o está declarado como no
   medible por diseño? Los criterios vigentes son SC-001…SC-027 y **ninguno se agregó durante la sesión del
   2026-09-14**, mientras el bloque FR-079…FR-090 sí. Verificar SC por SC cuáles cubren declaración de
   gustos, supresión verificada y segmentación regional; los que queden sin cobertura deben recibir SC o
   declararse no medibles. [Gap probable: FR-082…FR-090a]
+  > ⏳ **Revisado 2026-09-27: pendiente de decisión** — ningún SC se agregó para FR-079…FR-096; hay que decidir si reciben SC o se declaran no medibles.
+  >
+  > ✅ **Resuelto 2026-09-27** — se agregan **SC-028…SC-031** (datos de alta, declaración, supresión, ponderación regional), atribuidos a T029, T053/T055, T059 y T061.
 
 - [x] **CHK073** 🔴 **`data-model.md` declara un número de tablas inconsistente con las que enumera.** El
   documento afirma «§2 pasa a **15 tablas** — cifra final y única» y repite el 15 en la verificación
@@ -277,19 +322,22 @@ otro texto. **Qué no se audita**: la implementación, que no existe.
   [Desfasaje confirmado: `data-model.md`]
   > ✅ **RESUELTO (2026-09-22)** — corregida la única mención prescriptiva («cifra final y única») a **16 tablas**; las demás son registro histórico fechado y se conservan.
 
-- [ ] **CHK074** ¿`plan.md` refleja el estado vigente de los parámetros? Verificar que el inventario de
+- [x] **CHK074** ¿`plan.md` refleja el estado vigente de los parámetros? Verificar que el inventario de
   configuración del plan coincida con `data-model.md` §4 en los valores fijados después del 2026-09-14
   —`top_n_min`/`top_n_default`/`top_n_max`, `fallback_new_item_quota_ratio`, `region_weight_factor`,
   pesos de señal— y que liste los parámetros **eliminados** como tales.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — tras el saneamiento del 2026-09-27, `plan.md` §2 lista los valores vigentes (incluidos `collab_min_neighbors` y `version_label`) y los parámetros eliminados con su motivo.
 
-- [ ] **CHK075** ¿La afirmación «todo lo necesario para recalcular vive en Postgres» fue retirada de todos
+- [x] **CHK075** ¿La afirmación «todo lo necesario para recalcular vive en Postgres» fue retirada de todos
   los artefactos? RD-71 la declara **falsa** para las tres entidades de autoría local. Verificar que no
   sobreviva en `plan.md` ni en `tasks.md`.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — `plan.md` solo la conserva en el Anexo A como afirmación corregida («Falso»); `tasks.md` T003 habla de los **insumos**, que sí residen en Postgres.
 
-- [ ] **CHK076** ¿`tasks.md` cubre la funcionalidad que FR-088 vuelve bloqueante? El encabezado de
+- [x] **CHK076** ¿`tasks.md` cubre la funcionalidad que FR-088 vuelve bloqueante? El encabezado de
   `tasks.md` sigue declarando «FR-001→FR-071, 5 clarificaciones», y **la declaración de gustos no tiene
   tarea asignada** entre las 50 existentes. Con ese plan de tareas, la Fase 1 produce un sistema que
   rechaza al 100 % de sus usuarios. Verificar antes de dar por completable el milestone de API.
+  > 🔎 **Verificado 2026-09-27** *(tildado 2026-09-27 a pedido del autor, tras reverificar la evidencia)* — T053, T054 y T055 cubren la declaración y el rechazo en Fase 1, y el encabezado de `tasks.md` está recontado.
 
 ---
 
@@ -320,6 +368,6 @@ completo (CHK072).
 
 ---
 
-**Total**: 46 ítems (CHK031 … CHK076) · **10 marcados 🔴** · **0 tildados**
+**Total**: 46 ítems (CHK031 … CHK076) · **10 marcados 🔴** · **46 tildados** (recontado 2026-09-27, tras las decisiones del autor)
 
 **Los 10 bloqueantes**: CHK031, CHK039, CHK045, CHK046, CHK053, CHK055, CHK061, CHK067, CHK071, CHK073.
