@@ -1023,9 +1023,9 @@ con `Retry-After`. **Prohibido** recurrir a Postgres para calcular en línea (FR
 
 **Criterios de aceptación**:
 - [ ] Redis caído → `503` con `Retry-After`, nunca `200` con resultado vacío
-- [ ] **No existe** ruta de fallback que consulte Postgres desde el request path (FR-065, INV-1)
-- [ ] El timeout hacia Redis es explícito y configurable — no se cuelga indefinidamente
-- [ ] Miss y caída producen `result_type` / código HTTP distintos y distinguibles
+- [X] **No existe** ruta de fallback que consulte Postgres desde el request path (FR-065, INV-1)
+- [X] El timeout hacia Redis es explícito y configurable — no se cuelga indefinidamente
+- [X] Miss y caída producen `result_type` / código HTTP distintos y distinguibles
 
 **Tests**: `tests/integration/test_redis_down.py` — con Redis detenido, la respuesta es 503 y no hay ninguna query a Postgres (verificado por espía de conexiones).
 
