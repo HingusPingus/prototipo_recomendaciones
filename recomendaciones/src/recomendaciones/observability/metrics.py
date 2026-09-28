@@ -17,6 +17,11 @@ class MetricSpec:
     kind: str  # counter | gauge | histogram
     labels: tuple[str, ...]
     help: str
+    buckets: tuple[float, ...] | None = None
+
+
+# `histogram_quantile` no puede superar el mayor límite finito: un rezago de horas exige cubetas de horas.
+LAG_BUCKETS = (1.0, 10.0, 60.0, 300.0, 900.0, 1800.0, 3600.0, 7200.0, 21600.0, 86400.0)
 
 
 SPECS: dict[str, MetricSpec] = {
@@ -24,6 +29,7 @@ SPECS: dict[str, MetricSpec] = {
     "reco_cache_hits_total": MetricSpec("counter", ("result_type",), "Respuestas por estado de FR-056"),
     "reco_request_duration_seconds": MetricSpec("histogram", ("endpoint",), "Latencia por endpoint"),
     "reco_recompute_signal_failures_total": MetricSpec("counter", (), "Solicitudes de recálculo no escritas (la lectura no falla)"),
+    "reco_unavailable_responses_total": MetricSpec("counter", ("error",), "Respuestas 503 (Redis caído o filtros no disponibles)"),
     "age_stale_config_users_total": MetricSpec("gauge", (), "Usuarios con ordinal bajo escala no compatible (§7.5.1)"),
     # --- Worker (FR-043) --------------------------------------------------------------------------
     "reco_recompute_total": MetricSpec("counter", ("status", "module"), "Recálculos exitosos y fallidos"),
@@ -36,7 +42,7 @@ SPECS: dict[str, MetricSpec] = {
     "diversity_cap_relaxed_total": MetricSpec("counter", ("module",), "Relajaciones del tope de cluster (FR-071a)"),
     "fallback_new_item_share": MetricSpec("gauge", ("module", "kind"), "Cuota de novedades disponible/ocupada (FR-033a8)"),
     "signal_duplicate_rejections_total": MetricSpec("counter", ("source",), "Reentregas de una misma interacción (§7.10)"),
-    "signal_ingest_lag_seconds": MetricSpec("histogram", ("source",), "received_at − occurred_at (§7.10)"),
+    "signal_ingest_lag_seconds": MetricSpec("histogram", ("source",), "received_at − occurred_at (§7.10)", LAG_BUCKETS),
     "contract_violations_total": MetricSpec("counter", ("field",), "Incumplimientos de contrato del origen; esperado 0"),
     "exclusion_resolve_lag_seconds": MetricSpec("gauge", (), "Rezago del resolutor de exclusiones (§7.12)"),
     "suppressions_unverified_total": MetricSpec("gauge", (), "Supresiones sin constancia; esperado 0 (FR-095a)"),
@@ -77,6 +83,8 @@ class Metrics:
                 self._metrics[name] = Counter(name, spec.help, spec.labels, registry=self.registry)
             elif spec.kind == "gauge":
                 self._metrics[name] = Gauge(name, spec.help, spec.labels, registry=self.registry)
+            elif spec.buckets:
+                self._metrics[name] = Histogram(name, spec.help, spec.labels, registry=self.registry, buckets=spec.buckets)
             else:
                 self._metrics[name] = Histogram(name, spec.help, spec.labels, registry=self.registry)
 
