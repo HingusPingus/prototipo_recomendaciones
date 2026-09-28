@@ -88,8 +88,10 @@ def create_app(settings: Settings, services: ApiServices | None = None) -> FastA
     app = FastAPI(
         title="RecoMe · API de Recomendaciones (interna)",
         version="1.0.0",
+        # FR-060: ninguna ruta pública fuera de salud; el contrato vive en api-general (T049).
         docs_url=None,
         redoc_url=None,
+        openapi_url=None,
     )
     app.state.settings = settings
     app.state.services = services

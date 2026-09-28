@@ -255,7 +255,7 @@ pertenecer al Milestone 11)*:
 - [ ] T029 [US3] Materialización idempotente de usuarios, catálogo y actividad en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T030 [US3] Vocabulario versionado y reconciliación de vectores en `src/recomendaciones/transformer/vocabulary_sync.py` (TDD)
 - [X] T033 [US1] Endpoint de lectura del top-N en `src/recomendaciones/api/routes/recommendations.py` (TDD)
-- [ ] T034 [US1] Autenticación por API key interna y no alcanzabilidad desde frontends en `src/recomendaciones/api/deps.py` (TDD)
+- [X] T034 [US1] Autenticación por API key interna y no alcanzabilidad desde frontends en `src/recomendaciones/api/deps.py` (TDD)
 - [ ] T035 [US1] Errores tipados y contrato estable en `src/recomendaciones/api/errors.py` (TDD)
 - [ ] T037 [US6] Filtrado de salida sobre el respaldo (acotado) en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [ ] T038 [P] [US6] Batch de top-N de respaldo en `src/recomendaciones/batch/fallback.py` (TDD)
@@ -1466,11 +1466,11 @@ rutas públicas declaradas y restricción de red auditable.
 **Dep.**: T002, T033
 
 **Criterios de aceptación**:
-- [ ] Sin API key → `401`; key inválida → `401` con el **mismo** cuerpo (no es oráculo)
-- [ ] Key de otro entorno → `401` (FR-059)
-- [ ] La aplicación no declara ninguna ruta pública fuera de health (FR-060)
-- [ ] La restricción de red está documentada y es auditable automáticamente
-- [ ] **SC-012** (mitad de frontends) — 0 rutas de acceso alcanzables desde un frontend
+- [X] Sin API key → `401`; key inválida → `401` con el **mismo** cuerpo (no es oráculo)
+- [X] Key de otro entorno → `401` (FR-059)
+- [X] La aplicación no declara ninguna ruta pública fuera de health (FR-060)
+- [X] La restricción de red está documentada y es auditable automáticamente
+- [X] **SC-012** (mitad de frontends) — 0 rutas de acceso alcanzables desde un frontend
 
 **Tests**: `tests/contract/test_auth.py` — matriz de casos de key; test que enumera rutas y falla si alguna no exige autenticación (salvo health).
 
