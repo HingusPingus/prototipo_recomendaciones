@@ -294,8 +294,8 @@ pertenecer al Milestone 11)*:
 - [ ] T047 [P] Documento de campos requeridos a `api-general` en `docs/contracts/required-fields.md`
 - [ ] T048 Validación final contra el checklist y DoD en `docs/validation/traceability-matrix.md`
 - [ ] T050 [P] [US1] Pruebas de carga y verificación de SC-001 en `tests/performance/test_read_latency.py`
-- [ ] T058 Supresión verificada con aborto del recálculo en curso en `src/recomendaciones/worker/suppression.py` (TDD)
-- [ ] T059 Verificación ejecutable de supresión, observador y escalamiento (TDD)
+- [X] T058 Supresión verificada con aborto del recálculo en curso en `src/recomendaciones/worker/suppression.py` (TDD)
+- [X] T059 Verificación ejecutable de supresión, observador y escalamiento (TDD)
 
 # FASE 1 — Vertical slice
 
@@ -2277,25 +2277,25 @@ escribir— *(decía `services/` y `jobs/recalculo.py`, paquetes inexistentes en
 **Dep.**: T023, T024, T025, T026, T028, T057, **T049** (el esquema del evento de baja, contract-first)
 
 **Criterios de aceptación**:
-- [ ] Se dispara por el evento de baja (FR-091a); reprocesar el mismo evento no repite efectos
-- [ ] La cola del evento de baja tiene los **mismos reintentos con backoff y dead-letter** que
+- [X] Se dispara por el evento de baja (FR-091a); reprocesar el mismo evento no repite efectos
+- [X] La cola del evento de baja tiene los **mismos reintentos con backoff y dead-letter** que
       `recomendacion.actualizar` (reutiliza T025) y el payload inválido va a DLQ sin reintento
       (reutiliza T026) — Principios VI y VII, RD-111
-- [ ] Orden de operaciones: Redis primero, Postgres después (FR-080c)
-- [ ] La marca es la fila `user_suppressions` con `state = 'in_progress'` (FR-092a)
-- [ ] Las entradas pendientes del usuario en `recompute:requests` se purgan (RD-100)
-- [ ] El recálculo en curso se **aborta**; el worker comprueba una señal de cancelación y se detiene
-- [ ] La supresión alcanza a **toda** versión de configuración y a **todos** los módulos (FR-093)
-- [ ] Alcanza las **cinco** tablas de §7.11, incluida `user_declared_tags`
-- [ ] **El alcance incluye la caché** (FR-091), no solo Postgres: las **cuatro** claves de alcance de
+- [X] Orden de operaciones: Redis primero, Postgres después (FR-080c)
+- [X] La marca es la fila `user_suppressions` con `state = 'in_progress'` (FR-092a)
+- [X] Las entradas pendientes del usuario en `recompute:requests` se purgan (RD-100)
+- [X] El recálculo en curso se **aborta**; el worker comprueba una señal de cancelación y se detiene
+- [X] La supresión alcanza a **toda** versión de configuración y a **todos** los módulos (FR-093)
+- [X] Alcanza las **cinco** tablas de §7.11, incluida `user_declared_tags`
+- [X] **El alcance incluye la caché** (FR-091), no solo Postgres: las **cuatro** claves de alcance de
       usuario —`filters:`, `reco:`, `reco:stale:` y `recompute:lock:`— se eliminan explícitamente, para
       toda `config_version` y módulo (`data-model.md` §7.11). *(Faltaba `recompute:lock:`.)*
-- [ ] La marca de «en supresión» se consulta **inmediatamente antes de escribir** el resultado, no solo
+- [X] La marca de «en supresión» se consulta **inmediatamente antes de escribir** el resultado, no solo
       al inicio del recálculo (FR-092a)
-- [ ] **Ningún dato se da por suprimido delegando en el vencimiento de su TTL** (FR-091). Se
+- [X] **Ningún dato se da por suprimido delegando en el vencimiento de su TTL** (FR-091). Se
       verifica leyendo la clave inmediatamente después de la supresión, no esperando su expiración:
       un dato que sigue siendo legible no está suprimido, por más que vaya a expirar
-- [ ] Un worker que termina después de la supresión **no** reescribe el resultado suprimido
+- [X] Un worker que termina después de la supresión **no** reescribe el resultado suprimido
 
 **Tests**: consumo real del evento de baja contra un broker de prueba (Principio VI): duplicado → un solo
 efecto; payload inválido → DLQ; fallo transitorio → reintento. `tests/integration/test_supresion_aborta_recalculo.py` — recálculo en vuelo durante la
@@ -2314,18 +2314,18 @@ no es un fallo detectado.
 **Dep.**: T058, T039
 
 **Criterios de aceptación**:
-- [ ] Tras suprimir, una comprobación recorre las cinco tablas **y las claves de Redis** y deja
+- [X] Tras suprimir, una comprobación recorre las cinco tablas **y las claves de Redis** y deja
       registro del resultado. La verificación cubre el mismo alcance que FR-091 declara: una
       comprobación que solo mira Postgres daría por exitosa una supresión que dejó la caché intacta
-- [ ] Sin residuo → `verified_at` y `state = 'completed'` en `user_suppressions` (FR-095); la fila
+- [X] Sin residuo → `verified_at` y `state = 'completed'` en `user_suppressions` (FR-095); la fila
       conserva solo identificador y marcas temporales
-- [ ] Residuo detectado → reintento acotado con backoff (`attempts`); agotado, `state = 'failed'` —el
+- [X] Residuo detectado → reintento acotado con backoff (`attempts`); agotado, `state = 'failed'` —el
       estado **fallido visible** de FR-095a— e incrementa `user_deletion_residual_keys_total`
       (`data-model.md` §7.11)
-- [ ] Métrica de supresiones con verificación fallida, **con alerta** (FR-095a) — a diferencia de
+- [X] Métrica de supresiones con verificación fallida, **con alerta** (FR-095a) — a diferencia de
       `exclusions_orphaned_permanent_total`, que es informativa
-- [ ] Escalamiento declarado en el runbook
-- [ ] **SC-030** — 100 % de las supresiones terminan verificadas sin residuo o en estado fallido visible
+- [X] Escalamiento declarado en el runbook
+- [X] **SC-030** — 100 % de las supresiones terminan verificadas sin residuo o en estado fallido visible
       con alerta; 0 usuarios suprimidos rematerializados (junto con la lápida de T029)
 
 **Tests**: `tests/integration/test_supresion_verificada.py` — residuo inyectado produce fallo y

@@ -161,8 +161,11 @@ migración; esos usuarios reciben 503 (DI-23).
 ### UserDeletionResidualKeys
 **Qué significa**: una supresión dejó claves del usuario en Redis.
 **Primer paso**: `SELECT user_id, state, attempts FROM user_suppressions WHERE state <> 'completed';`
-**Acción**: la verificación reintenta con backoff; si queda `failed`, borrar las claves a mano
-(`SCAN` por `*<user_id>*`) y re-ejecutar la verificación. Escalar al responsable del repo.
+**Acción**: la verificación reintenta con backoff; si queda `failed`, buscar al escritor que reescribe
+(log `supresión con residuo…` lista las claves y filas halladas: una clave `reco:` que reaparece indica un
+recálculo que no respetó la marca), borrar las claves a mano (`SCAN` por `*<user_id>*`) y re-ejecutar la
+verificación con `reco-batch suppressions` (retoma toda supresión `failed` o trabada hace más de 30 min).
+Escalar al responsable del repo.
 
 ### SuppressionsUnverified
 **Qué significa**: hay supresiones sin constancia de verificación más allá del período de gracia.
@@ -322,6 +325,7 @@ pendientes (FR-091) y se reprocesan siempre.
 | `reco-batch fallback` | tras `popularity`, y cada `TTL_FALLBACK` | top-N de respaldo | [HitRateDrop](#hitratedrop) |
 | `reco-batch age-refresh` | diaria, fuera de pico | cruces de umbral etario y escala no compatible | [AgeRefreshStale](#agerefreshstale) |
 | `reco-batch purge-signals` | diaria o semanal | purga por retención con guarda de exclusión | [SignalsPurgeDeferred](#signalspurgedeferred) |
+| `reco-batch suppressions` | cada hora | retoma supresiones trabadas o fallidas | [SuppressionsUnverified](#suppressionsunverified) |
 
 **Reducir `RECO_SIGNAL_RETENTION_DAYS` exige aprobación registrada** (RD-54): la purga es irreversible. Cada
 corrida registra en el log el valor vigente (`reco_signal_retention_days`), de modo que una reducción no
