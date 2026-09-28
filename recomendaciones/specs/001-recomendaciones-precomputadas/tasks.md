@@ -247,10 +247,10 @@ pertenecer al Milestone 11)*:
 - [X] T019 Escritura del top-N con score y `config_version` en `src/recomendaciones/storage/cache/repository.py` (TDD)
 - [X] T020 [US6] Política de cache miss y señalización de recálculo en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [X] T021 [P] [US6] Comportamiento ante Redis caído en `src/recomendaciones/storage/cache/client.py` (TDD)
-- [ ] T022 [US6] Reconstrucción total tras pérdida de Redis en `src/recomendaciones/batch/warmup.py` (TDD)
+- [X] T022 [US6] Reconstrucción total tras pérdida de Redis en `src/recomendaciones/batch/warmup.py` (TDD)
 - [X] T023 [US2] Consumo de `recomendacion.actualizar` en `src/recomendaciones/worker/consumer.py` (TDD)
-- [ ] T024 [US2] Idempotencia por `event_id` en `src/recomendaciones/worker/idempotency.py` (TDD)
-- [ ] T027 [US2] Recálculo y propagación cross-module condicional en `src/recomendaciones/worker/handler.py` (TDD)
+- [X] T024 [US2] Idempotencia por `event_id` en `src/recomendaciones/worker/idempotency.py` (TDD)
+- [X] T027 [US2] Recálculo y propagación cross-module condicional en `src/recomendaciones/worker/handler.py` (TDD)
 - [ ] T028 [US3] Cliente REST autenticado y de solo lectura en `src/recomendaciones/transformer/client.py` (TDD)
 - [ ] T029 [US3] Materialización idempotente de usuarios, catálogo y actividad en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T030 [US3] Vocabulario versionado y reconciliación de vectores en `src/recomendaciones/transformer/vocabulary_sync.py` (TDD)
@@ -1048,7 +1048,7 @@ colateral del tráfico de lectura.
 - [X] Es reanudable: interrumpirlo y relanzarlo no duplica trabajo ni pierde usuarios
 - [X] Con Redis vacío, el servicio sigue respondiendo (pendiente/respaldo) mientras reconstruye
 - [X] `INV-2`: reconstruye íntegramente desde Postgres
-- [ ] **SC-008** — tras un vaciado total de la caché, 100 % de los top-N afectados se reconstruye sin intervención manual
+- [X] **SC-008** — tras un vaciado total de la caché, 100 % de los top-N afectados se reconstruye sin intervención manual
 
 **Tests**: `tests/integration/test_warmup.py` — flush total de Redis; el servicio no devuelve 500; el warm-up repuebla; la tasa de `XADD` no supera el límite.
 
@@ -1112,7 +1112,7 @@ expirar la marca debe poder reprocesarse sin corromper estado.
 - [X] La marca vive en Redis **y** en Postgres: perder Redis no rompe la idempotencia (INV-2)
 - [X] Reprocesar tras expirar la marca produce el mismo resultado, sin duplicar señales (FR-069)
 - [X] El TTL de retención es configurable (FR-068)
-- [ ] **SC-005** — reprocesar el mismo evento produce un top-N idéntico
+- [X] **SC-005** — reprocesar el mismo evento produce un top-N idéntico
 
 **Tests**: `tests/integration/test_idempotency.py` — mismo evento 10 veces → 1 recálculo; con la marca expirada, el reproceso converge al mismo estado.
 
@@ -1168,23 +1168,23 @@ motivo quedan registrados (FR-010c).
 **Dep.**: T024, T016, T019, **T064** (la señal del evento debe estar persistida antes de recalcular)
 
 **Criterios de aceptación**:
-- [ ] Ningún tag compartido → **no** recalcula el opuesto (FR-010a)
-- [ ] La decisión queda registrada con su motivo, auditable (FR-010c)
-- [ ] Los dos módulos son unidades independientes: sin atomicidad cruzada (FR-067)
-- [ ] El resultado escrito pasó por el pipeline completo de T016
-- [ ] **Reconstruye y persiste `user_profiles`** del usuario (los tres alcances) antes de puntuar: es el
+- [X] Ningún tag compartido → **no** recalcula el opuesto (FR-010a)
+- [X] La decisión queda registrada con su motivo, auditable (FR-010c)
+- [X] Los dos módulos son unidades independientes: sin atomicidad cruzada (FR-067)
+- [X] El resultado escrito pasó por el pipeline completo de T016
+- [X] **Reconstruye y persiste `user_profiles`** del usuario (los tres alcances) antes de puntuar: es el
       proceso de perfiles, **escritor único** de esa tabla (`data-model.md` §2.5), con la función pura
       de T008. *(Agregado 2026-09-27: ninguna tarea escribía `user_profiles`, que T010 necesita para
       los vecinos.)*
-- [ ] **Consume también `recompute:requests`** (RD-100) con grupo de consumidores: confirma (`XACK`)
+- [X] **Consume también `recompute:requests`** (RD-100) con grupo de consumidores: confirma (`XACK`)
       solo después de escribir el resultado, de modo que una caída a mitad reentrega la solicitud; una
       solicitud de un usuario con supresión en curso se descarta (FR-092a)
-- [ ] Una solicitud entregada **`recompute_requests_max_deliveries` (5)** veces sin confirmarse se
+- [X] Una solicitud entregada **`recompute_requests_max_deliveries` (5)** veces sin confirmarse se
       confirma y se descarta, incrementando `recompute_requests_dropped_total`; nunca se reentrega
       indefinidamente (RD-111). Se emite `recompute_requests_pending`
-- [ ] El resultado escrito tiene `min(top_n_max, candidatos)` ítems (T019, RD-102)
-- [ ] Se registra la métrica `reco_cross_module_propagation_total{propagated}`
-- [ ] **SC-010**, **SC-016** y **SC-017** — cobertura cross-module, propagación en el 100 % de las
+- [X] El resultado escrito tiene `min(top_n_max, candidatos)` ítems (T019, RD-102)
+- [X] Se registra la métrica `reco_cross_module_propagation_total{propagated}`
+- [X] **SC-010**, **SC-016** y **SC-017** — cobertura cross-module, propagación en el 100 % de las
       actividades con tag compartido y 0 % sin él, y registro del motivo en 100 % de los recálculos
       *(SC-016 movido desde T007)*
 

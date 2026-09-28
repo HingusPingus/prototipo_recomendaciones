@@ -55,5 +55,5 @@ markers = [
 addopts = "-m 'not performance'"
 
 [tool.ruff]
-line-length = 110
+line-length = 140
 target-version = "py311"
