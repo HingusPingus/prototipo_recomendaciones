@@ -114,3 +114,26 @@ class CacheClient:
 
     def xadd(self, stream: str, fields: dict[str, str], maxlen: int) -> str:
         return str(self.call(lambda: self.raw.xadd(stream, fields, maxlen=maxlen, approximate=True)))
+
+
+def delete_user_scope(cache: CacheClient, patterns: Iterable[str]) -> int:
+    """Borra explícitamente toda clave que coincida con los patrones (SCAN, no KEYS). Devuelve cuántas."""
+
+    def run() -> int:
+        removed = 0
+        for pattern in patterns:
+            batch: list[str] = []
+            for key in cache.raw.scan_iter(match=pattern, count=500):
+                batch.append(key)
+                if len(batch) >= 500:
+                    removed += cache.raw.delete(*batch)
+                    batch.clear()
+            if batch:
+                removed += cache.raw.delete(*batch)
+        return removed
+
+    return int(cache.call(run))
+
+
+def count_user_scope(cache: CacheClient, patterns: Iterable[str]) -> int:
+    return int(cache.call(lambda: sum(1 for p in patterns for _ in cache.raw.scan_iter(match=p, count=500))))

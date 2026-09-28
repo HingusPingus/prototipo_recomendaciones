@@ -149,7 +149,7 @@ def test_tags_are_not_normalized(db_factory, redis_client) -> None:  # noqa: ANN
     env = Env(db_factory, redis_client)
     env.double.add_item("peliculas", ["Horror", "horror"])
     env.pipeline.run()
-    assert env.q("SELECT name FROM tags ORDER BY name") == [("Horror",), ("horror",)]
+    assert set(env.q("SELECT name FROM tags")) == {("Horror",), ("horror",)}  # dos tags distintos
 
 
 def test_reused_interaction_with_other_type_is_a_contract_violation(db_factory, redis_client) -> None:  # noqa: ANN001

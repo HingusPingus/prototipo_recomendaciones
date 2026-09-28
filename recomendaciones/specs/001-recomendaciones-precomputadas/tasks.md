@@ -252,7 +252,7 @@ pertenecer al Milestone 11)*:
 - [X] T024 [US2] Idempotencia por `event_id` en `src/recomendaciones/worker/idempotency.py` (TDD)
 - [X] T027 [US2] Recálculo y propagación cross-module condicional en `src/recomendaciones/worker/handler.py` (TDD)
 - [X] T028 [US3] Cliente REST autenticado y de solo lectura en `src/recomendaciones/transformer/client.py` (TDD)
-- [ ] T029 [US3] Materialización idempotente de usuarios, catálogo y actividad en `src/recomendaciones/transformer/pipeline.py` (TDD)
+- [X] T029 [US3] Materialización idempotente de usuarios, catálogo y actividad en `src/recomendaciones/transformer/pipeline.py` (TDD)
 - [ ] T030 [US3] Vocabulario versionado y reconciliación de vectores en `src/recomendaciones/transformer/vocabulary_sync.py` (TDD)
 - [X] T033 [US1] Endpoint de lectura del top-N en `src/recomendaciones/api/routes/recommendations.py` (TDD)
 - [X] T034 [US1] Autenticación por API key interna y no alcanzabilidad desde frontends en `src/recomendaciones/api/deps.py` (TDD)
@@ -1246,11 +1246,11 @@ re-ejecutar sobre los mismos datos no duplica ni altera el resultado.
 **Dep.**: T028, T003
 
 **Criterios de aceptación**:
-- [ ] Re-ejecutar la sincronización dos veces produce estado idéntico (idempotencia)
-- [ ] Un ítem sin `age_rating` se materializa con el valor **más restrictivo** (FR-051)
-- [ ] La actividad conserva `signal_type` y `occurred_at` (FR-062, DEP-1, DEP-2)
-- [ ] Interrupción a mitad de camino deja estado consistente, no parcial e indistinguible
-- [ ] **El Data Transformer NO escribe `item_popularity`, `tag_modules` ni `vocab_*`** (DI-13).
+- [X] Re-ejecutar la sincronización dos veces produce estado idéntico (idempotencia)
+- [X] Un ítem sin `age_rating` se materializa con el valor **más restrictivo** (FR-051)
+- [X] La actividad conserva `signal_type` y `occurred_at` (FR-062, DEP-1, DEP-2)
+- [X] Interrupción a mitad de camino deja estado consistente, no parcial e indistinguible
+- [X] **El Data Transformer NO escribe `item_popularity`, `tag_modules` ni `vocab_*`** (DI-13).
       Verificable por los módulos que el pipeline importa, que es la forma que DI-13 propone.
       ⚠️ **Criterio eliminado el 2026-09-22**: esta tarea tenía un criterio sobre el cálculo de
       popularidad. T029 **es** el Data Transformer, de modo que el criterio mandaba hacer
@@ -1262,34 +1262,34 @@ re-ejecutar sobre los mismos datos no duplica ni altera el resultado.
       > `like_count_window` de `items`, RD-14 sacó `is_shared` de `tags`, y esto. El patrón está
       > anunciado en §1.1 —«la zona proyectada tiende a alojar datos derivados»— y DI-13 existe
       > precisamente para detectarlo
-- [ ] **El retiro se detecta por dos vías y se aplica por una sola rama** (FR-074, RD-91): señal
+- [X] **El retiro se detecta por dos vías y se aplica por una sola rama** (FR-074, RD-91): señal
       explícita del origen (CR-7) y **ausencia** del ítem en el listado (CR-8). No hay modo
       degradado: Q31 descartó la opción de operar distinto según el origen pueda o no confirmar
       completitud, porque una rama que casi nunca se ejercita es una rama rota cuando hace falta
-- [ ] **La corrida aborta sin marcar retiro alguno** si no puede confirmar que el listado es
+- [X] **La corrida aborta sin marcar retiro alguno** si no puede confirmar que el listado es
       completo (CR-9), y en particular cuando `sync_volume_delta_ratio < 0,9`. Abortar sin marcar es
       la única conducta segura: un listado truncado que se procesa retira ítems vigentes en masa
-- [ ] **El retiro es lógico** (FR-073): se cambia `status`, **no** se borra la fila ni sus señales
-- [ ] **Política de ingesta de usuarios** (`data-model.md` §7.5, §7.6): un usuario sin `birth_date` **o**
+- [X] **El retiro es lógico** (FR-073): se cambia `status`, **no** se borra la fila ni sus señales
+- [X] **Política de ingesta de usuarios** (`data-model.md` §7.5, §7.6): un usuario sin `birth_date` **o**
       sin `region` válida (ISO 3166-1 alfa-2) **se rechaza** —sin fila ni derivados por default—, se
       registra como violación de contrato con `user_id` y `sync_run_id`, e incrementa
       `contract_violations_total{field="birth_date"}` o `{field="region"}`, **contadores separados**
       con valor esperado 0. La corrida queda `failed` con `failure_reason`
-- [ ] **Un ítem sin tags se rechaza** (FR-021b, RD-60) y queda registrado como anomalía de contrato,
+- [X] **Un ítem sin tags se rechaza** (FR-021b, RD-60) y queda registrado como anomalía de contrato,
       **sin bloquear** la ingesta del resto del catálogo
-- [ ] **Tags sin normalizar** (§7.8, RD-16): se persisten tal cual; nombre vacío → se descarta la
+- [X] **Tags sin normalizar** (§7.8, RD-16): se persisten tal cual; nombre vacío → se descarta la
       asignación y se cuenta en `projection_field_anomalies_total{field="tag_name"}`, sin abortar
-- [ ] **Señales de actividad**: `source = 'sync'`; deduplicación por `origin_interaction_id` con la
+- [X] **Señales de actividad**: `source = 'sync'`; deduplicación por `origin_interaction_id` con la
       comparación de §7.10 —idénticas: reentrega; distintas: `contract_violations_total{field="origin_interaction_id"}`
       (FR-029e1)—; tras la ingesta se invoca al **resolutor de exclusiones** (T014), que invalida
       `filters:{user_id}` de los usuarios afectados (RD-96)
-- [ ] Una corrección de `birth_date` (CR-4) rederiva el ordinal y **invalida** los resultados del
+- [X] Una corrección de `birth_date` (CR-4) rederiva el ordinal y **invalida** los resultados del
       usuario en el mismo acto (DI-2c, FR-080c)
-- [ ] **Lápida** (FR-091b, DI-29, RD-101): un `user_id` con fila en `user_suppressions` se descarta en la
+- [X] **Lápida** (FR-091b, DI-29, RD-101): un `user_id` con fila en `user_suppressions` se descarta en la
       ingesta de usuarios y de actividad, aunque el origen lo siga listando; la **ausencia** de un
       usuario en el listado **no** dispara supresión (FR-091a)
-- [ ] **SC-006** — re-ejecutar una corrida completa del Data Transformer sobre datos sin cambios deja un estado idéntico
-- [ ] **SC-028** — 100 % de los usuarios sin `birth_date` o sin `region` válida rechazados y contados; 0 materializados con valor por defecto
+- [X] **SC-006** — re-ejecutar una corrida completa del Data Transformer sobre datos sin cambios deja un estado idéntico
+- [X] **SC-028** — 100 % de los usuarios sin `birth_date` o sin `region` válida rechazados y contados; 0 materializados con valor por defecto
 
 > *Criterios de ingesta agregados el 2026-09-27: `data-model.md` §7.5–§7.8 y §9 los asignaban a T029
 > desde el 2026-09-10, y el backlog solo tenía el de `age_rating`.*
