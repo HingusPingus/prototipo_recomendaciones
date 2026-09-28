@@ -13,9 +13,10 @@ from recomendaciones.bootstrap import build_runtime
 from recomendaciones.config.loader import age_compatible_versions, load_deployed_configs
 from recomendaciones.config.settings import Settings
 from recomendaciones.storage.cache.recompute import RecomputeStream
+from recomendaciones.worker.suppression import SuppressionProcedure, SuppressionSweep
 
 log = logging.getLogger(__name__)
-JOBS = ("popularity", "fallback", "warmup", "age-refresh", "purge-signals")
+JOBS = ("popularity", "fallback", "warmup", "age-refresh", "purge-signals", "suppressions")
 
 
 def run_job(settings: Settings, args: list[str], **overrides: object) -> int:
@@ -39,4 +40,13 @@ def run_job(settings: Settings, args: list[str], **overrides: object) -> int:
         AgeThresholdRefreshJob(runtime.factory, runtime.cache, signaler, runtime.config, runtime.metrics, compatible_versions=compatible).run()
     elif job == "purge-signals":
         SignalPurgeJob(runtime.factory, runtime.config, settings, runtime.metrics).run()
+    elif job == "suppressions":
+        procedure = SuppressionProcedure(
+            runtime.factory,
+            runtime.cache,
+            runtime.metrics,
+            max_attempts=settings.retry_max_attempts,
+            backoff_base_seconds=settings.retry_backoff_base_seconds,
+        )
+        SuppressionSweep(runtime.factory, procedure, runtime.metrics).run()
     return 0

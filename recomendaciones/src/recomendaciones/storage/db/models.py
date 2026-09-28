@@ -54,6 +54,7 @@ ProcessedResult = ENUM(
     "signal_recorded",
     "skipped_not_materialized",
     "dlq",
+    "suppressed",  # 0002: baja de cuenta procesada (T058)
     name="processed_result",
     create_type=False,
 )

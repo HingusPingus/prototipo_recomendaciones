@@ -73,6 +73,7 @@ async def test_declared_user_gets_a_materialized_top_n_end_to_end(stack_env, db_
     assert run_job(settings, ["fallback"]) == 0
     assert run_job(settings, ["age-refresh"]) == 0  # T051
     assert run_job(settings, ["purge-signals"]) == 0  # T057
+    assert run_job(settings, ["suppressions"]) == 0  # T059: barrido
     assert run_job(settings, ["desconocido"]) == 2
 
     headers = {"X-Internal-API-Key": stack_env["RECO_INTERNAL_API_KEY"]}

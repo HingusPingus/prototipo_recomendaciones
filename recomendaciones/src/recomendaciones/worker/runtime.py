@@ -1,4 +1,4 @@
-"""Proceso worker: consume `recomendacion.actualizar` y `recompute:requests` (T023, T027)."""
+"""Proceso worker: consume `recomendacion.actualizar`, `usuario.eliminado` y `recompute:requests` (T023, T027, T058)."""
 
 from __future__ import annotations
 
@@ -12,20 +12,22 @@ from prometheus_client import start_http_server
 from recomendaciones.bootstrap import Runtime, build_runtime
 from recomendaciones.config.settings import Settings
 from recomendaciones.observability.health import start_health_server
-from recomendaciones.worker.health import worker_health
 from recomendaciones.shared.errors import CacheUnavailable
-from recomendaciones.transformer.freshness import refresh_sync_metrics
 from recomendaciones.storage.cache.filters import FiltersCache
+from recomendaciones.storage.cache.recompute import RecomputeStream
 from recomendaciones.storage.db.exclusions import ExclusionResolver
 from recomendaciones.storage.db.filters_source import DbFiltersSource
-from recomendaciones.storage.cache.recompute import RecomputeStream
+from recomendaciones.transformer.freshness import refresh_sync_metrics
 from recomendaciones.worker.consumer import EventConsumer, RetryPolicy
 from recomendaciones.worker.handler import ActualizarHandler, Recomputer
+from recomendaciones.worker.health import worker_health
 from recomendaciones.worker.idempotency import EventIdempotency
 from recomendaciones.worker.requests_stream import RecomputeRequestConsumer
+from recomendaciones.worker.schemas import parse_eliminado
 from recomendaciones.worker.signals import SignalIngestor
+from recomendaciones.worker.suppression import SuppressionHandler, SuppressionProcedure, refresh_suppression_metrics
+from recomendaciones.worker.topology import actualizar_topology, eliminado_topology
 from recomendaciones.worker.trigger import InteractionTrigger
-from recomendaciones.worker.topology import actualizar_topology
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +64,29 @@ def build_worker(runtime: Runtime) -> tuple[EventConsumer, RecomputeRequestConsu
     return events, requests
 
 
+def build_suppression_consumer(runtime: Runtime) -> EventConsumer:
+    """Evento de baja (T058): los mismos reintentos con backoff y dead-letter que `recomendacion.actualizar`."""
+    settings = runtime.settings
+    procedure = SuppressionProcedure(
+        runtime.factory,
+        runtime.cache,
+        runtime.metrics,
+        max_attempts=settings.retry_max_attempts,
+        backoff_base_seconds=settings.retry_backoff_base_seconds,
+    )
+    idempotency = EventIdempotency(
+        runtime.cache, runtime.factory, ttl_dedupe_seconds=runtime.ttls.dedupe, retention_hours=settings.idempotency_retention_hours
+    )
+    return EventConsumer(
+        settings.amqp_url.get_secret_value(),
+        eliminado_topology(),
+        SuppressionHandler(procedure, idempotency),
+        parser=parse_eliminado,
+        on_dead_letter=lambda reason: runtime.metrics.inc("reco_dlq_messages_total", reason=reason),
+        retry=RetryPolicy(settings.retry_max_attempts, settings.retry_backoff_base_seconds),
+    )
+
+
 async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> None:
     runtime = build_runtime(settings, "worker")
     start_http_server(settings.metrics_port, registry=runtime.metrics.registry)
@@ -75,6 +100,7 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
         ),
     )
     events, requests = build_worker(runtime)
+    suppressions = build_suppression_consumer(runtime)
     stop = stop or asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -83,6 +109,7 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
         except (NotImplementedError, RuntimeError):
             pass
     await events.start()
+    await suppressions.start()
     log.info("worker en marcha", extra={"config_version": runtime.config.config_version})
     backoff = 0.1
     last_refresh = 0.0
@@ -92,7 +119,9 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
                 last_refresh = loop.time()
                 with runtime.factory() as s:
                     await asyncio.to_thread(refresh_sync_metrics, s, runtime.metrics)
+                    await asyncio.to_thread(refresh_suppression_metrics, s, runtime.metrics)  # FR-095a: observador
                 runtime.metrics.set("reco_queue_depth", await events.queue_depth(), queue=actualizar_topology().queue)
+                runtime.metrics.set("reco_queue_depth", await suppressions.queue_depth(), queue=eliminado_topology().queue)
             try:
                 handled = await asyncio.to_thread(requests.poll_once)
                 backoff = 0.1
@@ -105,4 +134,5 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
                 await asyncio.sleep(0.1)
     finally:
         await events.stop()
+        await suppressions.stop()
         health.shutdown()
