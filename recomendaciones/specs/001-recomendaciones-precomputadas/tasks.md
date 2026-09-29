@@ -260,7 +260,7 @@ pertenecer al Milestone 11)*:
 - [X] T035 [US1] Errores tipados y contrato estable en `src/recomendaciones/api/errors.py` (TDD)
 - [X] T037 [US6] Filtrado de salida sobre el respaldo (acotado) en `src/recomendaciones/api/services/read_service.py` (TDD)
 - [X] T038 [P] [US6] Batch de top-N de respaldo en `src/recomendaciones/batch/fallback.py` (TDD)
-- [ ] T049 Definir `contracts/` primero (OpenAPI + JSON Schema) en `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
+- [X] T049 Definir `contracts/` primero (OpenAPI + JSON Schema) en `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
 - [X] T053 [P] [US4] Endpoint de declaración de gustos en `src/recomendaciones/api/routes/declaraciones.py` (TDD)
 - [X] T054 [US4] Herencia de tags entre módulos en `src/recomendaciones/api/services/declaracion.py` (TDD)
 - [X] T055 [US4] Rechazo por módulo sin declaración en `src/recomendaciones/api/routes/recommendations.py` (TDD)
@@ -1792,15 +1792,18 @@ abajo)*, `contracts/README.md`
       declaración (FR-088) como error de precondición y **no** como sexto estado
 - [X] `recomendacion-actualizar.schema.json` declara como requeridos los **siete** campos mínimos de
       FR-061, incluido `origin_interaction_id`
-- [ ] `usuario-eliminado.schema.json` (CR-19, DEP-12) declara como requeridos el identificador único de
+- [X] `usuario-eliminado.schema.json` (CR-19, DEP-12) declara como requeridos el identificador único de
       evento, el identificador del usuario y la marca temporal, y se publica en `api-general` **antes** de
-      implementar T058 (Principio II, RD-111)
+      implementar T058 (Principio II, RD-111) — *acordado el 2026-09-29 (RD-113); T058 se había
+      implementado contra la propuesta, como su nota lo permite*
 - [X] `contracts/README.md` declara explícitamente que los contratos son **custodiados por
       `api-general`** y que estas copias son derivadas (Principio II) — no son fuente de verdad
-- [ ] Existe el PR o documento en `api-general` que publica los contratos, **enlazado** desde el
+- [X] Existe el PR o documento en `api-general` que publica los contratos, **enlazado** desde el
       README, y la conformidad de los consumidores registrada (Principio II; Flujo de Desarrollo de la
-      constitución) — **antes** de mergear T023, T033 y T053
-- [ ] Cada copia derivada registra la versión del contrato origen y su fecha de sincronización
+      constitución) — **antes** de mergear T023, T033 y T053 — *acordado por diálogo personal el
+      2026-09-29, sin enlace; registrado en `contracts/README.md` (RD-113)*
+- [X] Cada copia derivada registra la versión del contrato origen y su fecha de sincronización
+      (`contracts/README.md`, 2026-09-29)
 - [X] El OpenAPI que la aplicación **genera** se compara contra el contrato publicado: la
       implementación se ajusta al contrato, nunca el contrato a la implementación
 
@@ -1854,7 +1857,8 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 - [X] La respuesta de lectura se valida contra el OpenAPI publicado
 - [X] Existe un test que **falla si un campo requerido desaparece** del contrato
 - [X] Cubre las dependencias externas **vigentes**: DEP-1, DEP-2, DEP-5…DEP-11. *(Decía «DEP-1..DEP-6», que incluía la vacante DEP-3 y la resuelta DEP-4 y omitía DEP-7…DEP-11)*
-- [ ] Es gate bloqueante: contract test roto = no hay merge (Principio VI)
+- [ ] Es gate bloqueante: contract test roto = no hay merge (Principio VI) — *diferido (RD-113): `main`
+      sin protección de rama por ahora; el bloqueo es por disciplina del equipo*
 - [X] **SC-013** — 100 % de los endpoints expuestos y del evento consumido pasa la validación de contrato
 
 **Tests**: es la tarea de test. Verificación: eliminar `signal_type` del schema del doble debe hacerla fallar.
@@ -1905,7 +1909,8 @@ de gustos. Ninguno es opcional. *(Decía «los nueve que el plan declara»; la l
 - [X] **Test de mutación** sobre `engine/postprocess.py`: si una mutación del filtro de edad o de
       exclusión sobrevive, el pipeline falla. Es la verificación de que los tests de T017 tienen poder
       de detección real y no solo cobertura de líneas
-- [ ] Ningún gate puede saltarse con un flag desde el PR
+- [ ] Ningún gate puede saltarse con un flag desde el PR — *diferido (RD-113): sin protección de rama,
+      nada impide técnicamente mergear con un gate en rojo*
 
 **Tests**: verificación: un PR que rompa un invariante no puede mergearse.
 
@@ -2661,48 +2666,54 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 
 # Definition of Done — habilita `/speckit.implement`
 
+> *Tildada el 2026-09-29 con la evidencia de `docs/validation/traceability-matrix.md` y
+> `docs/validation/fr-coverage.md`. Quedan cuatro ítems abiertos, y ninguno depende de código de este
+> repositorio: el gate bloqueante (diferido por RD-113), la ejecución de prueba del runbook y dos respuestas
+> de `api-general`.*
+
 ## Invariantes (bloqueantes)
-- [ ] Cero violaciones de edad en los cinco `result_type` — batería exhaustiva en verde (T017)
-- [ ] Cero ítems excluidos en cualquier respuesta (T014, T017)
-- [ ] MMR nunca reintroduce un ítem filtrado — property-based en verde (T015)
-- [ ] `api/` no importa `engine/` — test de arquitectura en verde (T006)
-- [ ] Cero queries a Postgres en el request path normal (T033)
-- [ ] Redis caído → 503, sin fallback a cómputo en línea (T021)
-- [ ] Todo dato es recuperable desde Postgres tras pérdida total de Redis (T022)
-- [ ] Cero conexiones a DB de otros repos (T002, T028)
+- [X] Cero violaciones de edad en los cinco `result_type` — batería exhaustiva en verde (T017)
+- [X] Cero ítems excluidos en cualquier respuesta (T014, T017)
+- [X] MMR nunca reintroduce un ítem filtrado — property-based en verde (T015)
+- [X] `api/` no importa `engine/` — test de arquitectura en verde (T006)
+- [X] Cero queries a Postgres en el request path normal (T033)
+- [X] Redis caído → 503, sin fallback a cómputo en línea (T021)
+- [X] Todo dato es recuperable desde Postgres tras pérdida total de Redis (T022)
+- [X] Cero conexiones a DB de otros repos (T002, T028)
 
 ## Funcionalidad
-- [ ] US1 (lectura) y US2 (recálculo) demostrables end-to-end **al cierre de Fase 1** (T023, T024, T027, T064, T053)
-- [ ] US5 (filtros obligatorios) verificado por T017
-- [ ] US3, US4, US6, US7 completos
-- [ ] Los cinco `result_type` alcanzables y correctamente discriminados — **incluido `fallback`**,
+- [X] US1 (lectura) y US2 (recálculo) demostrables end-to-end **al cierre de Fase 1** (T023, T024, T027, T064, T053)
+- [X] US5 (filtros obligatorios) verificado por T017
+- [X] US3, US4, US6, US7 completos
+- [X] Los cinco `result_type` alcanzables y correctamente discriminados — **incluido `fallback`**,
       que requiere T038 en Fase 1
-- [ ] Cold start cruzado produce recomendaciones no triviales (SC-010)
+- [X] Cold start cruzado produce recomendaciones no triviales (SC-010)
 
 ## Calidad y contratos
-- [ ] **Toda tarea `[TDD]` desarrollada test-first** —desde el 2026-09-27, toda tarea de producción salvo
+- [X] **Toda tarea `[TDD]` desarrollada test-first** —desde el 2026-09-27, toda tarea de producción salvo
       las exentas de la *Política TDD*—: en cada PR, el commit de test precede al de implementación
       (verificable en el historial de git). *(Decía «T007–T017», el alcance selectivo anterior.)*
-- [ ] **Test de mutación en verde**: mutar el filtro de edad o el de exclusión hace fallar la suite
+- [X] **Test de mutación en verde**: mutar el filtro de edad o el de exclusión hace fallar la suite
       (T017, T045)
-- [ ] `contracts/` materializado con OpenAPI y JSON Schema (T049)
-- [ ] Contract tests en verde como gate bloqueante (T043)
-- [ ] Los nueve casos críticos en verde (T044)
-- [ ] Configuración versionada trazable en cada recomendación servida
-- [ ] `config_version` presente en **ambas** familias de clave, vigente y obsoleta (T018)
-- [ ] `v1.yaml` valida contra el loader; configuración inválida impide el arranque
-- [ ] SC-001 verificado: p95 ≤ 50 ms y la latencia no depende del tamaño del catálogo (T050)
+- [X] `contracts/` materializado con OpenAPI y JSON Schema (T049)
+- [ ] Contract tests en verde como gate bloqueante (T043) — *diferido (RD-113): en verde en CI, pero
+      `main` no tiene protección de rama por ahora*
+- [X] Los nueve casos críticos en verde (T044)
+- [X] Configuración versionada trazable en cada recomendación servida
+- [X] `config_version` presente en **ambas** familias de clave, vigente y obsoleta (T018)
+- [X] `v1.yaml` valida contra el loader; configuración inválida impide el arranque
+- [X] SC-001 verificado: p95 ≤ 50 ms y la latencia no depende del tamaño del catálogo (T050)
 
 ## Deuda del prototipo
-- [ ] Caché en memoria → Redis persistente (T018)
-- [ ] `ExclusionSet` con interfaz pública; sin acceso a atributos privados (T014)
-- [ ] Una reacción del usuario no deja el top-N silenciosamente desactualizado: la señal del evento se
+- [X] Caché en memoria → Redis persistente (T018)
+- [X] `ExclusionSet` con interfaz pública; sin acceso a atributos privados (T014)
+- [X] Una reacción del usuario no deja el top-N silenciosamente desactualizado: la señal del evento se
       persiste, su exclusión es efectiva en la siguiente lectura y el recálculo se dispara (T064, T027,
       T060). *(Decía «Feedback publica el evento de recálculo (T036)», tarea retirada por RD-95.)*
-- [ ] Constantes del motor y mapeo de `age_rating` externalizados a configuración (T004, T013)
+- [X] Constantes del motor y mapeo de `age_rating` externalizados a configuración (T004, T013)
 
 ## Operación
-- [ ] **Las veintidós métricas de observabilidad emitiéndose** (T039). La cifra anterior ("diez")
+- [X] **Las veintidós métricas de observabilidad emitiéndose** (T039). La cifra anterior ("diez")
       quedó obsoleta: el recuento sobre `data-model.md` da dieciséis nombres de métrica
       (`age_stale_config_users_total`, `age_threshold_crossings_total`, `catalog_retired_total`,
       `catalog_unrated_ratio`, `catalog_unvectorized_ratio`, `contract_violations_total`,
@@ -2715,31 +2726,34 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
       a las dieciséis se suman `declarable_tags_total`, `diversity_cap_relaxed_total`,
       `fallback_new_item_share`, `recompute_requests_pending`, `recompute_requests_dropped_total` y
       `suppressions_unverified_total`, nombradas por RD-108, RD-110, RD-102 y RD-111.)*
-- [ ] `contract_violations_total` se emite con contadores **separados** para `birth_date` y `region`
-- [ ] `exclusions_orphaned_permanent_total` se emite **sin alerta asociada** (FR-068d1): su ausencia
+- [X] `contract_violations_total` se emite con contadores **separados** para `birth_date` y `region`
+- [X] `exclusions_orphaned_permanent_total` se emite **sin alerta asociada** (FR-068d1): su ausencia
       de umbral es un requisito, no un olvido de configuración
-- [ ] **Ningún FR carece de tarea**, o su ausencia está declarada con motivo (hoy: las tareas marcadas
+- [X] **Ningún FR carece de tarea**, o su ausencia está declarada con motivo (hoy: las tareas marcadas
       ⚠️ «pendiente» que quedan y `plan.md` §8; la antigua sección «Tareas bloqueadas por requisitos
       inexistentes» es hoy el registro histórico «Bloqueo levantado»). La cobertura supuesta es la forma más barata
       de aparentar completitud
-- [ ] Correlation ID sobrevive el salto asíncrono (T040)
-- [ ] Health/readiness/liveness en los tres entrypoints (T041)
-- [ ] **Cada alerta probada induciendo su condición**, y se apaga al normalizarse (T042)
-- [ ] Umbral de cada alerta justificado por escrito (T042)
+- [X] Correlation ID sobrevive el salto asíncrono (T040)
+- [X] Health/readiness/liveness en los tres entrypoints (T041)
+- [X] **Cada alerta probada induciendo su condición**, y se apaga al normalizarse (T042)
+- [X] Umbral de cada alerta justificado por escrito (T042)
 - [ ] **Ejecución de prueba del runbook registrada** en `docs/validation/runbook-dry-run.md`, con sus
-      bloqueos ya corregidos (T046)
-- [ ] Documento de campos requeridos publicado (T047)
+      bloqueos ya corregidos (T046) — *pendiente: la hace alguien ajeno a la feature*
+- [ ] Documento de campos requeridos publicado (T047) — *pendiente: enviado a `api-general` para su
+      revisión el 2026-09-29*
 
 ## Gobernanza
-- [ ] **Matriz de trazabilidad ítem → evidencia completa** en `docs/validation/traceability-matrix.md`;
+- [X] **Matriz de trazabilidad ítem → evidencia completa** en `docs/validation/traceability-matrix.md`;
       ningún ítem marcado sin evidencia concreta (T048)
-- [ ] `test_traceability.py` en verde: toda evidencia referenciada existe (T048)
-- [ ] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111)
-- [ ] Valores cargados: `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
+- [X] `test_traceability.py` en verde: toda evidencia referenciada existe (T048)
+- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111)
+- [X] Valores cargados: `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
       `diversity_max_cluster_share` = 0,4, `recompute_requests_maxlen` = 100 000 (RD-108), y
       `event_redelivery_window_hours` copiado del broker real (RD-110)
-- [ ] Evento de baja de cuenta publicado por `api-general` (DEP-12, CR-19): sin él, T058 no tiene disparo
-- [ ] Decisiones abiertas: **ninguna pendiente**. `plan.md` §8 declara «Ninguna bloqueante» y
+- [ ] Evento de baja de cuenta publicado por `api-general` (DEP-12, CR-19): sin él, T058 no tiene disparo —
+      *pendiente: nombre y schema acordados (RD-113); fecha y checkpoint de entrega a la espera de la
+      respuesta de `api-general` a `docs/contracts/checkpoint-baja.md`*
+- [X] Decisiones abiertas: **ninguna pendiente**. `plan.md` §8 declara «Ninguna bloqueante» y
       NC-1…NC-20 **todos cerrados** (`data-model.md` §12). La lista «D1, D2, D3, D5, D6, D7, D8» que
       figuraba aquí quedó obsoleta y se retira: un DoD que exige resolver decisiones ya resueltas
       envejece hacia el ruido, y el ruido se termina tildando sin leer
