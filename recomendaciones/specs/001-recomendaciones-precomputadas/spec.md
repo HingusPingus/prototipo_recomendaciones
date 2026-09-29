@@ -210,6 +210,17 @@ cierran contradicciones o fijan lo que el texto dejaba sin medida.
 - **SC-001**: la línea base es un catálogo de **10 000 ítems por módulo**.
 - **FR-032, FR-033e, FR-054**: se referencian a su requisito precisado (FR-071a, FR-006/SC-027, FR-029).
 
+### Session 2026-09-29 — cierre del segundo análisis
+
+Hallazgos del `/speckit-analyze` sobre 0f3ede5 que la implementación ya había resuelto sin volcarlos al
+texto, registrados en RD-112. Ninguno agrega alcance.
+
+- **FR-095a**: la métrica del observador se llama `suppressions_unverified_total` y cuenta toda supresión
+  no completada, incluidas las que están en curso; el período de gracia lo fija la alerta (30 minutos), no
+  la métrica (hallazgos A5 e I6).
+- **FR-091a**: la idempotencia por identificador del evento de baja se registra igual que la de
+  `recomendacion.actualizar`, con resultado propio (hallazgo U5).
+
 ## Dependencias Externas Bloqueantes
 
 > Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature
@@ -826,7 +837,9 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   reintentarse. La constancia MUST NOT contener datos del usuario suprimido más allá de su
   identificador y la marca temporal.
 - **FR-095a**: La verificación de FR-095 MUST tener **observador declarado**: una métrica de supresiones
-  sin constancia registrada, con **valor esperado 0** y acción **alerta**, con responsable asignado — el
+  sin constancia registrada (`suppressions_unverified_total`: toda supresión no completada, en curso o
+  fallida; la alerta admite un período de gracia para las que están en curso, RD-112), con **valor
+  esperado 0** y acción **alerta**, con responsable asignado — el
   mismo tratamiento que `contract_violations_total{field="birth_date"}`, exigido por RD-6 y RD-25. El
   reintento MUST ser **acotado**, con backoff; al agotarse, el sistema MUST emitir alerta de severidad
   alta y la supresión MUST quedar en estado **fallido visible**, consultable como tal y no solamente

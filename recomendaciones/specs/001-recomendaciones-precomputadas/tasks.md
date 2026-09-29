@@ -13,11 +13,11 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 18 tablas en §2,
-  RD-1→RD-111 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-112 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **167 requisitos definidos** (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
-  registros de saneamiento (2026-09-27) y de remediación del análisis (2026-09-28) · **12** dependencias declaradas (DEP-1→DEP-12: **10 vigentes**,
+  registros de saneamiento (2026-09-27), de remediación del análisis (2026-09-28) y de cierre del segundo análisis (2026-09-29) · **12** dependencias declaradas (DEP-1→DEP-12: **10 vigentes**,
   DEP-3 vacante a propósito y DEP-4 resuelta)
 - [plan.md](./plan.md) — el plan regenerado ya **no** tiene decisiones D1…D10: las que se cerraron
   viven en `data-model.md` y las referencias `D4`/`D5` de este archivo remiten a valores fijados allí
@@ -25,7 +25,8 @@ producción**)
 - [checklists/requirements-clarify-2026-09-14.md](./checklists/requirements-clarify-2026-09-14.md) —
   **46/46 tildados — cerrado** (los 10 🔴 se cerraron el 2026-09-22)
 - [constitution v1.1.1](../../.specify/memory/constitution.md) — enmendada el 2026-09-27 (RD-98) y
-  aclarada el 2026-09-28 (RD-111), pendiente de aprobación por PR según su sección de gobernanza
+  aclarada el 2026-09-28 (RD-111); **aprobada** en el PR #77 (revisión APPROVED de HingusPingus del
+  2026-09-28, registrada después del merge; RD-112)
 
 > **Corrección del encabezado anterior**: decía «FR-001→FR-071, 5 clarificaciones» y no citaba
 > `data-model.md` ni una vez en todo el documento, pese a ser el que especifica la capa de datos que
@@ -428,7 +429,7 @@ configuración que desactive un filtro obligatorio** (FR-054). `config_version` 
 **`fallback_new_item_quota_ratio: 0.20`** (RD-77, RD-80), **`diversity_max_cluster_share: 0.4`** (RD-108),
 **`declared_tags_min: 5`** (RD-68), **`region_weight_factor: 0.1`** (RD-79),
 **`collab_min_neighbors: 10`** (RD-84), `vocab_regeneration_policy`,
-**`emergent_evidence_threshold: 20`** (RD-102, RD-108).
+**`emergent_evidence_threshold: 20`** (RD-102, RD-108), **`fallback_stored_size: 100`** (RD-111).
 
 > **`tiebreak_criteria` ya no va.** Estaba en la lista anterior y **RD-10 lo eliminó del esquema**: el
 > desempate es fijo y determinista, no configurable.
@@ -436,7 +437,11 @@ configuración que desactive un filtro obligatorio** (FR-054). `config_version` 
 **Parámetros operativos, fuera de este archivo** (RD-46): el umbral de recálculo por conteo de
 interacciones (`interaction_recalc_threshold`, valor inicial **10** — FR-080a, RD-63), que no altera el
 valor del top-N, solo **cuándo** se lo recomputa; **`recompute_requests_maxlen` = 100 000** (RD-100,
-RD-108); y **`event_redelivery_window_hours`** (RD-110), copiado de la configuración real del broker.
+RD-108); **`recompute_requests_max_deliveries` = 5** (RD-111); y **`event_redelivery_window_hours`**
+(RD-110), copiado de la configuración real del broker.
+
+> *Listas completadas el 2026-09-29 (RD-112, hallazgo I7): `fallback_stored_size` y
+> `recompute_requests_max_deliveries` figuraban solo en los criterios de aceptación.*
 
 **Criterios de aceptación**:
 - [X] `alpha+beta+gamma` fuera de `1.0±ε` → fallo de arranque con mensaje que nombra el campo (FR-027)
@@ -1699,7 +1704,9 @@ sino que su umbral esté mal y jamás se active.
       hubiera dejado de procesar
 - [X] Alerta por `contract_violations_total{field="birth_date"} > 0` y
       `contract_violations_total{field="region"} > 0` — contadores **separados** (§7.5, RD-85)
-- [X] Alerta por supresiones sin constancia registrada, **valor esperado 0** (FR-095a, RD-83)
+- [X] Alerta `SuppressionsUnverified` sobre **`suppressions_unverified_total`** —toda supresión no
+      completada, en curso o fallida—, **valor esperado 0**, con `for: 30m` como período de gracia de las
+      que están en curso (FR-095a, RD-83, RD-112)
 - [X] **Toda métrica de `data-model.md` §4.4, §7.5.1, §7.7, §7.9, §7.10, §7.11 y §7.12 que declara
       umbral, acción y responsable tiene su alerta** con ese umbral —entre otras
       `retired_set_size`, `catalog_unrated_ratio`, `vector_recompute_lag_seconds`,
@@ -1772,7 +1779,9 @@ antes de T023, T033, T053 y T062, que ahora dependen de ella. Este repositorio *
 propuesta —tiene prioridad de definición (RD-47)—, pero el contrato vigente es el publicado allá.
 
 **Archivos**: `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
-(lectura **y** declaración), `contracts/recomendacion-actualizar.schema.json`, `contracts/README.md`
+(lectura **y** declaración), `contracts/recomendacion-actualizar.schema.json`,
+`contracts/usuario-eliminado.schema.json` *(agregado el 2026-09-29, RD-112: lo exigía el criterio de
+abajo)*, `contracts/README.md`
 
 **Dep.**: T005 (tipos de dominio y `result_type`)
 
@@ -2100,8 +2109,8 @@ pasaría a ser una revocación de FR-003.
 
 > **Tensión constitucional resuelta (RD-98, 2026-09-27)**: la constitución v1.1.0 declara esta
 > escritura como la **única excepción** del Principio III, con los mismos límites que FR-089b. El
-> endpoint se despliega en la API. **Sujeto a la aprobación de la enmienda por PR** (gobernanza de la
-> constitución): hasta entonces, la tarea puede desarrollarse pero no fusionarse.
+> endpoint se despliega en la API. La enmienda quedó **aprobada** en el PR #77 (gobernanza de la
+> constitución; RD-112): esta condición de merge está cumplida.
 
 **Archivos**: `src/recomendaciones/api/routes/declaraciones.py`,
 `src/recomendaciones/api/services/declaracion.py`; contrato en
@@ -2278,6 +2287,8 @@ escribir— *(decía `services/` y `jobs/recalculo.py`, paquetes inexistentes en
 
 **Criterios de aceptación**:
 - [X] Se dispara por el evento de baja (FR-091a); reprocesar el mismo evento no repite efectos
+- [X] La idempotencia del evento de baja se registra en `processed_events` con `result = 'suppressed'`
+      (migración `0002`); el resultado de la supresión vive en `user_suppressions` (RD-112, hallazgo U5)
 - [X] La cola del evento de baja tiene los **mismos reintentos con backoff y dead-letter** que
       `recomendacion.actualizar` (reutiliza T025) y el payload inválido va a DLQ sin reintento
       (reutiliza T026) — Principios VI y VII, RD-111
@@ -2322,8 +2333,10 @@ no es un fallo detectado.
 - [X] Residuo detectado → reintento acotado con backoff (`attempts`); agotado, `state = 'failed'` —el
       estado **fallido visible** de FR-095a— e incrementa `user_deletion_residual_keys_total`
       (`data-model.md` §7.11)
-- [X] Métrica de supresiones con verificación fallida, **con alerta** (FR-095a) — a diferencia de
-      `exclusions_orphaned_permanent_total`, que es informativa
+- [X] Métrica **`suppressions_unverified_total`** —toda supresión no completada, en curso o fallida
+      (RD-112)—, **con alerta** (FR-095a) — a diferencia de `exclusions_orphaned_permanent_total`, que es
+      informativa. *(Decía «supresiones con verificación fallida», que no es el mismo conjunto que el de
+      T042; hallazgo I6)*
 - [X] Escalamiento declarado en el runbook
 - [X] **SC-030** — 100 % de las supresiones terminan verificadas sin residuo o en estado fallido visible
       con alerta; 0 usuarios suprimidos rematerializados (junto con la lápida de T029)

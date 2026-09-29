@@ -93,14 +93,15 @@ frontends (FR-008).
 |---|---|---|
 | **I. Frontera de datos y ownership** (NN) | Catálogo, usuarios y actividad son proyección; se materializan, no se editan. La actividad entra **solo** por sincronización o por el evento `recomendacion.actualizar` (RD-95: se retiró el endpoint propio de feedback). Única excepción de autoría local: `user_declared_tags` (§2.14) | La excepción **debe seguir siendo una**: RD-75 fija que un segundo dato de autoría local exige componente propio |
 | **II. Contratos como verdad externa** (NN) | CR-1…CR-19 en `data-model.md` §10 —CR-19 es el evento de baja de cuenta, con schema propio (T049) y contract test (T043)—; contratos propios **definidos primero** y publicados en `api-general` antes de implementar (T049); contract testing como gate de deploy | `api-general` incompleta: los contratos se están **definiendo**, no consumiendo. La señalización de recálculo propia (FR-035) usa un Stream de Redis interno (RD-100), que **no** es contrato entre repositorios. El evento de baja de cuenta (CR-19, DEP-12) **sí** lo es y debe definirse primero en `api-general` |
-| **III. Cómputo pesado fuera del request path** (NN) | Top-N materializado; popularidad materializada (FR-033a4); el camino normal de lectura solo lee Redis, con Postgres únicamente como respaldo degradado ante miss (RD-96); el endpoint de escritura tiene **prohibición explícita** de calcular (FR-089b) | **Tensión resuelta por enmienda** (constitución **v1.1.0**, RD-98): el Principio III declara ahora la escritura de declaración como su **única excepción**, con los límites de FR-089b. Pendiente la aprobación de la enmienda por PR (Governance) |
+| **III. Cómputo pesado fuera del request path** (NN) | Top-N materializado; popularidad materializada (FR-033a4); el camino normal de lectura solo lee Redis, con Postgres únicamente como respaldo degradado ante miss (RD-96); el endpoint de escritura tiene **prohibición explícita** de calcular (FR-089b) | **Tensión resuelta por enmienda** (constitución **v1.1.0**, RD-98): el Principio III declara ahora la escritura de declaración como su **única excepción**, con los límites de FR-089b. Enmienda **aprobada** en el PR #77 (Governance; RD-112) |
 | **IV. Pipeline unidireccional** | Data Transformer solo lee de `api-general`; sin escritura de vuelta | — |
 | **V. Gobernanza del motor híbrido** | Configuración versionada, una sola versión activa por entorno, sin A/B en MVP | — |
 | **VI. Testing obligatorio y contract testing** (NN) | pytest + testcontainers; contract tests bloquean el deploy | — |
 | **VII. Observabilidad y resiliencia asíncrona** | Reintento con backoff exponencial (máx. 5) → DLQ; métricas de cuota, obsolescencia y sincronización | — |
 
-**Resultado** *(revisado 2026-09-28)*: **sin violaciones, condicionado a la aprobación de la enmienda
-v1.1.0 y de su aclaración v1.1.1** (RD-111: el Principio III nombra los dos disparadores del recálculo). La tensión que registraba esta sección —la escritura de declaración frente al Principio III—
+**Resultado** *(revisado 2026-09-29)*: **sin violaciones**. La enmienda v1.1.0 y su aclaración v1.1.1
+(RD-111: el Principio III nombra los dos disparadores del recálculo) quedaron aprobadas en el PR #77, con
+la revisión de HingusPingus del 2026-09-28, registrada después del merge (RD-112). La tensión que registraba esta sección —la escritura de declaración frente al Principio III—
 se resolvió enmendando el principio (RD-98), que era la única vía: la constitución prevalece sobre la
 spec y una excepción al principio exige enmendarlo (Governance). La otra excepción, el cómputo en la
 carga de configuración, no toca el request path.
@@ -470,7 +471,7 @@ mismo día:
 
 | Conflicto | Textos en tensión | Resolución | Tareas |
 |---|---|---|---|
-| Escritura de declaración en una API «estrictamente de solo lectura» | FR-089 ↔ constitución, Principio III | ✅ Constitución **v1.1.0**, única excepción (RD-98). **Falta aprobar la enmienda por PR** | T053 |
+| Escritura de declaración en una API «estrictamente de solo lectura» | FR-089 ↔ constitución, Principio III | ✅ Constitución **v1.1.0**, única excepción (RD-98). Enmienda aprobada en el PR #77 (RD-112) | T053 |
 | Peso del consumo en el perfil | RD-73, T004 ↔ FR-022b, US5-8, SC-019, T008 | ✅ Se elimina el peso (RD-99) | T004, T008 |
 | Canal de la señalización de recálculo propia | FR-035, FR-089b, T020, T022, T051 ↔ Principio II | ✅ Stream de Redis interno `recompute:requests` (RD-100) | T018, T020, T022, T027, T051, T053 |
 | Disparo de la supresión y dónde vive su estado | FR-091…FR-095 sin origen ni entidad | ✅ Evento de baja (CR-19, DEP-12) y `user_suppressions` (RD-101). **Falta el contrato en `api-general`** | T003, T029, T058, T059 |

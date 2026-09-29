@@ -1,6 +1,6 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-27 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -631,7 +631,7 @@ por el mismo motivo que `sync_runs`.
 |---|---|---|---|---|
 | `event_id` | UUID | No | Identidad | **PK**. Provisto por `api-general` en el evento (FR-061). *(Citaba DEP-3, identificador retirado y vacante.)* |
 | `processed_at` | timestamptz | No | Operativo | **Forense**: reconstruir la secuencia de procesamiento en un incidente. No sostiene lógica (criterio RD-6) |
-| `result` | enum(`recomputed`,`skipped_no_shared_tag`,`signal_recorded`,`skipped_not_materialized`,`dlq`) | No | Operativo | Consumidor declarado: tasa de DLQ y de omisión por falta de tag compartido — auditoría **accionable** de FR-010c (criterio RD-9). `signal_recorded`: señal persistida sin alcanzar el umbral de FR-080a. `skipped_not_materialized`: el usuario o el ítem de la señal aún no están materializados —ítem no sincronizado todavía, o usuario rechazado en la ingesta por §7.5— (edge cases de `spec.md`); la señal no puede persistirse por las FK y llegará por la sincronización. Ambos agregados 2026-09-27 (RD-95): sin ellos, un evento que no recalcula no tenía resultado representable |
+| `result` | enum(`recomputed`,`skipped_no_shared_tag`,`signal_recorded`,`skipped_not_materialized`,`dlq`,`suppressed`) | No | Operativo | Consumidor declarado: tasa de DLQ y de omisión por falta de tag compartido — auditoría **accionable** de FR-010c (criterio RD-9). `signal_recorded`: señal persistida sin alcanzar el umbral de FR-080a. `skipped_not_materialized`: el usuario o el ítem de la señal aún no están materializados —ítem no sincronizado todavía, o usuario rechazado en la ingesta por §7.5— (edge cases de `spec.md`); la señal no puede persistirse por las FK y llegará por la sincronización. Ambos agregados 2026-09-27 (RD-95): sin ellos, un evento que no recalcula no tenía resultado representable. `suppressed`: evento de baja de cuenta procesado (FR-091a); solo marca el evento, el resultado de la supresión vive en `user_suppressions` (§2.15). Agregado 2026-09-29 (RD-112, migración `0002`) |
 | `expires_at` | timestamptz | No | Funcional | Retención configurable (FR-068). Lo consume la purga |
 
 **Índices**: PK — la única consulta es pertenencia por `event_id` · `idx_processed_expires
@@ -973,7 +973,10 @@ la constancia de FR-095— y funcionar como **lápida**: la sincronización no r
 **Índices**: PK — el worker consulta la marca por `user_id` inmediatamente antes de escribir
 (FR-092a), y la ingesta la consulta como lápida · `idx_suppressions_open (requested_at) WHERE state <>
 'completed'` — sirve la métrica de supresiones sin constancia, **`suppressions_unverified_total`**
-(FR-095a, nombrada en RD-111), cuyo valor esperado es 0.
+(FR-095a, nombrada en RD-111), cuyo valor esperado es 0. **Definición** (RD-112): cuenta toda fila con
+`state <> 'completed'`, es decir las `failed` **y** las `in_progress`; una supresión en curso es
+transitoria, y el período de gracia lo pone el `for: 30m` de la alerta `SuppressionsUnverified`, no la
+métrica.
 
 **Integridad**: `CHECK ((state = 'completed') = (verified_at IS NOT NULL))`. La fila **no se borra**:
 es la constancia, y solo contiene el identificador y marcas temporales, que es exactamente lo que
@@ -4795,6 +4798,43 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-112 — Cierre de los hallazgos del segundo análisis (U5, A5, I6, I7, I8, G1)
+
+**Fecha**: 2026-09-29 · **Origen**: `/speckit-analyze` sobre el commit 0f3ede5 (seis hallazgos: cuatro
+medios, dos bajos). U5 y A5 se resolvieron **en la implementación** (T058, T042) sin volcarse a los
+documentos; este registro los vuelca · **Tipo**: registro de decisiones ya implementadas y corrección de
+listas
+
+**Decisiones**:
+1. **Idempotencia del evento de baja** (U5): el evento se registra en `processed_events` con el mismo
+   mecanismo que `recomendacion.actualizar` (§7.11), con un valor nuevo de `result`, **`suppressed`**
+   (migración `0002_processed_suppressed`). `processed_events` solo marca que el evento se procesó; el
+   resultado de la supresión —completada o fallida visible— vive en `user_suppressions`. La lápida de
+   §2.15 vuelve inocuo además un segundo evento con otro `event_id` para el mismo usuario. Se descartó la
+   alternativa de apoyarse solo en la fila de `user_suppressions`: habría dejado al evento de baja fuera
+   de la disciplina de idempotencia por `event_id` que FR-091a exige.
+2. **Definición de `suppressions_unverified_total`** (A5): cuenta toda supresión con `state <>
+   'completed'`, incluidas las que están en curso. El período de gracia **no** está en la métrica sino en
+   la alerta: `SuppressionsUnverified` exige `for: 30m`. Una supresión que sigue abierta pasado ese plazo
+   está trabada o fallida. **Condición de revisión**: si las bajas llegan con una frecuencia que mantiene
+   el gauge por encima de 0 durante 30 minutos seguidos sin que ninguna supresión se trabe, separar la
+   métrica en abiertas por más del período de gracia y fallidas.
+3. **Un solo nombre** (I6): T042 y T059 citan `suppressions_unverified_total` con la definición del
+   punto 2. «Sin constancia registrada» y «verificación fallida» no eran el mismo conjunto.
+4. **Listas de T004** (I7): `fallback_stored_size` entra al contenido de `v1.yaml` y
+   `recompute_requests_max_deliveries`, a los parámetros operativos. Ya figuraban en sus criterios.
+5. **Archivos de T049** (I8): se agrega `contracts/usuario-eliminado.schema.json`, que su propio criterio
+   exige.
+6. **Aprobación de la constitución** (G1): el PR #77 (enmienda v1.1.0 + v1.1.1), de albanofazzito, tiene
+   la revisión **APPROVED** de HingusPingus del 2026-09-28, registrada después del merge. Se actualizan
+   las líneas que la daban por pendiente en `tasks.md`, `plan.md` y la matriz de trazabilidad.
+
+**Verificación**: sin cambios de código; la migración `0002` y la alerta ya existían con estos
+comportamientos (`tests/integration/test_supresion_aborta_recalculo.py`,
+`tests/integration/test_alerts.py`).
+
+---
 
 ### RD-111 — Remediación del análisis de consistencia del 2026-09-28
 
