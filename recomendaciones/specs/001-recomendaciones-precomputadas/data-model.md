@@ -4799,6 +4799,27 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
+### RD-113 — Contratos acordados, `main` sin protección de rama y usuarios con `region` y `birth_date` desde el alta
+
+**Fecha**: 2026-09-29 · **Origen**: decisiones del autor · **Tipo**: gobernanza y dependencia externa
+
+**Decisiones**:
+1. **Contratos acordados por diálogo personal** con `api-general` (Principio II): las propuestas de T049
+   se dan por publicadas y aprobadas; el registro queda en `contracts/README.md`. Siguen abiertos, a la
+   espera de su respuesta: la revisión de `docs/contracts/required-fields.md` (T047), la fecha y el
+   checkpoint del evento de baja (DEP-12) y el nombre definitivo del evento de actualización, que
+   `api-general` propone como `recomendacion.actualizar.v3` (schema 3.0.0).
+2. **`main` sin protección de rama por ahora**. El CI corre en cada PR, pero ningún check es obligatorio
+   en GitHub: que «falla en CI bloquea el merge» (constitución, Flujo de Desarrollo) se cumple **por
+   disciplina del equipo**, no técnicamente. Los criterios de T043 y T045 que dependen de la protección
+   quedan **diferidos**, no cumplidos.
+3. **Todo usuario tiene `region` y `birth_date` desde el alta**, sin excepciones. DEP-11 se satisface por
+   construcción: no hay usuarios preexistentes sin `region` que requieran backfill. El rechazo en la
+   ingesta (§7.5, FR-079) **se conserva** como defensa: si el origen incumpliera, el registro se rechaza y
+   se cuenta en `contract_violations_total`, en lugar de materializarse incompleto.
+
+---
+
 ### RD-112 — Cierre de los hallazgos del segundo análisis (U5, A5, I6, I7, I8, G1)
 
 **Fecha**: 2026-09-29 · **Origen**: `/speckit-analyze` sobre el commit 0f3ede5 (seis hallazgos: cuatro
