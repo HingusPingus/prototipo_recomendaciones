@@ -1,0 +1,232 @@
+# Alertas operativas de `recomendaciones` (T042). Reglas de Prometheus.
+#
+# Cada alerta: umbral y responsable tomados de data-model.md (§4.4, §7.5.1, §7.7, §7.9, §7.10, §7.11,
+# §7.12) o de la tarea; justificación escrita del umbral (`justification`); entrada en docs/runbook.md
+# con el primer paso de diagnóstico (`runbook`). Probadas induciendo su condición:
+# tests/integration/test_alerts.py (promtool + cadena viva con Prometheus real).
+#
+# `exclusions_orphaned_permanent_total` NO tiene alerta, a propósito: FR-068d1 la declara informativa y
+# sin umbral —con la purga por retención, la orfandad es el régimen normal—.
+#
+# La justificación de cada umbral requiere REVISIÓN HUMANA (T042): el valor está argumentado, no calibrado.
+
+groups:
+  - name: recomendaciones.frescura
+    rules:
+      - alert: CatalogSyncStale
+        expr: time() - catalog_sync_last_success_timestamp > 93600
+        for: 10m
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: El catálogo no se sincroniza con éxito hace más de 26 horas
+          justification: "§7.7 fija > 26 h: la sincronización es diaria, y 2 h de margen absorben una corrida demorada sin tolerar una perdida. Pasado ese punto altas y retiros no se reflejan y un ítem retirado se sigue recomendando."
+          runbook: docs/runbook.md#catalogsyncstale
+      - alert: PopularityStale
+        expr: time() - catalog_popularity_last_success_timestamp > 93600
+        for: 10m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: La popularidad no se recalcula hace más de 26 horas
+          justification: "§7.7 fija > 26 h con el mismo criterio que la sincronización: el batch es diario y su falla congela en silencio el ranking del respaldo (RD-11); no afecta a la seguridad, por eso es warning."
+          runbook: docs/runbook.md#popularitystale
+      - alert: AgeRefreshStale
+        expr: time() - age_refresh_last_success_timestamp > 93600
+        for: 10m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: El job de refresco etario no completa una corrida hace más de 26 horas
+          justification: "§7.5.1 fija > 26 h y reemplaza a age_ordinal_staleness_seconds, que no disparaba con el job muerto. El desfasaje es siempre conservador (menos contenido, nunca más): warning, no crítica."
+          runbook: docs/runbook.md#agerefreshstale
+      - alert: VectorRecomputeLag
+        expr: vector_recompute_lag_seconds > 93600
+        for: 10m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: Hay vectores de la versión activa sin recalcular hace más de 26 horas
+          justification: "§7.9 fija > 26 h sobre la versión activa solamente (las anteriores tienen computed_at viejo por definición). Indica que el job de vocabulario reportó éxito omitiendo filas: degrada calidad, no corrección."
+          runbook: docs/runbook.md#vectorrecomputelag
+      - alert: VocabTransitionStalled
+        expr: vocab_transition_progress < 1
+        for: 2h
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: Transición de vocabulario detenida a mitad de camino
+          justification: "§7.9 fija estancamiento > 2 h: una transición completa sobre el catálogo declarado (10⁴–10⁵ ítems) toma minutos; dos horas sin llegar a 1 solo se explican por una corrida interrumpida."
+          runbook: docs/runbook.md#vocabtransitionstalled
+
+  - name: recomendaciones.worker
+    rules:
+      - alert: DeadLetterGrowth
+        expr: sum(increase(reco_dlq_messages_total[30m])) > 5
+        for: 15m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: Crecimiento sostenido de la dead-letter
+          justification: "Un mensaje aislado en DLQ es un payload inválido puntual y queda auditado; más de 5 en 30 minutos sostenidos durante 15 es un productor roto o un fallo permanente del worker, que exige intervención antes de que la cola de reproceso manual se vuelva inmanejable."
+          runbook: docs/runbook.md#deadlettergrowth
+      - alert: DeletionEventsDeadLettered
+        expr: max(reco_dead_letter_depth{queue=~".*usuario-eliminado\\.dlq"}) > 0
+        for: 15m
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: Hay eventos de baja de cuenta en dead-letter
+          justification: "Cada mensaje en esa DLQ es una supresión que no se ejecutó (FR-091): retener datos de quien pidió ser eliminado no admite umbral mayor que cero. El broker también manda ahí los vencidos por TTL o por x-delivery-limit sin pasar por el consumidor, así que reco_dlq_messages_total no alcanza. Los 15 minutos cubren un reproceso manual en curso."
+          runbook: docs/runbook.md#deletioneventsdeadlettered
+      - alert: QueueDepthGrowth
+        expr: max by (queue) (reco_queue_depth) > 1000
+        for: 15m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: La cola de eventos crece sin drenarse
+          justification: "Con el objetivo de recálculo ≤ 2 s p95 por usuario, 1000 eventos pendientes son más de media hora de atraso para un worker; sostenido 15 minutos distingue un pico de tráfico de un consumo detenido."
+          runbook: docs/runbook.md#queuedepthgrowth
+      - alert: SignalIngestLag
+        expr: histogram_quantile(0.95, sum by (le) (rate(signal_ingest_lag_seconds_bucket{source="evento"}[15m]))) > 3600
+        for: 15m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: El p95 del rezago de ingesta por evento supera una hora
+          justification: "§7.10 fija p95 > 1 h en la vía de evento: sin sincronización de por medio, un desfasaje así es reloj del origen desviado o cola acumulada en el broker; segmentar por source permite distinguirlos."
+          runbook: docs/runbook.md#signalingestlag
+      - alert: ExclusionResolveLag
+        expr: exclusion_resolve_lag_seconds > 3600
+        for: 5m
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: Hay señales que no llegaron al conjunto de exclusión hace más de una hora
+          justification: "§7.12 fija > 1 h. Es degradación de un invariante de seguridad (DI-3): un ítem ya rechazado puede volver a recomendarse. Por eso es crítica y con for corto."
+          runbook: docs/runbook.md#exclusionresolvelag
+
+  - name: recomendaciones.api
+    rules:
+      - alert: RedisUnavailable503
+        expr: sum(rate(reco_unavailable_responses_total[5m])) > 0.1
+        for: 5m
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: La API responde 503 por caché o filtros no disponibles
+          justification: "Redis caído no es un modo degradado: la API responde 503 y no sirve nada (FR-065). Más de 6 respuestas 503 por minuto durante 5 minutos excluye un reinicio breve de Redis y significa que api-general no está recibiendo recomendaciones."
+          runbook: docs/runbook.md#redisunavailable503
+      - alert: HitRateDrop
+        expr: sum(rate(reco_cache_hits_total{result_type="personalized"}[15m])) / sum(rate(reco_cache_hits_total[15m])) < 0.5
+        for: 30m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: Menos de la mitad de las respuestas son personalizadas vigentes
+          justification: "En régimen, la mayoría de las lecturas de usuarios declarados deberían ser personalizadas; por debajo del 50 % sostenido 30 minutos, el worker no está reponiendo resultados o hubo una pérdida de caché sin warm-up. El umbral es inicial y se recalibra con tráfico real."
+          runbook: docs/runbook.md#hitratedrop
+      - alert: ConfigVersionInconsistent
+        expr: count(count by (config_version) (reco_active_config_version)) > 1
+        for: 10m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: Las instancias corren versiones de configuración del motor distintas
+          justification: "Debe haber exactamente una versión activa por entorno (FR-025b). Durante un despliegue conviven dos unos minutos; más de 10 indica un rollout trabado y resultados calculados con pesos distintos."
+          runbook: docs/runbook.md#configversioninconsistent
+      - alert: RetiredSetLarge
+        expr: max by (module) (retired_set_size) > 10000
+        for: 1h
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: El set de retirados supera los 10 000 ítems
+          justification: "§4.4 fija > 10 000: a esa escala el repoblado horario deja de ser trivial y una tasa de retiro tan alta sugiere listados incompletos del origen (CR-9) antes que retiros reales. Verificar sync_volume_delta_ratio primero."
+          runbook: docs/runbook.md#retiredsetlarge
+
+  - name: recomendaciones.contrato
+    rules:
+      - alert: ContractViolationBirthDate
+        expr: sum(increase(contract_violations_total{field="birth_date"}[1h])) > 0
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: api-general emitió usuarios sin birth_date (CR-1)
+          justification: "§7.5: valor esperado exactamente 0. No mide un fenómeno con umbral arbitrario sino un incumplimiento binario de contrato que deja usuarios fuera del sistema; cualquier valor > 0 alerta."
+          runbook: docs/runbook.md#contractviolationbirthdate
+      - alert: ContractViolationRegion
+        expr: sum(increase(contract_violations_total{field="region"}[1h])) > 0
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: api-general emitió usuarios sin region ISO válida (CR-5)
+          justification: "§7.6 (RD-52): contador propio y separado del de birth_date, valor esperado 0. Desde que la región es obligatoria, cada violación deja a un usuario sin recomendaciones; DEP-11 es el escenario de activación masiva."
+          runbook: docs/runbook.md#contractviolationregion
+      - alert: ContractViolationInteractionId
+        expr: sum(increase(contract_violations_total{field="origin_interaction_id"}[1h])) > 0
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: El origen reutilizó un origin_interaction_id para otro hecho (FR-029e1)
+          justification: "§7.10: valor esperado 0. Un identificador reutilizado hace perder una transición en silencio; nunca se absorbe, se rechaza y se alerta."
+          runbook: docs/runbook.md#contractviolationinteractionid
+      - alert: SyncVolumeDrop
+        expr: min by (entity) (sync_volume_delta_ratio) < 0.9
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: El volumen sincronizado cayó más del 10 % respecto de la última corrida exitosa
+          justification: "§7.12 fija < 0,9 (RD-53, no calibrado): una caída así es casi siempre una respuesta parcial del origen; la corrida aborta sin marcar retiros y esta alerta pide mirar al origen antes de la próxima."
+          runbook: docs/runbook.md#syncvolumedrop
+      - alert: TagProjectionAnomalies
+        expr: sum(increase(projection_field_anomalies_total{field="tag_name"}[1h])) > 0
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: El origen emite tags vacíos, mal formados o que colisionan
+          justification: "§7.7 fija > 0: los tags alimentan el espacio vectorial y no se normalizan localmente (RD-16); cada anomalía es un ítem con menos insumo de contenido y un reclamo pendiente al proveedor."
+          runbook: docs/runbook.md#tagprojectionanomalies
+      - alert: DeclarableTagsBelowMinimum
+        expr: min by (module) (declarable_tags_total) < 5
+        for: 15m
+        labels: {severity: critical, owner: dueno-de-producto}
+        annotations:
+          summary: El vocabulario elegible de un módulo tiene menos de declared_tags_min tags
+          justification: "DEP-10 (RD-110): con menos de declared_tags_min (5 en v1) tags elegibles, FR-083 impide completar la declaración y FR-088 rechaza a todo usuario nuevo del módulo. Ninguna regla cede: el módulo queda no disponible y hay que saberlo antes que el usuario."
+          runbook: docs/runbook.md#declarabletagsbelowminimum
+
+  - name: recomendaciones.catalogo
+    rules:
+      - alert: CatalogUnrated
+        expr: catalog_unrated_ratio > 0.05
+        for: 1h
+        labels: {severity: warning, owner: dueno-de-producto}
+        annotations:
+          summary: Más del 5 % del catálogo vigente no tiene clasificación etaria declarada
+          justification: "§7.7 fija > 5 %: esa fracción es inalcanzable para menores por el fail-closed etario (FR-051) y la degradación es silenciosa por naturaleza. Se escala al proveedor del catálogo."
+          runbook: docs/runbook.md#catalogunrated
+      - alert: CatalogUnvectorized
+        expr: catalog_unvectorized_ratio > 0.1
+        for: 1h
+        labels: {severity: warning, owner: dueno-de-producto}
+        annotations:
+          summary: Más del 10 % del catálogo vigente no tiene vector bajo la versión activa
+          justification: "§7.9 fija > 10 %. Tras RD-60 no existen vigentes sin tags, de modo que mide rezago propio de vectorización: esa fracción no participa de α ni de γ (la mitad del score)."
+          runbook: docs/runbook.md#catalogunvectorized
+
+  - name: recomendaciones.datos
+    rules:
+      - alert: AgeStaleConfigUsers
+        expr: age_stale_config_users_total > 0
+        for: 1h
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: Hay ordinales etarios derivados bajo una escala no compatible con la activa
+          justification: "§7.5.1: > 0 fuera de una migración en curso. El for de una hora absorbe la ventana de migración de un cambio de catálogo; pasado ese tiempo, esos usuarios reciben 503 (DI-23) hasta rederivarse."
+          runbook: docs/runbook.md#agestaleconfigusers
+      - alert: SignalsPurgeDeferred
+        expr: sum(increase(signals_purge_deferred_total[1d])) > 0
+        for: 1d
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: La purga difiere consumos por falta de su exclusión materializada
+          justification: "§7.10 fija > 0 sostenido: la purga se protege sola (FR-068c), pero un valor persistente durante un día entero es una fuga en la materialización de exclusiones aguas arriba que no se arregla sola."
+          runbook: docs/runbook.md#signalspurgedeferred
+      - alert: UserDeletionResidualKeys
+        expr: sum(increase(user_deletion_residual_keys_total[1h])) > 0
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: Una supresión dejó residuos en la caché
+          justification: "§7.11 fija > 0: una supresión incompleta es peor que ninguna, porque existe constancia de haberla ejecutado. Denominador acotado a la supresión en curso."
+          runbook: docs/runbook.md#userdeletionresidualkeys
+      - alert: SuppressionsUnverified
+        expr: suppressions_unverified_total > 0
+        for: 30m
+        labels: {severity: critical, owner: guardia-de-plataforma}
+        annotations:
+          summary: Hay supresiones sin constancia de verificación
+          justification: "FR-095a: valor esperado 0, con observador y responsable. El for de 30 minutos es el período de gracia de una supresión en curso (hallazgo A5 del análisis: la métrica cuenta también las que están en progreso); pasado ese tiempo, la supresión está trabada o fallida."
+          runbook: docs/runbook.md#suppressionsunverified

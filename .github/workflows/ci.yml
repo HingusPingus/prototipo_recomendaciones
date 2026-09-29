@@ -1,0 +1,135 @@
+# Pipeline de CI con gates bloqueantes (T045, Principio VI, FR-048, FR-055).
+#
+# Vive en la raíz del repositorio git porque GitHub Actions solo lee `.github/workflows/` desde ahí; el
+# paquete está en `recomendaciones/`. Ningún job tolera fallos ni lleva una condición `if:` que un PR pueda
+# activar: `tests/unit/test_ci_workflow.py` lo verifica. Que un gate roto impida el merge exige además
+# marcar el job `gates` como *required status check* en la protección de rama (configuración de GitHub,
+# no de este archivo; ver docs/runbook.md → CI).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: recomendaciones
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  # --- Gates rápidos, sin contenedores ------------------------------------------------------------
+  config:
+    name: config — toda vN.yaml valida contra el loader
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      - run: |
+          python - <<'EOF'
+          from recomendaciones.config.loader import ENGINE_CONFIG_DIR, load_engine_config
+          files = sorted(ENGINE_CONFIG_DIR.glob("v*.yaml"))
+          assert files, "no hay configuraciones del motor"
+          for path in files:
+              cfg = load_engine_config(path)
+              print(f"{path.name}: {cfg.version_label} {cfg.config_version}")
+          EOF
+
+  architecture:
+    name: arquitectura (T006) — INV-1, FR-068e, SC-012
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      - run: pytest tests/unit/test_architecture.py -q
+
+  unit-coverage:
+    name: unitarios + cobertura de engine/ (umbral bloqueante)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      # engine/ incluye postprocess.py. Línea base medida: 98 %; el umbral deja margen sin permitir erosión.
+      - run: >-
+          pytest tests/unit tests/invariants/test_age_filter.py tests/invariants/test_exclusion.py
+          tests/invariants/test_pipeline_order.py -q
+          --cov=recomendaciones.engine --cov-report=term-missing --cov-fail-under=95
+
+  mutation:
+    name: mutación de postprocess (edad y exclusión)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      - run: python tools/mutation_postprocess.py
+
+  # --- Gates con infraestructura real (testcontainers: Postgres+pgvector, Redis, RabbitMQ) ---------
+  invariants:
+    name: invariantes (T017, T052)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      - run: pytest tests/invariants -q
+
+  contract:
+    name: contratos (T043) — api-general y OpenAPI propio
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      - run: pytest tests/contract -q
+
+  critical:
+    name: casos críticos (T044)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      - run: pytest tests/integration/test_critical_scenarios.py -v
+
+  integration:
+    name: integración (resto)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      - run: pytest tests/integration -q --deselect tests/integration/test_critical_scenarios.py
+
+  # --- Agregado: el único check que la protección de rama necesita exigir -------------------------
+  # `always()` es deliberado y es la única condición del archivo: un job con `needs` fallidos se marca
+  # «skipped», y GitHub cuenta un check requerido «skipped» como aprobado. Así, el agregado corre siempre
+  # y falla salvo que todos los gates hayan terminado en `success`.
+  gates:
+    name: gates
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [config, architecture, unit-coverage, mutation, invariants, contract, critical, integration]
+    steps:
+      - working-directory: .
+        run: |
+          results='${{ toJSON(needs.*.result) }}'
+          echo "$results"
+          echo "$results" | python3 -c 'import json,sys; r=json.load(sys.stdin); sys.exit(0 if r and all(x == "success" for x in r) else 1)'

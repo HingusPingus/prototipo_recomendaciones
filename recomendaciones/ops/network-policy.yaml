@@ -1,0 +1,23 @@
+# Restricción de red de la API de Recomendaciones (T034, FR-008, FR-060, SC-012).
+# La API no se publica a internet ni a los frontends: solo `api-general` puede alcanzarla.
+# Verificado automáticamente por tests/contract/test_auth.py::test_network_restriction_is_declared_and_auditable.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: recomendaciones-api-ingress
+  labels:
+    app: recomendaciones-api
+spec:
+  podSelector:
+    matchLabels:
+      app: recomendaciones-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-general
+      ports:
+        - protocol: TCP
+          port: 8000
