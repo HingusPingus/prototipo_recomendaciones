@@ -4,6 +4,8 @@ Sincroniza los issues de tarea con GitHub a partir de .issues/manifest.json (lo 
 
 Idempotente de verdad: cada tarea se busca por su ID en el título de los issues existentes. Si existe,
 se actualiza (título, cuerpo, milestone y etiquetas); si no, se crea. Nunca se crea un duplicado.
+El milestone se asigna por la API REST y por número: `gh issue edit --milestone` no encuentra un milestone
+cerrado, y link_and_epics.py cierra el de todo épico terminado.
 Además crea los milestones y etiquetas que falten y cierra como «no planeado» el issue de toda tarea
 retirada (hoy T036). El estado sigue al índice de tasks.md: el issue de una tarea tildada (`- [X]`) se cierra
 como completado y el de una tarea destildada se reabre.
@@ -69,6 +71,8 @@ def main():
                          sorted((curl & MANAGED) - set(m["labels"]))))
         else:
             plan.append(("create", tid))
+        if (by_tid.get(tid, {}).get("milestone") or {}).get("title") != m["milestone"]:
+            plan.append(("setms", tid))
         state = by_tid.get(tid, {}).get("state", "OPEN")
         if m["done"] and state == "OPEN":
             plan.append(("done", tid))
@@ -100,18 +104,22 @@ def main():
             _, tid, num, add, rem = p
             m = MAN[tid]
             args = ["issue", "edit", str(num), "--repo", REPO, "--title", m["title"],
-                    "--body-file", str(BASE / f".issues/{tid}.md"), "--milestone", m["milestone"]]
+                    "--body-file", str(BASE / f".issues/{tid}.md")]
             for l in add: args += ["--add-label", l]
             for l in rem: args += ["--remove-label", l]
             gh(*args)
         elif kind == "create":
             tid = p[1]; m = MAN[tid]
             url = gh("issue", "create", "--repo", REPO, "--title", m["title"],
-                     "--body-file", str(BASE / f".issues/{tid}.md"), "--milestone", m["milestone"],
+                     "--body-file", str(BASE / f".issues/{tid}.md"),
                      "--label", ",".join(m["labels"])).strip().splitlines()[-1]
             by_tid[tid] = {"number": int(url.rsplit("/", 1)[1]), "url": url}
         elif kind == "close":
             gh("issue", "close", str(p[2]), "--repo", REPO, "--reason", "not planned", "--comment", p[3])
+        elif kind == "setms":
+            ms_num = {x["title"]: x["number"] for x in json.loads(gh("api", f"repos/{REPO}/milestones?state=all&per_page=100"))}
+            gh("api", "-X", "PATCH", f"repos/{REPO}/issues/{by_tid[p[1]]['number']}",
+               "-F", f"milestone={ms_num[MAN[p[1]]['milestone']]}")
         elif kind == "done":
             gh("issue", "close", str(by_tid[p[1]]["number"]), "--repo", REPO, "--reason", "completed",
                "--comment", "Tarea tildada en tasks.md: implementada y en `main`.")

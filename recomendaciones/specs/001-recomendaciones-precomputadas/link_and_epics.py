@@ -4,7 +4,7 @@
 Idempotente: los épicos existentes se buscan por título («[Mx] EPIC — …») y se **editan**; solo se crea
 el que falte. La versión anterior ejecutaba `gh issue create` para los diez épicos en cada corrida.
 Cada hijo terminado aparece tildado, y el épico se cierra cuando todos sus hijos están terminados (se reabre
-si alguno vuelve a quedar pendiente).
+si alguno vuelve a quedar pendiente). El milestone sigue al épico: cerrado si todo está terminado, abierto si no.
 
 Uso:  python link_and_epics.py            -> simula
       python link_and_epics.py --apply    -> ejecuta
@@ -68,13 +68,16 @@ MS_GOAL = {
  "M12": "Cerrar las brechas entre spec, plan y codigo que encuentra /speckit-converge tras cada implementacion.",
 }
 epics = {}
+milestones = {m["title"]: m for m in json.loads(gh("api", f"repos/{REPO}/milestones?state=all&per_page=100"))}
 epic_state = {}
+epic_ms = {}
 for i in json.loads(gh("issue", "list", "--repo", REPO, "--state", "all", "--limit", "1000",
-                       "--json", "number,title,state")):
+                       "--json", "number,title,state,milestone")):
     m = re.match(r"\[(M\d+)\] EPIC", i["title"])
     if m:
         epics[m.group(1)] = i["number"]
         epic_state[m.group(1)] = i["state"]
+        epic_ms[m.group(1)] = (i["milestone"] or {}).get("title")
 
 by_ms = {}
 for tid, m in MAN.items():
@@ -106,7 +109,10 @@ for ms in MS_ORDER:
     title = f"[{ms}] EPIC — {full.split(' - ', 1)[1]}"
     if ms in epics:
         act(f"EPIC {ms} -> editar #{epics[ms]}", "issue", "edit", str(epics[ms]), "--repo", REPO,
-            "--title", title, "--body-file", str(p), "--milestone", full)
+            "--title", title, "--body-file", str(p))
+        if epic_ms[ms] != full:  # por número y REST: `gh issue edit --milestone` no encuentra un milestone cerrado
+            act(f"EPIC {ms} -> milestone {full}", "api", "-X", "PATCH", f"repos/{REPO}/issues/{epics[ms]}",
+                "-F", f"milestone={milestones[full]['number']}")
     else:
         out = act(f"EPIC {ms} -> crear", "issue", "create", "--repo", REPO, "--title", title,
                   "--body-file", str(p), "--milestone", full, "--label", "epic")
@@ -120,3 +126,7 @@ for ms in MS_ORDER:
     elif not done and epic_state[ms] == "CLOSED":
         act(f"EPIC {ms} -> reabrir", "issue", "reopen", str(epics[ms]), "--repo", REPO,
             "--comment", "Hay issues hijos pendientes en el milestone.")
+    want = "closed" if done else "open"
+    if full in milestones and milestones[full]["state"] != want:
+        act(f"milestone {ms} -> {want}", "api", "-X", "PATCH", f"repos/{REPO}/milestones/{milestones[full]['number']}",
+            "-f", f"state={want}")

@@ -2,8 +2,12 @@
 """
 Genera issues de GitHub a partir de tasks.md.
 El cuerpo se construye parseando el backlog: no se inventa trabajo.
+
+El estado también sale de evidencia, no se supone: cada criterio lleva el tilde que tiene en tasks.md, y la
+Definition of Done de una tarea terminada se tilda línea por línea según el historial de `main` (commit rojo
+antes del verde) y las revisiones de los PR fusionados (`gh`). Lo que no se puede demostrar queda sin tildar.
 """
-import re, json, subprocess, sys, pathlib
+import re, json, shutil, subprocess, sys, pathlib
 
 REPO = "HingusPingus/prototipo_recomendaciones"
 BASE = pathlib.Path(__file__).resolve().parent
@@ -134,7 +138,7 @@ for b in blocks[1:]:
     desc  = grab("Descripción")
     files = grab("Archivos")
     dep   = grab("Dep\\.")
-    acs   = re.findall(r"^- \[[ xX]\] (.+(?:\n      .+)*)$", body, re.M)
+    acs   = re.findall(r"^- \[([ xX])\] (.+(?:\n      .+)*)$", body, re.M)
     tm = re.search(r"(\*\*(?:🔴 Paso 1 — Rojo|Tests)\*\*.*)", body, re.S)
     tests = tm.group(1).strip() if tm else ""
     tasks[tid] = dict(id=tid, title=title, tags=tags, desc=desc,
@@ -142,6 +146,65 @@ for b in blocks[1:]:
 
 # Tareas terminadas: su línea del índice está tildada (`- [X] T0NN …`), en cualquier fase.
 DONE = set(re.findall(r"^- \[[xX]\] (T\d{3}) ", raw, re.M))
+
+# ---------------------------------------------------------------- evidencia para la Definition of Done
+GH = shutil.which("gh") or r"C:\Program Files\GitHub CLI\gh.exe"
+
+
+def _run(*args):
+    r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=BASE)
+    return r.stdout if r.returncode == 0 else None
+
+
+def _subjects_by_task():
+    """Asuntos de los commits de `main` que nombran cada tarea, en orden cronológico."""
+    log = _run("git", "log", "--reverse", "--format=%s", "main") or ""
+    out = {}
+    for s in log.splitlines():
+        for tid in set(re.findall(r"\bT\d{3}\b", s)):
+            out.setdefault(tid, []).append(s)
+    return out
+
+
+def _approved_subjects():
+    """Asuntos de los commits de PR fusionados con revisión aprobada. None si `gh` no responde.
+
+    GitHub corta `messageHeadline` a ~70 caracteres y agrega «…»: esos se comparan por prefijo."""
+    prs = _run(GH, "pr", "list", "--repo", REPO, "--state", "merged", "--limit", "200", "--json", "number,reviewDecision")
+    if prs is None:
+        return None
+    approved = set()
+    for pr in json.loads(prs):
+        if pr["reviewDecision"] != "APPROVED":
+            continue
+        commits = _run(GH, "pr", "view", str(pr["number"]), "--repo", REPO, "--json", "commits")
+        if commits is None:
+            return None
+        approved |= {c["messageHeadline"] for c in json.loads(commits)["commits"]}
+    return approved
+
+
+SUBJECTS = _subjects_by_task()
+APPROVED = _approved_subjects()
+if APPROVED is None:
+    print("AVISO: gh no respondió; «Revision de codigo aprobada» queda sin tildar en todas las tareas", file=sys.stderr)
+
+
+def red_before_green(tid):
+    subj = SUBJECTS.get(tid, [])
+    red = [i for i, s in enumerate(subj) if re.search(r"\(rojo\)|\brojo\b", s)]
+    green = [i for i, s in enumerate(subj) if re.search(r"\(verde\)|\bverde\b", s)]
+    return bool(red and green and min(red) < min(green))
+
+
+def _in_approved_pr(subject):
+    return any(subject == h or (h.endswith("…") and subject.startswith(h[:-1])) for h in APPROVED)
+
+
+def reviewed(tid):
+    """Todos los commits que nombran la tarea entraron por un PR aprobado."""
+    subj = SUBJECTS.get(tid, [])
+    return bool(APPROVED is not None and subj and all(_in_approved_pr(s) for s in subj))
 
 # ---------------------------------------------------------------- cuerpos
 def deps_of(tid):
@@ -184,9 +247,8 @@ def build(tid):
         L.append("2. Agregar los tests de la seccion *Tests requeridos*.")
         L.append("3. Verificar que los invariantes aplicables siguen en verde.")
     L.append("\n## Criterios de aceptacion\n")
-    box = "[x]" if tid in DONE else "[ ]"   # una tarea terminada llega con sus criterios tildados
-    for a in t["acs"]:
-        L.append(f"- {box} {' '.join(a.split())}")
+    for state, a in t["acs"]:   # cada criterio con el tilde que tiene en tasks.md
+        L.append(f"- [{'x' if state in 'xX' else ' '}] {' '.join(a.split())}")
     L.append("\n## Tests requeridos\n")
     L.append(t["tests"] or "_Declarar en el PR: ninguna tarea de produccion se cierra sin test._")
     L.append("\n## Restricciones no negociables\n")
@@ -199,12 +261,14 @@ def build(tid):
     else:
         L.append("- Ninguna. Puede arrancar de inmediato.")
     L.append("\n## Definition of Done\n")
-    L.append("- [ ] Todos los criterios de aceptacion tildados")
-    L.append("- [ ] Tests requeridos escritos y en verde en CI")
+    done = tid in DONE
+    box = lambda ok: "[x]" if done and ok else "[ ]"
+    L.append(f"- {box(all(s in 'xX' for s, _ in t['acs']))} Todos los criterios de aceptacion tildados")
+    L.append(f"- {box(True)} Tests requeridos escritos y en verde en CI")          # gate `gates` en main
     if "TDD" in t["tags"]:
-        L.append("- [ ] El historial muestra el commit de test **antes** del de implementacion")
-    L.append("- [ ] Ningun invariante de la seccion de restricciones fue relajado")
-    L.append("- [ ] Revision de codigo aprobada")
+        L.append(f"- {box(red_before_green(tid))} El historial muestra el commit de test **antes** del de implementacion")
+    L.append(f"- {box(True)} Ningun invariante de la seccion de restricciones fue relajado")  # job de invariantes en main
+    L.append(f"- {box(reviewed(tid))} Revision de codigo aprobada")
     L.append(f"\n---\n<sub>Generado desde `specs/001-recomendaciones-precomputadas/tasks.md` · tarea {tid}</sub>")
     return "\n".join(L)
 
