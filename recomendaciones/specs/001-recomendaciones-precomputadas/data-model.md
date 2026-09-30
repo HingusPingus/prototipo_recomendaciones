@@ -1522,7 +1522,8 @@ erDiagram
         smallint min_age_ordinal "NOT NULL, default max (no-apto)"
         text age_config_version FK
         enum age_rating_source
-        timestamptz synced_at
+        timestamptz synced_at "la reescribe cada sincronización"
+        timestamptz first_synced_at "NOT NULL, no se reescribe (T070)"
     }
     item_promotions {
         UUID item_id PK "FK RESTRICT, solo inserción (DI-27)"
@@ -1612,6 +1613,16 @@ erDiagram
         jsonb entity_counts "métrica de volumen (RD-38)"
         text failure_reason "forense"
     }
+    process_runs {
+        bigint id PK "sin FK: bitácora (T066)"
+        text component "transformer o batch:job"
+        timestamptz started_at
+        timestamptz finished_at
+        text status "success o failed (CHECK)"
+        text failure_reason "forense"
+        jsonb metrics "gauges, contadores e histogramas de la corrida"
+        jsonb details "hechos propios del job"
+    }
     processed_events {
         UUID event_id PK "sin FK: bitácora"
         timestamptz processed_at "forense"
@@ -1627,7 +1638,8 @@ erDiagram
 ```
 
 > *ERD corregido el 2026-09-27: la cabecera decía `DerDiagram`, que no es una palabra clave de
-> Mermaid —el diagrama no se renderizaba—, y faltaba `user_declared_tags` (§2.14, RD-68).*
+> Mermaid —el diagrama no se renderizaba—, y faltaba `user_declared_tags` (§2.14, RD-68).
+> Ampliado el 2026-09-30 (T073) con `process_runs` (§2.17, T066) e `items.first_synced_at` (§2.2, T070).*
 
 **Fronteras** — **reconciliadas con §1.1, que es la tabla normativa** (RD-27):
 
@@ -1649,7 +1661,8 @@ erDiagram
 > truncarlas en una reconstrucción, destruyendo el historial que DI-11 protege. La contradicción era
 > peligrosa, no cosmética.
 
-> `sync_runs` y `processed_events` no tienen FK: son bitácoras, no participan del grafo relacional.
+> `sync_runs`, `processed_events` y `process_runs` no tienen FK: son bitácoras, no participan del grafo
+> relacional.
 
 ---
 
@@ -1783,12 +1796,18 @@ flowchart LR
     W --> SUP["user_suppressions"]
     ENG --> UP["user_profiles"]
     ENG --> R["reco:v{cfg}:{user}:{module}<br/>reco:stale:v{cfg}:…"]
+
+    DT -->|"al terminar, también si falla"| RUNS["process_runs<br/>estado y métricas de la corrida"]
+    BJ["Jobs de reco-batch<br/>popularidad · respaldo · warmup · refresco etario<br/>purga · supresiones · auditorías"] -->|"al terminar, también si falla"| RUNS
+    RUNS -.->|"lee cada 30 s y re-expone las métricas"| W
 ```
 
 > *Diagrama corregido el 2026-09-27: dibujaba al Data Transformer escribiendo `item_vectors`,
 > `user_profiles` y `user_exclusions`, contra la regla de escritor único (§1.1, DI-13), y omitía que
 > el worker persiste la señal del evento (RD-95) y materializa su exclusión (RD-96). Ampliado el mismo
-> día con las solicitudes de recálculo (RD-100), la supresión (RD-101) y la promoción (RD-102).*
+> día con las solicitudes de recálculo (RD-100), la supresión (RD-101) y la promoción (RD-102). Ampliado el
+> 2026-09-30 (T073) con `process_runs` (§2.17, T066): la escriben el Data Transformer y cada job de
+> `reco-batch`, y el worker la lee (línea punteada) para re-exponer sus métricas.*
 
 ### 7.2 Lectura y ausencia de resultado precomputado
 

@@ -2990,7 +2990,7 @@ correcto. El CI corre en Linux y no lo detecta. Exenta de TDD: es una tarea de t
 > final de la fase 4 siguen vigentes y no generan tareas.*
 
 - [X] T072 [TDD] [US7] Dejar de incrementar `age_stale_config_users_total` desde la API, en `src/recomendaciones/api/app.py` per data-model §7.5.1 (contradicts)
-- [ ] T073 Agregar `process_runs` e `items.first_synced_at` a los diagramas del modelo de datos, en `specs/001-recomendaciones-precomputadas/data-model.md` per T066, T070 (partial)
+- [X] T073 Agregar `process_runs` e `items.first_synced_at` a los diagramas del modelo de datos, en `specs/001-recomendaciones-precomputadas/data-model.md` per T066, T070 (partial)
 
 ### T072 [TDD] — `age_stale_config_users_total` es un recuento de filas, no un contador de la API
 
@@ -3036,10 +3036,10 @@ Exenta de TDD: es documentación.
 **Dep.**: T066, T070
 
 **Criterios de aceptación**:
-- [ ] §5: la entidad `process_runs`, sin relaciones —como `sync_runs`—, con sus columnas, y
+- [X] §5: la entidad `process_runs`, sin relaciones —como `sync_runs`—, con sus columnas, y
       `first_synced_at` en la entidad `items`
-- [ ] §7.1: el Data Transformer y los jobs batch escriben `process_runs`, y el worker la lee para re-exponer
+- [X] §7.1: el Data Transformer y los jobs batch escriben `process_runs`, y el worker la lee para re-exponer
       métricas
-- [ ] Los dos diagramas Mermaid siguen parseando
+- [X] Los dos diagramas Mermaid siguen parseando
 
 **Tests**: verificación del parseo de los diagramas Mermaid del documento.
