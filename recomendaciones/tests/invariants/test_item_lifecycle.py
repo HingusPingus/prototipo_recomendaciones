@@ -254,7 +254,7 @@ def test_retirement_is_not_applied_silently_when_the_retired_set_cannot_be_inval
         volume_delta_ratio=0.9, redelivery_window_hours=48,
     )
     report = pipeline.run()
-    assert report.status == "failed" and "Redis" in (report.reason or "")
+    assert report.status == "failed" and "Redis" in (report.failure_reason or "")
     assert world.status(target) == "available"  # la transacción se revirtió: la próxima corrida lo retira
     with db_factory() as s:
         last = s.execute(sa.text("SELECT status::text, failure_reason FROM sync_runs ORDER BY id DESC LIMIT 1")).one()
