@@ -2776,7 +2776,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] T066 [TDD] [US7] CRITICAL: exponer las métricas de los procesos de una corrida (`reco-transformer`, `reco-batch`) persistiendo su resultado y re-exponiéndolo desde el worker, en `src/recomendaciones/worker/runtime.py` per Constitution VII, FR-044, FR-068d1 (contradicts)
 - [X] T067 CRITICAL: agregar el gate de lint (`ruff`) al CI y dejar `src/` y `tests/` sin errores, en `.github/workflows/ci.yml` per Constitution (Flujo de Desarrollo: «CI obligatorio: linters») (contradicts)
 - [X] T068 [TDD] [US5] Invalidar `retired:{module}` al retirar ítems en la sincronización, en `src/recomendaciones/transformer/pipeline.py` per FR-072, DI-10 (contradicts)
-- [ ] T069 [TDD] Ejecutar la auditoría periódica de DI-28 como job `reco-batch audits`, en `src/recomendaciones/batch/runtime.py` per DI-28 (partial)
+- [X] T069 [TDD] Ejecutar la auditoría periódica de DI-28 como job `reco-batch audits`, en `src/recomendaciones/batch/runtime.py` per DI-28 (partial)
 - [ ] T070 [TDD] [US7] Redefinir `vector_recompute_lag_seconds` como antigüedad del ítem vigente más viejo sin vector, en `src/recomendaciones/transformer/vocabulary_sync.py` per data-model §7.9, T042 (partial)
 - [X] T071 Volver portable a Windows el test de entrypoints, en `tests/unit/test_layout.py` per T001 (partial)
 
@@ -2907,11 +2907,11 @@ solo la llama un test: ningún job de `reco-batch` la ejecuta.
 **Dep.**: T017, T066
 
 **Criterios de aceptación**:
-- [ ] `reco-batch audits` ejecuta la auditoría de DI-28 y queda listado en `JOBS` y en la tabla de jobs del
+- [X] `reco-batch audits` ejecuta la auditoría de DI-28 y queda listado en `JOBS` y en la tabla de jobs del
       runbook con su periodicidad
-- [ ] El resultado se expone como `declared_minimum_violations_total` (valor esperado 0) por el mecanismo de
+- [X] El resultado se expone como `declared_minimum_violations_total` (valor esperado 0) por el mecanismo de
       T066, con una alerta que dispara ante cualquier valor mayor que 0 y su entrada en el runbook
-- [ ] Una violación se registra con `user_id` y módulo, sin datos de la declaración
+- [X] Una violación se registra con `user_id` y módulo, sin datos de la declaración
 
 **🔴 Paso 1 — Rojo** (`tests/integration/test_audits_job.py`, commit propio): una declaración con menos de
 `declared_tags_min` filas propias, insertada saltando el endpoint → `reco-batch audits` la reporta y la

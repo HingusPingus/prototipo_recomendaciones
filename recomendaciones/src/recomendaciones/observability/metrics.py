@@ -69,6 +69,7 @@ SPECS: dict[str, MetricSpec] = {
     "age_threshold_crossings_total": MetricSpec("counter", (), "Usuarios que cruzan un umbral (panel)"),
     "signals_purge_deferred_total": MetricSpec("counter", (), "Consumos no purgados por faltar su exclusión (§7.10)"),
     "exclusions_orphaned_permanent_total": MetricSpec("gauge", (), "Exclusiones permanentes sin señal viva (informativa, sin alerta)"),
+    "declared_minimum_violations_total": MetricSpec("gauge", (), "Declaraciones bajo declared_tags_min; esperado 0 (DI-28, T069)"),
     # --- Configuración (FR-025d) --------------------------------------------------------------------
     "reco_active_config_version": MetricSpec("gauge", ("config_version", "component"), "Versión activa (1 = activa)"),
 }

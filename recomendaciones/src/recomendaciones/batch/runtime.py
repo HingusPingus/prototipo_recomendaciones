@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from recomendaciones.batch.age_threshold_refresh import AgeThresholdRefreshJob
+from recomendaciones.batch.audits import run_declared_minimum_audit
 from recomendaciones.batch.fallback import FallbackJob
 from recomendaciones.batch.popularidad import PopularityJob
 from recomendaciones.batch.purga_senales import SignalPurgeJob
@@ -17,7 +18,7 @@ from recomendaciones.storage.db.process_runs import recorded_run
 from recomendaciones.worker.suppression import SuppressionProcedure, SuppressionSweep
 
 log = logging.getLogger(__name__)
-JOBS = ("popularity", "fallback", "warmup", "age-refresh", "purge-signals", "suppressions")
+JOBS = ("popularity", "fallback", "warmup", "age-refresh", "purge-signals", "suppressions", "audits")
 
 
 def run_job(settings: Settings, args: list[str], **overrides: object) -> int:
@@ -57,3 +58,5 @@ def _dispatch(settings: Settings, runtime, job: str, outcome) -> None:  # noqa: 
             backoff_base_seconds=settings.retry_backoff_base_seconds,
         )
         SuppressionSweep(runtime.factory, procedure, runtime.metrics).run()
+    elif job == "audits":  # T069: auditoría periódica de DI-28 (data-model §6)
+        run_declared_minimum_audit(runtime.factory, runtime.config, runtime.metrics)
