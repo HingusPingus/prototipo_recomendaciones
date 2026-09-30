@@ -4799,20 +4799,29 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
-### RD-113 — Contratos acordados, `main` sin protección de rama y usuarios con `region` y `birth_date` desde el alta
+### RD-113 — Contratos acordados, protección de `main` y usuarios con `region` y `birth_date` desde el alta
 
 **Fecha**: 2026-09-29 · **Origen**: decisiones del autor · **Tipo**: gobernanza y dependencia externa
 
 **Decisiones**:
 1. **Contratos acordados por diálogo personal** con `api-general` (Principio II): las propuestas de T049
-   se dan por publicadas y aprobadas; el registro queda en `contracts/README.md`. Siguen abiertos, a la
+   se dan por publicadas y aprobadas; el registro queda en `contracts/README.md`. El documento de
+   `api-general` del que derivan estas copias es su spec `specs/004-contratos-recomendaciones`, en el
+   estado del 2026-09-29 (commit `4636c17` de ese repositorio) contra el que se redactaron las propuestas
+   de `docs/contracts/`; el acuerdo personal registra la aprobación, no reemplaza a ese documento.
+   *(Referencia agregada el 2026-09-30.)* Siguen abiertos, a la
    espera de su respuesta: la revisión de `docs/contracts/required-fields.md` (T047), la fecha y el
    checkpoint del evento de baja (DEP-12) y el nombre definitivo del evento de actualización, que
    `api-general` propone como `recomendacion.actualizar.v3` (schema 3.0.0).
-2. **`main` sin protección de rama por ahora**. El CI corre en cada PR, pero ningún check es obligatorio
-   en GitHub: que «falla en CI bloquea el merge» (constitución, Flujo de Desarrollo) se cumple **por
-   disciplina del equipo**, no técnicamente. Los criterios de T043 y T045 que dependen de la protección
-   quedan **diferidos**, no cumplidos.
+2. **Protección de `main`** *(corregido el 2026-09-30: decía «`main` sin protección de rama por ahora» y
+   difería los criterios de T017, T043 y T045; era falso desde el 2026-09-28)*. El ruleset `main` del
+   repositorio (id `24128939`, activo desde el 2026-09-28) exige el check **`gates`** —el agregado que falla
+   salvo que los ocho gates de `.github/workflows/ci.yml` terminen en verde— y prohíbe borrar `main` y
+   forzar pushes. Un gate rojo **impide técnicamente** el merge, y un `[skip ci]` deja el check requerido
+   pendiente, así que tampoco lo saltea: los criterios de T017, T043 y T045 que dependían de la protección
+   **se cumplen**. Quedan por disciplina del equipo, no técnicamente, dos cosas que el ruleset no exige: la
+   **revisión** del PR (la constitución pide «trabajo por PR con revisión») y que la rama esté **al día** con
+   `main` antes del merge (`strict` desactivado, que el runbook recomienda activar).
 3. **Todo usuario tiene `region` y `birth_date` desde el alta**, sin excepciones. DEP-11 se satisface por
    construcción: no hay usuarios preexistentes sin `region` que requieran backfill. El rechazo en la
    ingesta (§7.5, FR-079) **se conserva** como defensa: si el origen incumpliera, el registro se rechaza y

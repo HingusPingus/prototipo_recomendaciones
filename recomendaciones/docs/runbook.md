@@ -365,11 +365,15 @@ aprobada sea detectable después. Aumentarlo es configuración normal.
 unitarios con cobertura de `engine/` ≥ 95 %, mutación de `postprocess`, invariantes, contratos, casos
 críticos e integración— y un job agregado `gates` que falla salvo que los ocho terminen en verde.
 
-**Configuración obligatoria en GitHub** (no la puede hacer este archivo): en *Settings → Branches →
-Branch protection rules* de `main`, activar *Require status checks to pass before merging* y marcar como
-requerido el check **`gates`**, con *Require branches to be up to date*. Sin esa regla un gate rojo no
-impide el merge, y un commit con `[skip ci]` deja el PR sin checks: con la regla, el check requerido queda
-pendiente y el merge sigue bloqueado.
+**Configuración obligatoria en GitHub** (no la puede hacer este archivo): una regla sobre `main` que
+exija el check **`gates`**. Sin ella un gate rojo no impide el merge, y un commit con `[skip ci]` deja el PR
+sin checks: con la regla, el check requerido queda pendiente y el merge sigue bloqueado.
+
+**Estado actual** (verificado el 2026-09-30): el ruleset `main` del repositorio (id `24128939`, activo desde
+el 2026-09-28) exige `gates` y prohíbe borrar `main` y forzar pushes. **No** exige que la rama esté al día
+con `main` (`strict` desactivado) ni revisión del PR. Recomendado: activar ambos en *Settings → Rules →
+Rulesets → main* —*Require branches to be up to date before merging* y *Require a pull request before
+merging* con al menos una aprobación—, que es lo que la constitución pide en su Flujo de Desarrollo.
 
 Mutante sobreviviente en el job `mutation`: los tests de invariantes dejaron de detectar una rotura del
 filtro de edad o de exclusión. No se «arregla» el mutante: se escribe el test que lo mata.

@@ -166,7 +166,7 @@ Lo que no depende de este repositorio queda `[ ]` con su motivo. No se marca por
 | Toda tarea `[TDD]` test-first | [x] | Historial de la rama: cada tarea de producción tiene su commit `(rojo)` antes del `(verde)`. T056 es la excepción declarada (la implementación de T008 ya la satisfacía; poder de detección por mutación) |
 | Test de mutación en verde | [x] | `tools/mutation_postprocess.py` |
 | `contracts/` materializado | [x] | `specs/001-recomendaciones-precomputadas/contracts/README.md` |
-| Contract tests como gate bloqueante | [ ] | Diferido (RD-113): el gate existe (`.github/workflows/ci.yml`) y corre en cada PR, pero `main` no tiene protección de rama por ahora; el bloqueo es por disciplina del equipo |
+| Contract tests como gate bloqueante | [x] | `.github/workflows/ci.yml`<br>`tests/unit/test_ci_workflow.py::test_the_aggregate_fails_unless_every_gate_succeeded`<br>`tests/unit/test_ci_workflow.py::test_no_gate_can_be_skipped_or_softened`<br>`docs/runbook.md` (sección CI). El check `gates` es requerido por el ruleset `main` de GitHub desde el 2026-09-28 (RD-113, corregido el 2026-09-30; decía «diferido») |
 | Casos críticos en verde | [x] | `tests/integration/test_critical_scenarios.py` |
 | Configuración trazable, `config_version` en ambas claves, `v1.yaml` valida | [x] | `tests/unit/test_cache_keys.py::test_config_version_is_in_both_fresh_and_stale_keys`<br>`tests/unit/test_config_loader.py::test_v1_loads_with_decided_values` |
 | SC-001 verificado | [x] | `docs/validation/performance-report.md` |

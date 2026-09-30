@@ -289,9 +289,9 @@ pertenecer al Milestone 11)*:
 
 ### Fase 3 — Optimización y cierre
 
-- [ ] T043 Contract testing contra `api-general` como gate de CI en `tests/contract/`
+- [X] T043 Contract testing contra `api-general` como gate de CI en `tests/contract/`
 - [X] T044 Suite de casos críticos obligatorios en `tests/integration/test_critical_scenarios.py`
-- [ ] T045 Pipeline de CI con gates bloqueantes en `.github/workflows/ci.yml`
+- [X] T045 Pipeline de CI con gates bloqueantes en `.github/workflows/ci.yml`
 - [X] T047 [P] Documento de campos requeridos a `api-general` en `docs/contracts/required-fields.md`
 - [ ] T048 Validación final contra el checklist y DoD en `docs/validation/traceability-matrix.md`
 - [X] T050 [P] [US1] Pruebas de carga y verificación de SC-001 en `tests/performance/test_read_latency.py`
@@ -896,7 +896,8 @@ diseño estructural del orden; escrito después, se habría aceptado el orden co
       ítems del conjunto de exclusión, en cualquier respuesta emitida. Son los dos invariantes de
       seguridad de US5 y esta es la tarea que los hace demostrables
 - [X] **SC-018** verificado acá: 0 % de ítems con like, dislike o consumo aparece en el top-N
-- [ ] Corre en CI como **gate bloqueante**: si falla, no hay merge
+- [X] Corre en CI como **gate bloqueante**: si falla, no hay merge — *job `invariants` bajo el check
+      requerido `gates` del ruleset de `main` (RD-113, corregido el 2026-09-30)*
 
 **Tests**: es la tarea de test — consolida y extiende las suites de T013–T016. Verificación de poder
 de detección: **mutar deliberadamente el filtro de edad debe hacer fallar la suite**. Si una mutación
@@ -1857,8 +1858,9 @@ propia contra el OpenAPI publicado. Detecta el drift de contrato **antes** de pr
 - [X] La respuesta de lectura se valida contra el OpenAPI publicado
 - [X] Existe un test que **falla si un campo requerido desaparece** del contrato
 - [X] Cubre las dependencias externas **vigentes**: DEP-1, DEP-2, DEP-5…DEP-11. *(Decía «DEP-1..DEP-6», que incluía la vacante DEP-3 y la resuelta DEP-4 y omitía DEP-7…DEP-11)*
-- [ ] Es gate bloqueante: contract test roto = no hay merge (Principio VI) — *diferido (RD-113): `main`
-      sin protección de rama por ahora; el bloqueo es por disciplina del equipo*
+- [X] Es gate bloqueante: contract test roto = no hay merge (Principio VI) — *el job `contract` alimenta
+      `gates`, check requerido del ruleset de `main` desde el 2026-09-28 (RD-113, corregido el 2026-09-30;
+      decía «diferido»)*
 - [X] **SC-013** — 100 % de los endpoints expuestos y del evento consumido pasa la validación de contrato
 
 **Tests**: es la tarea de test. Verificación: eliminar `signal_type` del schema del doble debe hacerla fallar.
@@ -1909,8 +1911,9 @@ de gustos. Ninguno es opcional. *(Decía «los nueve que el plan declara»; la l
 - [X] **Test de mutación** sobre `engine/postprocess.py`: si una mutación del filtro de edad o de
       exclusión sobrevive, el pipeline falla. Es la verificación de que los tests de T017 tienen poder
       de detección real y no solo cobertura de líneas
-- [ ] Ningún gate puede saltarse con un flag desde el PR — *diferido (RD-113): sin protección de rama,
-      nada impide técnicamente mergear con un gate en rojo*
+- [X] Ningún gate puede saltarse con un flag desde el PR — *ningún job lleva una condición activable
+      desde el PR (`tests/unit/test_ci_workflow.py`) y `gates` es check requerido: un `[skip ci]` lo deja
+      pendiente y el merge sigue bloqueado (RD-113, corregido el 2026-09-30; decía «diferido»)*
 
 **Tests**: verificación: un PR que rompa un invariante no puede mergearse.
 
@@ -2667,9 +2670,10 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 # Definition of Done — habilita `/speckit.implement`
 
 > *Tildada el 2026-09-29 con la evidencia de `docs/validation/traceability-matrix.md` y
-> `docs/validation/fr-coverage.md`. Quedan cuatro ítems abiertos, y ninguno depende de código de este
-> repositorio: el gate bloqueante (diferido por RD-113), la ejecución de prueba del runbook y dos respuestas
-> de `api-general`.*
+> `docs/validation/fr-coverage.md`. Quedan tres ítems abiertos, y ninguno depende de código de este
+> repositorio: la ejecución de prueba del runbook y dos respuestas de `api-general`. El gate bloqueante,
+> que figuraba diferido, se cumple desde el ruleset de `main` del 2026-09-28 (RD-113, corregido el
+> 2026-09-30).*
 
 ## Invariantes (bloqueantes)
 - [X] Cero violaciones de edad en los cinco `result_type` — batería exhaustiva en verde (T017)
@@ -2696,8 +2700,8 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] **Test de mutación en verde**: mutar el filtro de edad o el de exclusión hace fallar la suite
       (T017, T045)
 - [X] `contracts/` materializado con OpenAPI y JSON Schema (T049)
-- [ ] Contract tests en verde como gate bloqueante (T043) — *diferido (RD-113): en verde en CI, pero
-      `main` no tiene protección de rama por ahora*
+- [X] Contract tests en verde como gate bloqueante (T043) — *check requerido `gates` en el ruleset de
+      `main` (RD-113, corregido el 2026-09-30; decía «diferido»)*
 - [X] Los nueve casos críticos en verde (T044)
 - [X] Configuración versionada trazable en cada recomendación servida
 - [X] `config_version` presente en **ambas** familias de clave, vigente y obsoleta (T018)
