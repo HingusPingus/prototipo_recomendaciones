@@ -35,6 +35,7 @@ EXPECTED_TABLES = {
     "user_declared_tags",
     "user_suppressions",
     "item_promotions",
+    "process_runs",  # T066, migración 0004
 }
 
 

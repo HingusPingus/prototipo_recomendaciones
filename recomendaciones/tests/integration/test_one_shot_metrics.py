@@ -17,13 +17,13 @@ from datetime import UTC, date, datetime
 
 import pytest
 import sqlalchemy as sa
-from recomendaciones.worker.process_metrics import ProcessMetricsState, refresh_process_metrics
 
 from recomendaciones.batch.runtime import run_job
 from recomendaciones.config.settings import load_settings
 from recomendaciones.observability.metrics import Metrics
 from recomendaciones.transformer.runtime import run_once
 from recomendaciones.transformer.vocabulary_sync import VocabularySync
+from recomendaciones.worker.process_metrics import ProcessMetricsState, refresh_process_metrics
 from tests.integration import seed
 from tests.support.api_general_double import ApiGeneralDouble
 
