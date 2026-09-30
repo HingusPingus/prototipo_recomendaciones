@@ -1,6 +1,6 @@
 # Revisión de umbrales de alertas (B7, T042)
 
-Revisión humana de las 26 alertas de `ops/alerts.yaml`. Los tests prueban que cada regla dispara y se
+Revisión humana de las 27 alertas de `ops/alerts.yaml`. Los tests prueban que cada regla dispara y se
 apaga con su condición. Lo que falta decidir es si **el valor es razonable**, y eso no se puede
 automatizar.
 
@@ -8,7 +8,7 @@ automatizar.
 
 ## Cómo usarla
 
-1. Revisá las **25 alertas de las secciones 1 y 2**. Tildá cada una al terminarla y marcá **aprobar** o
+1. Revisá las **26 alertas de las secciones 1 y 2**. Tildá cada una al terminarla y marcá **aprobar** o
    **ajustar**. Si es «ajustar», anotá el valor o el cambio que proponés.
 2. **No revises la sección 3** todavía: `VectorRecomputeLag` se redefine en T070. *(Hasta el 2026-09-30,
    once alertas estaban bloqueadas porque su métrica no se exponía; T066 lo corrigió.)*
@@ -129,7 +129,7 @@ automatizar.
   - **A tener en cuenta**: ⚠️ **Funciona en parte**: la cuenta la supresión del worker, pero lo que encuentre el barrido `reco-batch suppressions` no se expone. Sin `for`, a propósito.
   - **Decisión**: ☐ aprobar · ☐ ajustar → ______
 
-## 2. Desbloqueadas por T066: para revisar (10)
+## 2. Desbloqueadas por T066 o nuevas: para revisar (11)
 
 > *Actualizado el 2026-09-30.* Estas alertas no podían dispararse porque su métrica la fija un proceso que
 > corre una vez y termina. Desde T066 cada corrida deja su resultado en `process_runs` y el worker lo expone
@@ -199,6 +199,12 @@ automatizar.
   - **Qué avisa**: La purga difiere consumos por falta de su exclusión materializada
   - **Justificación actual**: §7.10 fija > 0 sostenido: la purga se protege sola (FR-068c), pero un valor persistente durante un día entero es una fuga en la materialización de exclusiones aguas arriba que no se arregla sola.
   - **A tener en cuenta**: El `for: 1d` y la ventana de un día suponen una purga diaria: si la purga corre con otra periodicidad, conviene alinearlos.
+  - **Decisión**: ☐ aprobar · ☐ ajustar → ______
+
+- [ ] **DeclaredMinimumViolations** · warning · dueño `guardia-de-plataforma` *(nueva, T069)*
+  - **Condición**: `declared_minimum_violations_total > 0` durante `5m`
+  - **Qué avisa**: Hay declaraciones de gustos con menos tags propios que el mínimo
+  - **Justificación actual**: DI-28 no lo sostiene el esquema: lo garantiza la transacción de declaración (FR-083) y lo audita este job (T069). Cualquier valor mayor que 0 es una escritura que saltó el endpoint o un defecto; el usuario sigue siendo atendido, por eso es warning. El for de 5 minutos cubre la corrida del job.
   - **Decisión**: ☐ aprobar · ☐ ajustar → ______
 
 ## 3. Bloqueada: no revisar todavía (1)

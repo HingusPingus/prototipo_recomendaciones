@@ -215,6 +215,14 @@ groups:
           summary: La purga difiere consumos por falta de su exclusión materializada
           justification: "§7.10 fija > 0 sostenido: la purga se protege sola (FR-068c), pero un valor persistente durante un día entero es una fuga en la materialización de exclusiones aguas arriba que no se arregla sola."
           runbook: docs/runbook.md#signalspurgedeferred
+      - alert: DeclaredMinimumViolations
+        expr: declared_minimum_violations_total > 0
+        for: 5m
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: Hay declaraciones de gustos con menos tags propios que el mínimo
+          justification: "DI-28 no lo sostiene el esquema: lo garantiza la transacción de declaración (FR-083) y lo audita este job (T069). Cualquier valor mayor que 0 es una escritura que saltó el endpoint o un defecto; el usuario sigue siendo atendido, por eso es warning. El for de 5 minutos cubre la corrida del job."
+          runbook: docs/runbook.md#declaredminimumviolations
       - alert: UserDeletionResidualKeys
         expr: sum(increase(user_deletion_residual_keys_total[1h])) > 0
         labels: {severity: critical, owner: guardia-de-plataforma}

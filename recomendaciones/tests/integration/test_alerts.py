@@ -148,6 +148,7 @@ SCENARIOS: dict[str, dict] = {
     },
     "SignalsPurgeDeferred": {"series": {"signals_purge_deferred_total": "0+1x3000 3000x3000"}, "fire": "2900m", "clear": "5900m"},
     "UserDeletionResidualKeys": {"series": {"user_deletion_residual_keys_total": "0x5 2x100"}, "fire": "10m", "clear": "90m"},
+    "DeclaredMinimumViolations": {"series": {"declared_minimum_violations_total": "0x5 1x40 0x40"}, "fire": "20m", "clear": "70m"},  # T069
     "DeletionEventsDeadLettered": {"series": {'reco_dead_letter_depth{queue="recomendaciones.usuario-eliminado.dlq"}': "0x5 1x40 0x40"}, "fire": "30m", "clear": "70m"},
     "ExclusionResolveLag": {"series": {"exclusion_resolve_lag_seconds": "7200x30 0x30"}, "fire": "20m", "clear": "50m"},
     "SyncVolumeDrop": {"series": {'sync_volume_delta_ratio{entity="items"}': "0.5x20 1x20"}, "fire": "10m", "clear": "30m", "labels": {"entity": "items"}},

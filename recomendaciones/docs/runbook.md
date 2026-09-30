@@ -172,6 +172,15 @@ migración; esos usuarios reciben 503 (DI-23).
 **Primer paso**: ver [ExclusionResolveLag](#exclusionresolvelag): la fuga está en la materialización.
 **Acción**: corregir la materialización; la purga se protege sola.
 
+### DeclaredMinimumViolations
+**Qué significa**: el job `reco-batch audits` encontró módulos declarados con menos tags propios que
+`declared_tags_min` (DI-28). El endpoint de declaración no los produce (FR-083): alguien escribió
+`user_declared_tags` por otra vía o hay un defecto.
+**Primer paso**: el log del job (`DI-28 violado…`) trae `reco_user_id` y `reco_module`; confirmar con
+`SELECT user_id, module, count(*) FROM user_declared_tags GROUP BY 1, 2 HAVING count(*) < 5;`.
+**Acción**: buscar el escritor fuera del endpoint (DI-13) y corregirlo. La declaración es definitiva
+(FR-086a): no se completa a mano sin el usuario.
+
 ### UserDeletionResidualKeys
 **Qué significa**: una supresión dejó claves del usuario en Redis.
 **Primer paso**: `SELECT user_id, state, attempts FROM user_suppressions WHERE state <> 'completed';`
@@ -354,6 +363,7 @@ pendientes (FR-091) y se reprocesan siempre.
 | `reco-batch age-refresh` | diaria, fuera de pico | cruces de umbral etario y escala no compatible | [AgeRefreshStale](#agerefreshstale) |
 | `reco-batch purge-signals` | diaria o semanal | purga por retención con guarda de exclusión | [SignalsPurgeDeferred](#signalspurgedeferred) |
 | `reco-batch suppressions` | cada hora | retoma supresiones trabadas o fallidas | [SuppressionsUnverified](#suppressionsunverified) |
+| `reco-batch audits` | diaria | audita DI-28: declaraciones bajo el mínimo (T069) | [DeclaredMinimumViolations](#declaredminimumviolations) |
 
 **Reducir `RECO_SIGNAL_RETENTION_DAYS` exige aprobación registrada** (RD-54): la purga es irreversible. Cada
 corrida registra en el log el valor vigente (`reco_signal_retention_days`), de modo que una reducción no
