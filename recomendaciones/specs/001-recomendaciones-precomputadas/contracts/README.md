@@ -8,7 +8,9 @@ Este repositorio **redacta** las propuestas porque tiene prioridad de definició
 está incompleta y a la espera de este modelo. Redactar no es publicar.
 
 **Acuerdo (2026-09-29, RD-113)**: el PR de contratos de `api-general` se dio por abierto y cerrado por
-diálogo personal entre los equipos; no hay enlace a un PR. `docs/contracts/required-fields.md` se envió a
+diálogo personal entre los equipos; no hay enlace a un PR. El documento de `api-general` que publica estos
+contratos es su spec `specs/004-contratos-recomendaciones` (estado del 2026-09-29, commit `4636c17` de ese
+repositorio), el que cita la tabla de abajo. `docs/contracts/required-fields.md` se envió a
 `api-general` para su revisión.
 
 ## Estado de publicación
@@ -23,8 +25,9 @@ diálogo personal entre los equipos; no hay enlace a un PR. `docs/contracts/requ
 **Gate de merge** (T049; constitución, Flujo de Desarrollo): T023, T033 y T053 **no se fusionan**
 hasta que el PR o documento de `api-general` que publica estos contratos exista, esté enlazado en la
 tabla de arriba y registre la conformidad de los repos consumidores. Pueden desarrollarse y probarse
-contra estas propuestas; lo que no pueden es fusionarse. **Cumplido el 2026-09-29** por el acuerdo
-personal de RD-113, que reemplaza al enlace.
+contra estas propuestas; lo que no pueden es fusionarse. **Cumplido el 2026-09-29**: el documento es la
+spec 004 de `api-general` citada arriba, y la conformidad quedó registrada por el acuerdo personal de
+RD-113.
 
 ## Reglas
 
