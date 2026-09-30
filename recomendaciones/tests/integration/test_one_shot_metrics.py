@@ -223,3 +223,18 @@ def test_process_runs_uses_no_user_data() -> None:
     columns = {c.name for c in ProcessRun.__table__.columns}
     assert columns == {"id", "component", "started_at", "finished_at", "status", "failure_reason", "metrics", "details"}
     assert not {"user_id", "item_id"} & columns
+
+
+def test_vector_recompute_lag(env, db_factory, monkeypatch) -> None:  # noqa: ANN001
+    """La undécima alerta de §2 (T066), con la definición de T070: un ítem vigente sin vector hace más de 26 h."""
+    settings = load_settings()
+    double = _double(env)
+    assert run_once(settings, transport=double.transport()) == 0
+    newcomer = double.add_item("peliculas", [TAGS[0], TAGS[1]])
+    monkeypatch.setattr(VocabularySync, "_write_vectors", lambda self, s, version, vectors, only_changed: 0)
+    run_once(settings, transport=double.transport())
+    with db_factory.begin() as s:
+        s.execute(sa.text("UPDATE items SET first_synced_at = now() - interval '27 hours' WHERE id = :i"), {"i": newcomer})
+        s.execute(sa.text("UPDATE vocab_versions SET activated_at = now() - interval '30 hours' WHERE activated_at IS NOT NULL"))
+    run_once(settings, transport=double.transport())
+    assert _exposed(db_factory).value("vector_recompute_lag_seconds") > 93_600

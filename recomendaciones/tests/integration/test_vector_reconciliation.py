@@ -88,3 +88,53 @@ def test_metrics_are_emitted(db_factory) -> None:  # noqa: ANN001
     assert metrics.value("declarable_tags_total", module="juegos") == 2
     assert metrics.value("vocab_transition_progress") == 1.0
     assert metrics.value("vector_recompute_lag_seconds") >= 0.0
+
+
+# --- T070: `vector_recompute_lag_seconds` mide un ítem sin vector, no la edad de los vectores ---------------
+
+
+def _no_vector_writes(monkeypatch) -> None:  # noqa: ANN001
+    """Falla inducida: la reconciliación deja ítems vigentes sin vector (lo que la alerta existe para detectar)."""
+    monkeypatch.setattr(VocabularySync, "_write_vectors", lambda self, s, version, vectors, only_changed: 0)
+
+
+def test_vector_lag_stays_zero_on_a_stable_fully_vectorized_catalog(db_factory) -> None:  # noqa: ANN001
+    """Con la definición anterior (`now − min(computed_at)`) un catálogo estable quedaba en rojo para siempre."""
+    with db_factory.begin() as s:
+        seed.item(s, "peliculas", ["horror"])
+        seed.item(s, "peliculas", ["drama"])
+    VocabularySync(db_factory, Metrics()).run()
+    with db_factory.begin() as s:
+        s.execute(sa.text("UPDATE item_vectors SET computed_at = computed_at - interval '3 days'"))
+    metrics = Metrics()
+    VocabularySync(db_factory, metrics).run()  # corrida sin cambios: no reescribe vectores
+    assert metrics.value("vector_recompute_lag_seconds") == 0.0
+
+
+def test_live_item_without_vector_for_27_hours_exceeds_the_threshold(db_factory, monkeypatch) -> None:  # noqa: ANN001
+    with db_factory.begin() as s:
+        seed.item(s, "peliculas", ["horror"])
+    VocabularySync(db_factory, Metrics()).run()
+    with db_factory.begin() as s:
+        orphan = seed.item(s, "peliculas", ["horror"])
+        s.execute(sa.text("UPDATE items SET first_synced_at = now() - interval '27 hours' WHERE id = :i"), {"i": orphan})
+        s.execute(sa.text("UPDATE vocab_versions SET activated_at = now() - interval '30 hours' WHERE activated_at IS NOT NULL"))
+    _no_vector_writes(monkeypatch)
+    metrics = Metrics()
+    VocabularySync(db_factory, metrics).run()
+    assert metrics.value("vector_recompute_lag_seconds") > 93_600  # umbral de VectorRecomputeLag (26 h)
+
+
+def test_a_recent_activation_restarts_the_clock_for_items_already_known(db_factory, monkeypatch) -> None:  # noqa: ANN001
+    """Un ítem conocido desde hace 27 h debe tener vector bajo la versión activada hace 1 h, no desde antes."""
+    with db_factory.begin() as s:
+        seed.item(s, "peliculas", ["horror"])
+    VocabularySync(db_factory, Metrics()).run()
+    with db_factory.begin() as s:
+        orphan = seed.item(s, "peliculas", ["horror"])
+        s.execute(sa.text("UPDATE items SET first_synced_at = now() - interval '27 hours' WHERE id = :i"), {"i": orphan})
+        s.execute(sa.text("UPDATE vocab_versions SET activated_at = now() - interval '1 hour' WHERE activated_at IS NOT NULL"))
+    _no_vector_writes(monkeypatch)
+    metrics = Metrics()
+    VocabularySync(db_factory, metrics).run()
+    assert 3_000 < metrics.value("vector_recompute_lag_seconds") < 7_200
