@@ -290,6 +290,30 @@ class SyncRun(Base):
     )
 
 
+# §2.17 -------------------------------------------------------------------------------------------
+class ProcessRun(Base):
+    """Resultado de cada corrida de un proceso de una corrida —transformer y jobs batch— (T066).
+
+    Esos procesos no exponen servidor de métricas: lo que fijan queda acá y el worker lo re-expone.
+    """
+
+    __tablename__ = "process_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    component: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    finished_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    failure_reason: Mapped[str | None] = mapped_column(Text)  # forense
+    metrics: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    details: Mapped[dict | None] = mapped_column(JSONB)  # hechos propios del job (p. ej. retención vigente, RD-54)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('success', 'failed')", name="ck_process_runs_status"),
+        Index("idx_process_runs_component", "component", text("finished_at DESC")),
+    )
+
+
 # §2.10 -------------------------------------------------------------------------------------------
 class ProcessedEvent(Base):
     __tablename__ = "processed_events"

@@ -284,6 +284,7 @@ WRITERS: dict[str, set[str]] = {
     "EngineConfigVersion": {"storage/db/config_registry.py"},
     "ProcessedEvent": {"worker/idempotency.py"},
     "SyncRun": {"transformer/pipeline.py"},
+    "ProcessRun": {"storage/db/process_runs.py"},  # T066: cada proceso de una corrida registra la suya por acá
 }
 
 
@@ -292,7 +293,7 @@ def test_di_13_single_writer_per_table() -> None:
     pattern = re.compile(r"\b(?:insert|update)\((\w+)\)|s\.add\((\w+)\(")
     offenders = []
     for path in SRC.rglob("*.py"):
-        rel = str(path.relative_to(SRC))
+        rel = path.relative_to(SRC).as_posix()  # separador portable (Windows)
         for match in pattern.finditer(path.read_text(encoding="utf-8")):
             model = match.group(1) or match.group(2)
             if model in WRITERS and rel not in WRITERS[model]:

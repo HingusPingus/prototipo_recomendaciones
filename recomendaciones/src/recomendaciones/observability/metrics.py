@@ -115,3 +115,44 @@ class Metrics:
         if found is None or math.isnan(found):  # ausente o NaN (gauge nunca fijado)
             return 0.0
         return float(found)
+
+
+class RecordingMetrics(Metrics):
+    """`Metrics` de un proceso de una corrida (transformer, batch): además de fijar, registra (T066).
+
+    Esos procesos terminan y no exponen servidor: lo registrado se persiste en `process_runs` al cerrar la
+    corrida y el worker lo re-expone. Gauges: último valor; contadores: suma de incrementos;
+    histogramas: observaciones.
+    """
+
+    def __init__(self, registry: CollectorRegistry | None = None) -> None:
+        super().__init__(registry)
+        self._gauges: dict[tuple[str, tuple[tuple[str, str], ...]], float] = {}
+        self._counters: dict[tuple[str, tuple[tuple[str, str], ...]], float] = {}
+        self._observations: dict[tuple[str, tuple[tuple[str, str], ...]], list[float]] = {}
+
+    @staticmethod
+    def _key(name: str, labels: dict[str, str]) -> tuple[str, tuple[tuple[str, str], ...]]:
+        return name, tuple(sorted((k, str(v)) for k, v in labels.items()))
+
+    def inc(self, name: str, amount: float = 1.0, **labels: str) -> None:
+        super().inc(name, amount, **labels)
+        key = self._key(name, labels)
+        self._counters[key] = self._counters.get(key, 0.0) + amount
+
+    def set(self, name: str, value: float, **labels: str) -> None:
+        super().set(name, value, **labels)
+        if math.isfinite(value):  # jsonb no admite NaN ni infinito; un gauge sin valor útil no se persiste
+            self._gauges[self._key(name, labels)] = float(value)
+
+    def observe(self, name: str, value: float, **labels: str) -> None:
+        super().observe(name, value, **labels)
+        self._observations.setdefault(self._key(name, labels), []).append(float(value))
+
+    def snapshot(self) -> dict[str, list]:
+        """Forma JSON persistible: listas de [nombre, etiquetas, valor]."""
+
+        def rows(store: dict) -> list:
+            return [[name, dict(labels), value] for (name, labels), value in sorted(store.items())]
+
+        return {"gauges": rows(self._gauges), "counters": rows(self._counters), "histograms": rows(self._observations)}

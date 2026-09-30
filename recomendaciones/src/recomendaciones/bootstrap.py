@@ -13,7 +13,7 @@ from prometheus_client import CollectorRegistry
 
 from recomendaciones.config.loader import EngineConfig, load_engine_config, validate_operational_windows
 from recomendaciones.config.settings import Settings
-from recomendaciones.observability.metrics import Metrics
+from recomendaciones.observability.metrics import Metrics, RecordingMetrics
 from recomendaciones.storage.cache.client import CacheClient
 from recomendaciones.storage.cache.repository import RecommendationRepository
 from recomendaciones.storage.cache.ttl import CacheTTLs
@@ -40,7 +40,8 @@ def build_runtime(settings: Settings, component: str, *, factory: SessionFactory
         register_in_database(s, config, datetime.now(UTC))
     cache = cache or CacheClient.from_url(settings.redis_url.get_secret_value(), settings.redis_timeout_seconds)
     ttls = CacheTTLs.from_settings(settings)
-    metrics = Metrics(CollectorRegistry())
+    # Los procesos de una corrida registran lo que fijan para persistirlo en `process_runs` (T066).
+    metrics = Metrics(CollectorRegistry()) if component in ("api", "worker") else RecordingMetrics(CollectorRegistry())
     metrics.set("reco_active_config_version", 1.0, config_version=config.config_version, component=component)
     repository = RecommendationRepository(cache, ttl_fresh=ttls.fresh, ttl_stale=ttls.stale, ttl_fallback=ttls.fallback)
     return Runtime(settings, config, factory, cache, ttls, repository, metrics)

@@ -22,6 +22,7 @@ from recomendaciones.worker.consumer import EventConsumer, RetryPolicy
 from recomendaciones.worker.handler import ActualizarHandler, Recomputer
 from recomendaciones.worker.health import worker_health
 from recomendaciones.worker.idempotency import EventIdempotency
+from recomendaciones.worker.process_metrics import ProcessMetricsState, refresh_process_metrics
 from recomendaciones.worker.requests_stream import RecomputeRequestConsumer
 from recomendaciones.worker.schemas import parse_eliminado
 from recomendaciones.worker.signals import SignalIngestor
@@ -89,6 +90,9 @@ def build_suppression_consumer(runtime: Runtime) -> EventConsumer:
 
 async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> None:
     runtime = build_runtime(settings, "worker")
+    process_state = ProcessMetricsState()
+    with runtime.factory() as s:  # antes de exponer: el primer raspado ya ve los valores de las corridas (T066)
+        refresh_process_metrics(s, runtime.metrics, process_state)
     start_http_server(settings.metrics_port, registry=runtime.metrics.registry)
     health = start_health_server(
         settings.health_port,
@@ -118,6 +122,7 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
             if loop.time() - last_refresh > 30:  # SC-014: la frescura se expone aunque el Data Transformer no corra
                 last_refresh = loop.time()
                 with runtime.factory() as s:
+                    await asyncio.to_thread(refresh_process_metrics, s, runtime.metrics, process_state)  # T066
                     await asyncio.to_thread(refresh_sync_metrics, s, runtime.metrics)
                     await asyncio.to_thread(refresh_suppression_metrics, s, runtime.metrics)  # FR-095a: observador
                 for consumer, topology in ((events, actualizar_topology()), (suppressions, eliminado_topology())):

@@ -114,7 +114,7 @@ carga de configuración, no toca el request path.
 specs/001-recomendaciones-precomputadas/
 ├── spec.md              # requisitos, criterios de éxito, clarificaciones, DEP-1…DEP-12 (ver inventario)
 ├── plan.md              # este archivo
-├── data-model.md        # AUTORITATIVO · 18 tablas · RD-1…RD-111 · DI-1…DI-29 · CR-1…CR-19
+├── data-model.md        # AUTORITATIVO · 19 tablas · RD-1…RD-111 · DI-1…DI-29 · CR-1…CR-19
 ├── tasks.md             # backlog T001…T065 (T036 retirada) en 11 milestones
 ├── contracts/           # OpenAPI + JSON Schema — producido por T049 (contract-first)
 └── checklists/          # auditoría de calidad de requisitos (2 checklists)
@@ -197,13 +197,13 @@ posiciones reservadas (FR-028 paso 4, RD-102).
 
 ### Vista de conjunto
 
-Las 18 tablas viven en `data-model.md` §2, que es la fuente autoritativa. Resumen de zonas:
+Las 19 tablas viven en `data-model.md` §2, que es la fuente autoritativa. Resumen de zonas:
 
 | Zona | Tablas | Naturaleza |
 |---|---|---|
 | **Proyección** (dato ajeno) | `users`, `items`, `tags`, `item_tags` | Materializado desde `api-general`; **regenerable** |
 | **Derivada** (cómputo propio) | `item_vectors`, `user_profiles`, `item_popularity`, `tag_modules`, `vocab_versions`, `vocab_version_tags`, `user_exclusions` ⁽¹⁾ | Recalculable desde lo anterior + señales |
-| **Registro de hechos** | `user_signals`, `user_exclusions` ⁽¹⁾, `sync_runs`, `processed_events`, **`user_suppressions`**, **`item_promotions`** | **No regenerable**: es el historial. Las dos últimas, de RD-101 y RD-102 |
+| **Registro de hechos** | `user_signals`, `user_exclusions` ⁽¹⁾, `sync_runs`, `processed_events`, **`user_suppressions`**, **`item_promotions`**, **`process_runs`** (T066) | **No regenerable**: es el historial. Las dos últimas, de RD-101 y RD-102 |
 | **Dato de origen local** | `user_declared_tags` | **No regenerable desde ningún origen** |
 | **Configuración** | `engine_config_versions` | Versionada en el repo, registrada en la base |
 

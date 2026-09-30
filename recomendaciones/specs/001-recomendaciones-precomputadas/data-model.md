@@ -39,7 +39,7 @@ de verdad de un dato ajeno, violando el Principio I.
 |---|---|---|---|
 | **Proyección local** (dato ajeno) | `users`, `items`, `tags`, `item_tags` | Data Transformer | Resincronizando desde `api-general` |
 | **Derivados durables** (estado propio) | `item_vectors`, `user_profiles`, `user_exclusions` ⁽¹⁾, **`item_popularity`**, **`tag_modules`**, **`vocab_versions`**, **`vocab_version_tags`** | Procesos propios (vectorizador, resolutor, batch de popularidad, proceso de vocabulario) | Recomputando desde señales y proyección |
-| **Registro de hechos** | `user_signals`, `user_exclusions` ⁽¹⁾, `sync_runs`, `processed_events` | Ingesta (sincronización y worker de eventos, RD-95) / jobs | **No reconstruible.** Es el historial |
+| **Registro de hechos** | `user_signals`, `user_exclusions` ⁽¹⁾, `sync_runs`, `processed_events`, `process_runs` (§2.17, T066) | Ingesta (sincronización y worker de eventos, RD-95) / jobs | **No reconstruible.** Es el historial |
 | **Dato de origen local** | `user_declared_tags` | Endpoint de declaración (FR-089) | **No reconstruible** desde ningún origen: hay que volver a preguntarle al usuario (RD-71) |
 | **Registro de hechos propios** | `user_suppressions` (§2.15), `item_promotions` (§2.16) | Proceso de supresión; batch de popularidad | **No reconstruible**: la constancia de una supresión y el hecho de una promoción no se derivan de nada que sobreviva (RD-101, RD-102) |
 | **Configuración** | `engine_config_versions` | Loader | Desde el repo |
@@ -1003,6 +1003,39 @@ actualizan: la monotonía es propiedad del escritor único y la verifica DI-27.
 
 **Índices**: PK — la partición es una semi-reunión por `item_id`.
 
+### 2.17 `process_runs` — resultado de cada corrida de transformer y jobs batch
+
+> 🆕 **Incorporada 2026-09-30 (T066)**. `reco-transformer` y `reco-batch` corren una vez y terminan sin
+> servidor de métricas: lo que fijaban se perdía y once alertas no podían dispararse
+> (`docs/validation/alert-threshold-review.md` §2). Afectaba también a FR-044 (éxito/falla, duración y
+> volumen del Data Transformer) y a FR-068d1.
+
+**Zona**: **registro de hechos** (bitácora operativa, como `sync_runs`). **Escritor único**:
+`storage/db/process_runs.py`, invocado por cada proceso de una corrida al terminar —**también cuando
+falla**— para su propia fila. **Lector**: el worker, que re-expone las métricas cada 30 s
+(`worker/process_metrics.py`).
+
+| Atributo | Tipo | Nulo | **Naturaleza** | Notas |
+|---|---|---|---|---|
+| `id` | bigserial | No | Identidad | **PK** |
+| `component` | text | No | Identidad | `transformer` o `batch:<job>` |
+| `started_at`, `finished_at` | timestamptz | No | Operativo | Duración y orden de las corridas |
+| `status` | text | No | Funcional | `success` o `failed` (`CHECK`) |
+| `failure_reason` | text | Sí | Auditoría (forense) | Motivo de la falla |
+| `metrics` | jsonb | No | Operativo | Lo que el proceso fijó: gauges (último valor), contadores (suma de incrementos) e histogramas (observaciones). Sin datos de usuario: las etiquetas son las de `observability/metrics.py` |
+| `details` | jsonb | Sí | Auditoría | Hechos propios del job. La purga guarda `signal_retention_days` vigente: la constancia de RD-54 deja de depender de la retención de los logs |
+
+**Re-exposición** (worker): gauges con el **último valor conocido**, aunque el job haya dejado de correr —así
+su alerta de vencimiento puede dispararse—; contadores e histogramas con las corridas terminadas desde que
+el worker arrancó más la última hora, de modo que un reinicio no re-aplica la historia como un salto
+espurio. Las series que el worker ya deriva de la base (§7.7, FR-095a, FR-025d) no se pisan.
+
+**Retención**: cada escritor poda sus filas de más de **30 días**, pero conserva la última corrida exitosa y
+la última fallida de su componente: un job muerto hace más de un mes no pierde el timestamp del que
+depende su alerta. **Índices**: `idx_process_runs_component (component, finished_at DESC)`.
+
+**Migración**: `0004_process_runs`, reversible.
+
 ---
 
 ## 3. Modelo de datos en Redis
@@ -1602,7 +1635,7 @@ erDiagram
 | **Ajena** (`api-general`) | identidad, catálogo, actividad | Consumida vía REST. Nunca duplicada como verdad |
 | **Proyección local** | `users`, `items`, `tags`, `item_tags` | Materialización desechable de datos ajenos |
 | **Derivada durable** | `item_vectors`, `user_profiles`, `user_exclusions` ⁽¹⁾, `item_popularity`, `tag_modules`, `vocab_versions`, `vocab_version_tags` | Propia. Recomputable, pero persistida por costo |
-| **Registro de hechos** | `user_signals`, `user_exclusions` ⁽¹⁾, `sync_runs`, `processed_events` | Propia. **No recomputable** — es memoria de hechos |
+| **Registro de hechos** | `user_signals`, `user_exclusions` ⁽¹⁾, `sync_runs`, `processed_events`, `process_runs` (§2.17, T066) | Propia. **No recomputable** — es memoria de hechos |
 | **Dato de origen local** | `user_declared_tags` | Propia, de autoría local. **No recomputable** desde ningún origen (RD-71) |
 | **Configuración** | `engine_config_versions` | Versionada en el repo, registrada acá |
 | **Caché** | Todo Redis | Descartable |
@@ -2644,7 +2677,8 @@ Ninguno se cierra.
   > —§2.3 agrupa `tags` + `item_tags`, §2.13 agrupa `vocab_versions` + `vocab_version_tags`—. Las demás
   > menciones de «15 tablas» en §9 son **registros de auditoría fechados** y se conservan como tales: eran
   > correctas cuando se escribieron. La que no podía conservarse era esta, por declararse definitiva.
-  > Cifra vigente: **16**. *(Actualización 2026-09-27: **18** tablas en 16 subsecciones, con §2.15
+  > Cifra vigente: **16**. *(Actualización 2026-09-30: **19** tablas en 17 subsecciones, con §2.17
+  > `process_runs` (T066). Antes, 2026-09-27: **18** tablas en 16 subsecciones, con §2.15
   > `user_suppressions` (RD-101) y §2.16 `item_promotions` (RD-102).)*
 - Incorporar a la descripción de componentes: el trigger de inmutabilidad (RD-37) y la ventana
   acotada del set de retirados (RD-39), que es un acoplamiento con `TTL_STALE` y no una constante.

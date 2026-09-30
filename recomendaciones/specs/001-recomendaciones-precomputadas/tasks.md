@@ -12,7 +12,7 @@ autor RD-98…RD-110 aplicadas el mismo día, con **T065** nueva y **TDD extendi
 producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
-- [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 18 tablas en §2,
+- [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
   RD-1→RD-112 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **167 requisitos definidos** (FR-001→FR-096, con sufijos y huecos
@@ -2773,7 +2773,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 > la aprobación escrita de `api-general` (Principio II) queda afuera y se lista al final como bloqueo
 > externo.*
 
-- [ ] T066 [TDD] [US7] CRITICAL: exponer las métricas de los procesos de una corrida (`reco-transformer`, `reco-batch`) persistiendo su resultado y re-exponiéndolo desde el worker, en `src/recomendaciones/worker/runtime.py` per Constitution VII, FR-044, FR-068d1 (contradicts)
+- [X] T066 [TDD] [US7] CRITICAL: exponer las métricas de los procesos de una corrida (`reco-transformer`, `reco-batch`) persistiendo su resultado y re-exponiéndolo desde el worker, en `src/recomendaciones/worker/runtime.py` per Constitution VII, FR-044, FR-068d1 (contradicts)
 - [X] T067 CRITICAL: agregar el gate de lint (`ruff`) al CI y dejar `src/` y `tests/` sin errores, en `.github/workflows/ci.yml` per Constitution (Flujo de Desarrollo: «CI obligatorio: linters») (contradicts)
 - [X] T068 [TDD] [US5] Invalidar `retired:{module}` al retirar ítems en la sincronización, en `src/recomendaciones/transformer/pipeline.py` per FR-072, DI-10 (contradicts)
 - [ ] T069 [TDD] Ejecutar la auditoría periódica de DI-28 como job `reco-batch audits`, en `src/recomendaciones/batch/runtime.py` per DI-28 (partial)
@@ -2807,21 +2807,24 @@ fijadas solo por procesos de una corrida.
 **Dep.**: T031, T039, T042, T051, T057, T063
 
 **Criterios de aceptación**:
-- [ ] Cada corrida de `reco-transformer` y de cada job de `reco-batch` deja su resultado en Postgres
+- [X] Cada corrida de `reco-transformer` y de cada job de `reco-batch` deja su resultado en Postgres
       —estado, inicio, fin, conteos y los valores que hoy fija en memoria— antes de terminar, **también
       cuando falla** (FR-044: éxito/falla por corrida)
-- [ ] El worker re-expone esos valores cada 30 s con el mismo nombre, tipo y etiquetas de
+- [X] El worker re-expone esos valores cada 30 s con el mismo nombre, tipo y etiquetas de
       `observability/metrics.py`: ninguna alerta de `ops/alerts.yaml` cambia de expresión por esta tarea
-- [ ] Los contadores se re-exponen como **acumulados** desde lo persistido, de modo que `increase()` y
-      `rate()` de las alertas siguen teniendo sentido tras reinicios del worker
-- [ ] La persistencia se documenta en `data-model.md` §2 —tabla nueva o extensión de `sync_runs`—, con
+- [X] Los contadores se re-exponen como **acumulados** desde lo persistido, de modo que `increase()` y
+      `rate()` de las alertas siguen teniendo sentido tras reinicios del worker —*implementado como: incrementos de
+      las corridas terminadas desde que el worker arrancó más la última hora; un reinicio es un reinicio del
+      contador para Prometheus, no un salto espurio (`data-model.md` §2.17)*
+- [X] La persistencia se documenta en `data-model.md` §2 —tabla nueva o extensión de `sync_runs`—, con
       zona, escritor único por fila y retención, y una migración `0004` versionada y reversible
       (constitución, Flujo de Desarrollo)
-- [ ] La corrida de `purge-signals` persiste el valor vigente de `signal_retention_days`: la constancia de
+- [X] La corrida de `purge-signals` persiste el valor vigente de `signal_retention_days`: la constancia de
       RD-54 deja de depender de la retención de los logs
-- [ ] Para cada una de las once alertas de §2 de la planilla, un test la induce **sin inyectar la serie a
-      mano**: corre el proceso real, el worker refresca y la regla evaluada sobre lo expuesto dispara
-- [ ] `docs/validation/alert-threshold-review.md` §2 queda vacía o actualizada, y las once alertas pasan
+- [X] Para cada una de las once alertas de §2 de la planilla, un test la induce **sin inyectar la serie a
+      mano**: corre el proceso real, el worker refresca y la regla evaluada sobre lo expuesto dispara —*diez
+      en `tests/integration/test_one_shot_metrics.py`; `VectorRecomputeLag` se verifica en T070, que la redefine*
+- [X] `docs/validation/alert-threshold-review.md` §2 queda vacía o actualizada, y las once alertas pasan
       a la lista revisable
 
 **🔴 Paso 1 — Rojo** (`tests/integration/test_one_shot_metrics.py`, commit propio): correr
