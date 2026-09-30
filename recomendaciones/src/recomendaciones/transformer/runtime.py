@@ -50,5 +50,5 @@ def _run(settings: Settings, runtime, transport, outcome) -> int:  # noqa: ANN00
         VocabularySync(runtime.factory, runtime.metrics).run()
     log.info("corrida de sincronización", extra={"status": report.status, "sync_run_id": report.run_id})
     outcome.status = "success" if report.status == "success" else "failed"
-    outcome.failure_reason = None if report.status == "success" else report.reason
+    outcome.failure_reason = None if report.status == "success" else report.failure_reason
     return 0 if report.status == "success" else 1
