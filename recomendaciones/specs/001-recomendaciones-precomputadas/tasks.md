@@ -2778,7 +2778,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [ ] T068 [TDD] [US5] Invalidar `retired:{module}` al retirar ítems en la sincronización, en `src/recomendaciones/transformer/pipeline.py` per FR-072, DI-10 (contradicts)
 - [ ] T069 [TDD] Ejecutar la auditoría periódica de DI-28 como job `reco-batch audits`, en `src/recomendaciones/batch/runtime.py` per DI-28 (partial)
 - [ ] T070 [TDD] [US7] Redefinir `vector_recompute_lag_seconds` como antigüedad del ítem vigente más viejo sin vector, en `src/recomendaciones/transformer/vocabulary_sync.py` per data-model §7.9, T042 (partial)
-- [ ] T071 Volver portable a Windows el test de entrypoints, en `tests/unit/test_layout.py` per T001 (partial)
+- [X] T071 Volver portable a Windows el test de entrypoints, en `tests/unit/test_layout.py` per T001 (partial)
 
 ### T066 [TDD] — Métricas de los procesos de una corrida, observables desde el worker
 
@@ -2958,9 +2958,9 @@ correcto. El CI corre en Linux y no lo detecta. Exenta de TDD: es una tarea de t
 **Dep.**: T001
 
 **Criterios de aceptación**:
-- [ ] El test resuelve el ejecutable de forma portable (`shutil.which` sobre el directorio del intérprete, o
+- [X] El test resuelve el ejecutable de forma portable (`shutil.which` sobre el directorio del intérprete, o
       el sufijo de la plataforma) y lee su salida con una codificación explícita
-- [ ] `pytest tests/unit` pasa en Windows y en Linux sin cambios en el código de producción
+- [X] `pytest tests/unit` pasa en Windows y en Linux sin cambios en el código de producción
 
 **Tests**: es la tarea de test.
 
