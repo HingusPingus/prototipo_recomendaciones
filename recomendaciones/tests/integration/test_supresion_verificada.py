@@ -6,12 +6,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
-from recomendaciones.worker.suppression import SuppressionProcedure, SuppressionSweep, refresh_suppression_metrics
 
 from recomendaciones.observability.metrics import Metrics
 from recomendaciones.shared.domain import Module
 from recomendaciones.storage.cache import keys
 from recomendaciones.storage.cache.client import CacheClient
+from recomendaciones.worker.suppression import SuppressionProcedure, SuppressionSweep, refresh_suppression_metrics
 from tests.integration import seed
 from tests.integration.test_supresion_aborta_recalculo import FIVE_TABLES, REQUESTED, _populated, _rows
 

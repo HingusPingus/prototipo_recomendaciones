@@ -223,7 +223,7 @@ def test_reactivating_a_deactivated_version_fails_with_rollback_forward_message(
 
 def test_loader_module_has_no_engine_constants() -> None:
     """Deuda del prototipo resuelta: ninguna constante del motor en código (FR-025)."""
-    import recomendaciones.config.loader as loader
+    from recomendaciones.config import loader
 
     source = Path(loader.__file__).read_text(encoding="utf-8")
     for literal in ("0.5", "0.3", "0.2", "0.7", "1.96", "0.20", "0.4", "\"ATP\"", "'ATP'", "+13", "+18"):

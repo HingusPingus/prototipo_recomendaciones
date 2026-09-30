@@ -16,8 +16,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-import recomendaciones.engine.postprocess as postprocess
 from recomendaciones.config.loader import ENGINE_CONFIG_DIR, load_engine_config
+from recomendaciones.engine import postprocess
 from recomendaciones.engine.age import derive_max_age_ordinal, min_age_ordinal_for_rating
 from recomendaciones.engine.postprocess import _age_stage
 from recomendaciones.engine.scoring import Candidate, ScoredCandidate

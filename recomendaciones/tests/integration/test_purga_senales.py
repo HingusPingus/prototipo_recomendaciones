@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
-from recomendaciones.batch.purga_senales import SignalPurgeJob
 
+from recomendaciones.batch.purga_senales import SignalPurgeJob
 from recomendaciones.config.errors import ConfigurationError
 from recomendaciones.config.loader import load_engine_config
 from recomendaciones.observability.metrics import Metrics

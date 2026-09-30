@@ -7,6 +7,7 @@ Cada proceso usa su propio registro; los tests crean uno por instancia.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
@@ -111,6 +112,6 @@ class Metrics:
     def value(self, name: str, **labels: str) -> float:
         sample = name if SPECS[name].kind != "histogram" else f"{name}_count"
         found = self.registry.get_sample_value(sample, labels or None)
-        if found is None or found != found:  # ausente o NaN (gauge nunca fijado)
+        if found is None or math.isnan(found):  # ausente o NaN (gauge nunca fijado)
             return 0.0
         return float(found)

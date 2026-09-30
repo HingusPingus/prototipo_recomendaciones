@@ -74,11 +74,11 @@ def test_count_restarts_after_recomputing_that_module(db_factory, redis_client) 
 
 def test_no_read_between_cause_and_invalidation_returns_the_old_result(db_factory, redis_client) -> None:  # noqa: ANN001
     """FR-080: la invalidación ocurre en el mismo acto que la causa; entre ambas no hay lectura del valor viejo."""
+    from recomendaciones.observability.metrics import Metrics
     from recomendaciones.storage.cache.client import CacheClient
     from recomendaciones.storage.cache.filters import FiltersCache
     from recomendaciones.storage.db.exclusions import ExclusionResolver
     from recomendaciones.storage.db.filters_source import DbFiltersSource
-    from recomendaciones.observability.metrics import Metrics
     from recomendaciones.worker.handler import ActualizarHandler
     from recomendaciones.worker.idempotency import EventIdempotency
     from recomendaciones.worker.signals import SignalIngestor

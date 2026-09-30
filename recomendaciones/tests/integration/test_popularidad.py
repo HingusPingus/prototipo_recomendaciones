@@ -74,7 +74,7 @@ def test_denominator_counts_distinct_users_and_consumption_only_in_denominator(d
             seed.signal(s, u, item, "consumo", minutes=n)
             seed.signal(s, u, item, "like", minutes=n + 10)
     _job(db_factory).run()
-    like_count, engaged, score = _pop(db_factory, item)
+    like_count, engaged, _score = _pop(db_factory, item)
     assert (like_count, engaged) == (3, 3)
 
 

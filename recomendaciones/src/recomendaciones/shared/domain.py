@@ -86,7 +86,7 @@ class ExclusionSet:
     La guarda pregunta **pertenencia**, no permanencia (§2.7).
     """
 
-    __slots__ = ("__user_id", "__item_ids")
+    __slots__ = ("__item_ids", "__user_id")
 
     def __init__(self, user_id: uuid.UUID, item_ids: Iterable[uuid.UUID]) -> None:
         self.__user_id = user_id

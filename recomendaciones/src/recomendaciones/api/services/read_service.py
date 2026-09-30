@@ -29,8 +29,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from recomendaciones.shared.domain import Module, ResultType
 from recomendaciones.api.services.precondiciones import check_preconditions
+from recomendaciones.shared.domain import Module, ResultType
 from recomendaciones.storage.cache.filters import FiltersCache, RetiredCache, UserFilters
 from recomendaciones.storage.cache.recompute import RecomputeSignaler
 from recomendaciones.storage.cache.repository import CachedItem, RecommendationEntry, RecommendationRepository

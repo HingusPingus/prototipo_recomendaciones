@@ -1,4 +1,4 @@
-# Pipeline de CI con gates bloqueantes (T045, Principio VI, FR-048, FR-055).
+# Pipeline de CI con gates bloqueantes (T045, T067, Principio VI, FR-048, FR-055).
 #
 # Vive en la raíz del repositorio git porque GitHub Actions solo lee `.github/workflows/` desde ahí; el
 # paquete está en `recomendaciones/`. Ningún job tolera fallos ni lleva una condición `if:` que un PR pueda
@@ -25,6 +25,16 @@ env:
 
 jobs:
   # --- Gates rápidos, sin contenedores ------------------------------------------------------------
+  lint:
+    name: lint (ruff) — constitución, Flujo de Desarrollo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip, cache-dependency-path: recomendaciones/pyproject.toml}
+      - run: pip install -e '.[dev]'
+      - run: ruff check src tests
+
   config:
     name: config — toda vN.yaml valida contra el loader
     runs-on: ubuntu-latest
@@ -126,7 +136,7 @@ jobs:
     name: gates
     runs-on: ubuntu-latest
     if: ${{ always() }}
-    needs: [config, architecture, unit-coverage, mutation, invariants, contract, critical, integration]
+    needs: [lint, config, architecture, unit-coverage, mutation, invariants, contract, critical, integration]
     steps:
       - working-directory: .
         run: |

@@ -339,7 +339,7 @@ class SyncPipeline:
         for row in rows:
             try:
                 user_id, item_id = uuid.UUID(row["user_id"]), uuid.UUID(row["item_id"])
-                occurred = datetime.fromisoformat(str(row["occurred_at"]).replace("Z", "+00:00"))
+                occurred = datetime.fromisoformat(str(row["occurred_at"]))  # Python ≥ 3.11 admite el sufijo Z
                 kind = row["signal_type"]
                 oid = row["origin_interaction_id"]
             except (KeyError, ValueError, TypeError):

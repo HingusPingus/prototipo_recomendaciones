@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 WORKFLOW = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "ci.yml"
-GATES = {"config", "architecture", "unit-coverage", "mutation", "invariants", "contract", "critical", "integration"}
+GATES = {"lint", "config", "architecture", "unit-coverage", "mutation", "invariants", "contract", "critical", "integration"}
 
 
 def _workflow() -> dict:
@@ -49,6 +49,7 @@ def test_the_aggregate_fails_unless_every_gate_succeeded() -> None:
 
 def test_each_gate_runs_what_t045_requires() -> None:
     jobs = _workflow()["jobs"]
+    assert "ruff check src tests" in _commands(jobs["lint"])  # T067: linters en CI (constitución)
     assert "load_engine_config" in _commands(jobs["config"])
     assert "tests/unit/test_architecture.py" in _commands(jobs["architecture"])
     assert "--cov=recomendaciones.engine" in _commands(jobs["unit-coverage"]) and "--cov-fail-under=" in _commands(jobs["unit-coverage"])

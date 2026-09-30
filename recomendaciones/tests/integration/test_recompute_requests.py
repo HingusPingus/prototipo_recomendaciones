@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import sqlalchemy as sa
 
 from recomendaciones.config.loader import ENGINE_CONFIG_DIR, load_engine_config
@@ -51,7 +50,7 @@ def test_request_is_processed_and_acked_after_writing(db_factory, redis_client) 
 
 
 def test_failure_leaves_request_pending_and_it_is_dropped_after_max_deliveries(db_factory, redis_client, monkeypatch) -> None:  # noqa: ANN001
-    user, repo, consumer, stream, metrics, recomputer = _setup(db_factory, redis_client, max_deliveries=5)
+    user, _repo, consumer, stream, metrics, recomputer = _setup(db_factory, redis_client, max_deliveries=5)
 
     def crash(*a: object, **k: object) -> None:
         raise RuntimeError("caída a mitad del recálculo")

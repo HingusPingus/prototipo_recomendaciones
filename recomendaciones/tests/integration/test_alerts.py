@@ -14,6 +14,7 @@ Tres niveles de verificación:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import socket
@@ -185,6 +186,7 @@ def test_promtool_every_alert_fires_on_its_condition_and_clears(tmp_path: Path) 
         capture_output=True,
         text=True,
         timeout=300,
+        check=False,  # se inspecciona returncode para mostrar la salida de promtool
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
@@ -197,6 +199,7 @@ def test_promtool_validates_the_rule_file(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,  # se inspecciona returncode para mostrar la salida de promtool
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
@@ -256,8 +259,9 @@ def _wait(prom_port: int, predicate, timeout: float = 60) -> set[str]:  # noqa: 
 
 
 async def test_live_chain_three_conditions_fire_and_clear(valid_env, db_factory, redis_client, amqp_url, tmp_path) -> None:  # noqa: ANN001
-    from prometheus_client import start_http_server
+    import sqlalchemy as sa
     from fastapi.testclient import TestClient
+    from prometheus_client import start_http_server
 
     from recomendaciones.api.app import build_services, create_app
     from recomendaciones.config.settings import load_settings
@@ -265,8 +269,6 @@ async def test_live_chain_three_conditions_fire_and_clear(valid_env, db_factory,
     from recomendaciones.transformer.freshness import refresh_sync_metrics
     from recomendaciones.worker.consumer import EventConsumer
     from tests.integration.test_retry_dlq import _body, _publish, _topology
-
-    import sqlalchemy as sa
 
     settings = load_settings()
     closed = _free_port()
@@ -286,7 +288,8 @@ async def test_live_chain_three_conditions_fire_and_clear(valid_env, db_factory,
     )
     _live_rules(tmp_path)
     _readable(tmp_path)
-    container = subprocess.run(
+    container = (await asyncio.to_thread(
+        subprocess.run,
         [
             "docker", "run", "-d", "--rm", "--network", "host", "-v", f"{tmp_path}:/etc/reco", PROMETHEUS,
             "--config.file=/etc/reco/prometheus.yml", f"--web.listen-address=127.0.0.1:{prom_port}",
@@ -294,14 +297,14 @@ async def test_live_chain_three_conditions_fire_and_clear(valid_env, db_factory,
         capture_output=True,
         text=True,
         check=True,
-    ).stdout.strip()
+    )).stdout.strip()
     try:
         # Series de contador inicializadas en 0 y raspadas antes de inducir: sin muestra previa, Prometheus
         # no ve el incremento de una serie que aparece ya con su valor final.
         metrics.inc("reco_unavailable_responses_total", 0, error="cache_unavailable")
         metrics.inc("reco_dlq_messages_total", 0, reason="invalid_payload")
         _scraping(prom_port)
-        time.sleep(3)  # algunas muestras en 0 antes de inducir
+        await asyncio.sleep(3)  # algunas muestras en 0 antes de inducir
         headers = {"X-Internal-API-Key": valid_env["RECO_INTERNAL_API_KEY"]}
         # (1) Redis caído ⟹ 503
         with TestClient(create_app(settings, services)) as api:
@@ -326,7 +329,7 @@ async def test_live_chain_three_conditions_fire_and_clear(valid_env, db_factory,
         for _ in range(50):
             if metrics.value("reco_dlq_messages_total", reason="invalid_payload") >= 10:
                 break
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)  # sin bloquear el loop: el consumidor corre en él
         await consumer.stop()
 
         wanted = {"RedisUnavailable503", "CatalogSyncStale", "DeadLetterGrowth"}
@@ -341,5 +344,5 @@ async def test_live_chain_three_conditions_fire_and_clear(valid_env, db_factory,
         after = _wait(prom_port, lambda current: not (wanted & current), timeout=90)
         assert not (wanted & after), after
     finally:
-        subprocess.run(["docker", "rm", "-f", container], capture_output=True)
+        await asyncio.to_thread(subprocess.run, ["docker", "rm", "-f", container], capture_output=True, check=False)
         exporter[0].shutdown() if isinstance(exporter, tuple) else None

@@ -2774,7 +2774,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 > externo.*
 
 - [ ] T066 [TDD] [US7] CRITICAL: exponer las métricas de los procesos de una corrida (`reco-transformer`, `reco-batch`) persistiendo su resultado y re-exponiéndolo desde el worker, en `src/recomendaciones/worker/runtime.py` per Constitution VII, FR-044, FR-068d1 (contradicts)
-- [ ] T067 CRITICAL: agregar el gate de lint (`ruff`) al CI y dejar `src/` y `tests/` sin errores, en `.github/workflows/ci.yml` per Constitution (Flujo de Desarrollo: «CI obligatorio: linters») (contradicts)
+- [X] T067 CRITICAL: agregar el gate de lint (`ruff`) al CI y dejar `src/` y `tests/` sin errores, en `.github/workflows/ci.yml` per Constitution (Flujo de Desarrollo: «CI obligatorio: linters») (contradicts)
 - [ ] T068 [TDD] [US5] Invalidar `retired:{module}` al retirar ítems en la sincronización, en `src/recomendaciones/transformer/pipeline.py` per FR-072, DI-10 (contradicts)
 - [ ] T069 [TDD] Ejecutar la auditoría periódica de DI-28 como job `reco-batch audits`, en `src/recomendaciones/batch/runtime.py` per DI-28 (partial)
 - [ ] T070 [TDD] [US7] Redefinir `vector_recompute_lag_seconds` como antigüedad del ítem vigente más viejo sin vector, en `src/recomendaciones/transformer/vocabulary_sync.py` per data-model §7.9, T042 (partial)
@@ -2848,12 +2848,12 @@ correcciones de estilo, cuya red de seguridad es la suite existente.
 **Dep.**: T045
 
 **Criterios de aceptación**:
-- [ ] Existe el job `lint` (`ruff check src tests`) y `gates` lo incluye en `needs`: un error de lint impide
+- [X] Existe el job `lint` (`ruff check src tests`) y `gates` lo incluye en `needs`: un error de lint impide
       el merge por el mismo check requerido
-- [ ] `ruff check src tests` termina sin errores; toda regla desactivada o `noqa` agregada lleva su motivo
-- [ ] Las correcciones no cambian comportamiento: los ocho gates siguen en verde sin tocar ningún test salvo
+- [X] `ruff check src tests` termina sin errores; toda regla desactivada o `noqa` agregada lleva su motivo
+- [X] Las correcciones no cambian comportamiento: los ocho gates siguen en verde sin tocar ningún test salvo
       por estilo
-- [ ] `tests/unit/test_ci_workflow.py` exige el job `lint` entre los gates del agregado
+- [X] `tests/unit/test_ci_workflow.py` exige el job `lint` entre los gates del agregado
 
 **Tests**: `tests/unit/test_ci_workflow.py` — falla si `lint` falta o no está en `needs` de `gates`.
 

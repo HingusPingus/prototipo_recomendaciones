@@ -6,7 +6,6 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-import pytest
 import sqlalchemy as sa
 
 from recomendaciones.config.loader import ENGINE_CONFIG_DIR, load_engine_config
@@ -106,7 +105,7 @@ def test_result_went_through_the_full_pipeline(db_factory, redis_client) -> None
 
 
 def test_persists_module_and_general_profiles(db_factory, redis_client) -> None:  # noqa: ANN001
-    user, movies, _ = _world(db_factory)
+    user, _movies, _ = _world(db_factory)
     recomputer, _ = _recomputer(db_factory, redis_client)
     recomputer.recompute(user, Module.PELICULAS, "declaration")
     with db_factory() as s:

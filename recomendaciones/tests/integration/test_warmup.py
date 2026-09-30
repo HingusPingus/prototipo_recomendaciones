@@ -97,6 +97,6 @@ def test_resumable_without_duplicating_work_or_losing_users(db_factory, redis_cl
 
 def test_is_not_triggered_by_reads() -> None:
     """FR-066: proceso dedicado e invocable manualmente; la lectura no lo importa."""
-    import recomendaciones.api.services.read_service as read_service
+    from recomendaciones.api.services import read_service
 
     assert "warmup" not in read_service.__dict__ and "batch" not in str(read_service.__dict__.get("__file__", ""))

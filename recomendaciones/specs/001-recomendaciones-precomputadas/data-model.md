@@ -4816,7 +4816,7 @@ alternativa a evaluar.
 2. **Protección de `main`** *(corregido el 2026-09-30: decía «`main` sin protección de rama por ahora» y
    difería los criterios de T017, T043 y T045; era falso desde el 2026-09-28)*. El ruleset `main` del
    repositorio (id `24128939`, activo desde el 2026-09-28) exige el check **`gates`** —el agregado que falla
-   salvo que los ocho gates de `.github/workflows/ci.yml` terminen en verde— y prohíbe borrar `main` y
+   salvo que los gates de `.github/workflows/ci.yml` terminen en verde: ocho en ese momento, nueve desde el lint de T067— y prohíbe borrar `main` y
    forzar pushes. Un gate rojo **impide técnicamente** el merge, y un `[skip ci]` deja el check requerido
    pendiente, así que tampoco lo saltea: los criterios de T017, T043 y T045 que dependían de la protección
    **se cumplen**. Quedan por disciplina del equipo, no técnicamente, dos cosas que el ruleset no exige: la

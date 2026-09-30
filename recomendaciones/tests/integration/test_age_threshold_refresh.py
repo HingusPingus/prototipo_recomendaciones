@@ -6,10 +6,10 @@ import inspect
 import uuid
 from datetime import UTC, date, datetime
 
-import recomendaciones.batch.age_threshold_refresh as refresh_module
 import sqlalchemy as sa
-from recomendaciones.batch.age_threshold_refresh import AgeThresholdRefreshJob
 
+import recomendaciones.batch.age_threshold_refresh as refresh_module
+from recomendaciones.batch.age_threshold_refresh import AgeThresholdRefreshJob
 from recomendaciones.config.loader import load_engine_config
 from recomendaciones.observability.metrics import Metrics
 from recomendaciones.shared.domain import Module

@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import recomendaciones.engine.scoring as scoring
+from recomendaciones.engine import scoring
 from recomendaciones.engine.scoring import Candidate, combine
 from recomendaciones.engine.vocabulary import TagVector
 
