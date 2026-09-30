@@ -192,11 +192,23 @@ class VocabularySync:
             self._metrics.set("catalog_unvectorized_ratio", 1.0 if live else 0.0)
             return
         vectorized = set(s.scalars(sa.select(ItemVector.item_id).where(ItemVector.vocab_version == version)))
-        missing = sum(1 for i in live if i not in vectorized)
-        self._metrics.set("catalog_unvectorized_ratio", (missing / len(live)) if live else 0.0)
-        oldest = s.scalar(sa.select(sa.func.min(ItemVector.computed_at)).where(ItemVector.vocab_version == version))
-        lag = (datetime.now(UTC) - oldest).total_seconds() if oldest else 0.0
-        self._metrics.set("vector_recompute_lag_seconds", max(lag, 0.0))
+        missing = [i for i in live if i not in vectorized]
+        self._metrics.set("catalog_unvectorized_ratio", (len(missing) / len(live)) if live else 0.0)
+        self._metrics.set("vector_recompute_lag_seconds", self._unvectorized_lag(s, version, missing))
+
+    @staticmethod
+    def _unvectorized_lag(s: Session, version: str, missing: list) -> float:
+        """T070, §7.9: antigüedad del ítem vigente más viejo que debería tener vector bajo la versión activa.
+
+        Debe tenerlo desde lo último entre su primera sincronización y la activación de la versión. Sin
+        faltantes vale 0: un catálogo estable no reescribe vectores y no por eso está atrasado.
+        """
+        if not missing:
+            return 0.0
+        first_seen = s.scalar(sa.select(sa.func.min(Item.first_synced_at)).where(Item.id.in_(missing)))
+        activated = s.scalar(sa.select(VocabVersion.activated_at).where(VocabVersion.version == version))
+        since = max(t for t in (first_seen, activated) if t is not None)
+        return max((datetime.now(UTC) - since).total_seconds(), 0.0)
 
 
 __all__ = ["TagVector", "VocabularyReport", "VocabularySync"]

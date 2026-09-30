@@ -8,9 +8,9 @@ automatizar.
 
 ## Cómo usarla
 
-1. Revisá las **26 alertas de las secciones 1 y 2**. Tildá cada una al terminarla y marcá **aprobar** o
+1. Revisá las **27 alertas de las secciones 1 y 2**. Tildá cada una al terminarla y marcá **aprobar** o
    **ajustar**. Si es «ajustar», anotá el valor o el cambio que proponés.
-2. **No revises la sección 3** todavía: `VectorRecomputeLag` se redefine en T070. *(Hasta el 2026-09-30,
+2. La sección 3 queda vacía: `VectorRecomputeLag` ya se redefinió en T070. *(Hasta el 2026-09-30,
    once alertas estaban bloqueadas porque su métrica no se exponía; T066 lo corrigió.)*
 3. Cuando termines, pasame las decisiones: actualizo `ops/alerts.yaml` y sus justificaciones, y cierro el
    criterio de T042.
@@ -129,7 +129,7 @@ automatizar.
   - **A tener en cuenta**: ⚠️ **Funciona en parte**: la cuenta la supresión del worker, pero lo que encuentre el barrido `reco-batch suppressions` no se expone. Sin `for`, a propósito.
   - **Decisión**: ☐ aprobar · ☐ ajustar → ______
 
-## 2. Desbloqueadas por T066 o nuevas: para revisar (11)
+## 2. Desbloqueadas por T066/T070 o nuevas: para revisar (12)
 
 > *Actualizado el 2026-09-30.* Estas alertas no podían dispararse porque su métrica la fija un proceso que
 > corre una vez y termina. Desde T066 cada corrida deja su resultado en `process_runs` y el worker lo expone
@@ -207,8 +207,12 @@ automatizar.
   - **Justificación actual**: DI-28 no lo sostiene el esquema: lo garantiza la transacción de declaración (FR-083) y lo audita este job (T069). Cualquier valor mayor que 0 es una escritura que saltó el endpoint o un defecto; el usuario sigue siendo atendido, por eso es warning. El for de 5 minutos cubre la corrida del job.
   - **Decisión**: ☐ aprobar · ☐ ajustar → ______
 
-## 3. Bloqueada: no revisar todavía (1)
+- [ ] **VectorRecomputeLag** · warning · dueño `guardia-de-plataforma` *(redefinida, T070)*
+  - **Condición**: `vector_recompute_lag_seconds > 93600` durante `10m`
+  - **Qué avisa**: Hay ítems vigentes sin vector bajo la versión activa hace más de 26 horas
+  - **Justificación actual**: §7.9 fija > 26 h: la sincronización es diaria y el job de vocabulario vectoriza en la misma corrida, así que un ítem sin vector pasado ese plazo es una reconciliación que falla. Se mide desde lo último entre la primera sincronización del ítem y la activación de la versión (T070); con un catálogo estable vale 0. Degrada calidad, no corrección.
+  - **Decisión**: ☐ aprobar · ☐ ajustar → ______
 
-| Alerta | Severidad | Métrica | Motivo |
-|---|---|---|---|
-| VectorRecomputeLag | warning | `vector_recompute_lag_seconds` | Ya se expone (T066), pero con la definición actual quedaría en rojo permanente: una corrida sin cambios no reescribe vectores, así que `min(computed_at)` crece para siempre. Se redefine en **T070** y recién entonces se revisa |
+## 3. Bloqueadas: ninguna
+
+*(Actualizado el 2026-09-30: `VectorRecomputeLag` se redefinió en T070 y pasó a la sección 2.)*
