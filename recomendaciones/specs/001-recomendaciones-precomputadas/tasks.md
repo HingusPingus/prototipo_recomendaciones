@@ -2761,3 +2761,218 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
       NC-1…NC-20 **todos cerrados** (`data-model.md` §12). La lista «D1, D2, D3, D5, D6, D7, D8» que
       figuraba aquí quedó obsoleta y se retira: un DoD que exige resolver decisiones ya resueltas
       envejece hacia el ruido, y el ruido se termina tildando sin leer
+
+---
+
+## Phase 4: Convergence
+
+> *Agregada el 2026-09-30 por `/speckit-converge` sobre `main` en `a3493bf`, tras la implementación de
+> T001–T065. Solo se **agrega**: ninguna tarea anterior se reescribe. Por esa regla, las líneas de índice y
+> la fase de estas tareas viven en esta sección —**Fase 4 — Convergencia: T066–T071**— y no en el índice ni
+> en la tabla «Asignación de fases» de arriba. Todas son trabajo de **este** repositorio. Lo que depende de
+> la aprobación escrita de `api-general` (Principio II) queda afuera y se lista al final como bloqueo
+> externo.*
+
+- [ ] T066 [TDD] [US7] CRITICAL: exponer las métricas de los procesos de una corrida (`reco-transformer`, `reco-batch`) persistiendo su resultado y re-exponiéndolo desde el worker, en `src/recomendaciones/worker/runtime.py` per Constitution VII, FR-044, FR-068d1 (contradicts)
+- [ ] T067 CRITICAL: agregar el gate de lint (`ruff`) al CI y dejar `src/` y `tests/` sin errores, en `.github/workflows/ci.yml` per Constitution (Flujo de Desarrollo: «CI obligatorio: linters») (contradicts)
+- [ ] T068 [TDD] [US5] Invalidar `retired:{module}` al retirar ítems en la sincronización, en `src/recomendaciones/transformer/pipeline.py` per FR-072, DI-10 (contradicts)
+- [ ] T069 [TDD] Ejecutar la auditoría periódica de DI-28 como job `reco-batch audits`, en `src/recomendaciones/batch/runtime.py` per DI-28 (partial)
+- [ ] T070 [TDD] [US7] Redefinir `vector_recompute_lag_seconds` como antigüedad del ítem vigente más viejo sin vector, en `src/recomendaciones/transformer/vocabulary_sync.py` per data-model §7.9, T042 (partial)
+- [ ] T071 Volver portable a Windows el test de entrypoints, en `tests/unit/test_layout.py` per T001 (partial)
+
+### T066 [TDD] — Métricas de los procesos de una corrida, observables desde el worker
+
+**Descripción**: `reco-transformer` y los jobs de `reco-batch` corren una vez y terminan, y solo la API y el
+worker exponen un servidor de métricas. Lo que esos procesos fijan se pierde al terminar: Prometheus nunca
+ve la serie y ninguna alerta que dependa de ella puede dispararse (`docs/validation/alert-threshold-review.md`
+§2: once alertas, tres críticas). Afecta también a métricas sin alerta que la spec exige exponer: FR-044
+(éxito/falla por corrida, duración y volumen del Data Transformer) y FR-068d1
+(`exclusions_orphaned_permanent_total`). El worker ya aplica la corrección para seis métricas
+(`refresh_sync_metrics`, `refresh_suppression_metrics`, cada 30 s): cada proceso de una corrida deja su
+resultado en Postgres y el worker lo re-expone. Esta tarea extiende ese mecanismo a **todas** las métricas
+fijadas solo por procesos de una corrida.
+
+**Hallazgo** (converge F1): métricas fijadas solo en `transformer/` —`reco_sync_duration_seconds`,
+`sync_volume_delta_ratio`, `contract_violations_total{field="birth_date"|"region"}`,
+`projection_field_anomalies_total`, `signal_duplicate_rejections_total{source="sync"}`,
+`signal_ingest_lag_seconds` (sync), `catalog_unvectorized_ratio`, `vocab_transition_progress`,
+`vector_recompute_lag_seconds`, `declarable_tags_total`— y solo en `batch/` —`catalog_popularity_last_success_timestamp`,
+`age_refresh_last_success_timestamp`, `age_stale_config_users_total`, `age_threshold_crossings_total`,
+`signals_purge_deferred_total`, `exclusions_orphaned_permanent_total`, `diversity_cap_relaxed_total` (respaldo)—.
+
+**Archivos**: `src/recomendaciones/storage/db/models.py`, `migrations/versions/0004_*.py`,
+`src/recomendaciones/transformer/`, `src/recomendaciones/batch/`, `src/recomendaciones/worker/runtime.py`,
+`src/recomendaciones/observability/metrics.py`, `specs/001-recomendaciones-precomputadas/data-model.md`
+
+**Dep.**: T031, T039, T042, T051, T057, T063
+
+**Criterios de aceptación**:
+- [ ] Cada corrida de `reco-transformer` y de cada job de `reco-batch` deja su resultado en Postgres
+      —estado, inicio, fin, conteos y los valores que hoy fija en memoria— antes de terminar, **también
+      cuando falla** (FR-044: éxito/falla por corrida)
+- [ ] El worker re-expone esos valores cada 30 s con el mismo nombre, tipo y etiquetas de
+      `observability/metrics.py`: ninguna alerta de `ops/alerts.yaml` cambia de expresión por esta tarea
+- [ ] Los contadores se re-exponen como **acumulados** desde lo persistido, de modo que `increase()` y
+      `rate()` de las alertas siguen teniendo sentido tras reinicios del worker
+- [ ] La persistencia se documenta en `data-model.md` §2 —tabla nueva o extensión de `sync_runs`—, con
+      zona, escritor único por fila y retención, y una migración `0004` versionada y reversible
+      (constitución, Flujo de Desarrollo)
+- [ ] La corrida de `purge-signals` persiste el valor vigente de `signal_retention_days`: la constancia de
+      RD-54 deja de depender de la retención de los logs
+- [ ] Para cada una de las once alertas de §2 de la planilla, un test la induce **sin inyectar la serie a
+      mano**: corre el proceso real, el worker refresca y la regla evaluada sobre lo expuesto dispara
+- [ ] `docs/validation/alert-threshold-review.md` §2 queda vacía o actualizada, y las once alertas pasan
+      a la lista revisable
+
+**🔴 Paso 1 — Rojo** (`tests/integration/test_one_shot_metrics.py`, commit propio): correr
+`reco-transformer` sobre el doble de `api-general` con un usuario sin `birth_date` → tras un refresco del
+worker, `contract_violations_total{field="birth_date"}` vale 1 en su endpoint de métricas; correr
+`reco-batch purge-signals` → `exclusions_orphaned_permanent_total` y la retención vigente quedan expuestas y
+persistidas; una corrida fallida del transformer queda visible como falla.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar.
+
+---
+
+### T067 — Gate de lint en CI
+
+**Descripción**: la constitución (Flujo de Desarrollo) exige «CI obligatorio: linters, tests unitarios,
+tests de integración y contract tests». `.github/workflows/ci.yml` tiene los ocho gates de tests y ningún
+linter; `ruff check` reporta 35 errores en `src/` y 278 en `tests/`, casi todos corregibles
+automáticamente y sin efecto de comportamiento. Exenta de TDD por la *Política TDD*: configuración de CI y
+correcciones de estilo, cuya red de seguridad es la suite existente.
+
+**Archivos**: `.github/workflows/ci.yml`, `pyproject.toml` (`[tool.ruff]`), `src/`, `tests/`,
+`tests/unit/test_ci_workflow.py`, `docs/runbook.md` (sección CI)
+
+**Dep.**: T045
+
+**Criterios de aceptación**:
+- [ ] Existe el job `lint` (`ruff check src tests`) y `gates` lo incluye en `needs`: un error de lint impide
+      el merge por el mismo check requerido
+- [ ] `ruff check src tests` termina sin errores; toda regla desactivada o `noqa` agregada lleva su motivo
+- [ ] Las correcciones no cambian comportamiento: los ocho gates siguen en verde sin tocar ningún test salvo
+      por estilo
+- [ ] `tests/unit/test_ci_workflow.py` exige el job `lint` entre los gates del agregado
+
+**Tests**: `tests/unit/test_ci_workflow.py` — falla si `lint` falta o no está en `needs` de `gates`.
+
+---
+
+### T068 [TDD] — Invalidación de `retired:{module}` al retirar
+
+**Descripción**: FR-072 prohíbe servir un ítem retirado, y DI-10 exige que tras retirarlo «la lectura
+siguiente no lo contiene». El Data Transformer marca el retiro en `items` pero no toca `retired:{module}`,
+que vive `TTL_FILTERS` (1 h): con el set ya poblado, el ítem retirado se sigue sirviendo desde `reco:` o
+`fallback:` hasta que el set vence. El test de DI-10 pasa solo porque el set está vacío al retirar y la
+primera lectura lo repuebla. Misma solución que RD-96 aplicó a `filters:`: invalidar en el mismo acto.
+
+**Archivos**: `src/recomendaciones/transformer/pipeline.py`, `src/recomendaciones/storage/cache/filters.py`,
+`specs/001-recomendaciones-precomputadas/data-model.md` (§4.4)
+
+**Dep.**: T029, T037
+
+**Criterios de aceptación**:
+- [ ] Una corrida que retira ítems de un módulo invalida `retired:{module}` **antes** de escribir (regla de
+      FR-080c) **y otra vez después** de confirmar la transacción: una lectura concurrente que repueble el
+      set con el estado previo no puede dejarlo vigente por `TTL_FILTERS`
+- [ ] Solo se invalidan los módulos con retiros en la corrida; una corrida sin retiros no toca Redis
+- [ ] Redis caído durante la invalidación no deja el retiro sin efecto en silencio: la corrida lo registra y
+      el rezago queda acotado por `TTL_FILTERS`, como hoy
+- [ ] `data-model.md` §4.4 deja de presentar el rezago de `TTL_FILTERS` como normal y lo reduce al caso de
+      Redis caído
+- [ ] Los tests de DI-10 y de T052 cubren el caso de **set poblado antes del retiro**
+
+**🔴 Paso 1 — Rojo** (`tests/invariants/test_data_invariants.py`, commit propio): poblar `reco:` y
+`retired:{module}` con una lectura, retirar el ítem por sincronización y leer de inmediato → el ítem no
+aparece. Hoy falla.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar.
+
+---
+
+### T069 [TDD] — Job de auditoría de DI-28
+
+**Descripción**: DI-28 —todo módulo declarado tiene al menos `declared_tags_min` filas **propias** en
+`user_declared_tags`— es el único invariante que el esquema no sostiene, y `data-model.md` §6 manda que «lo
+audita una consulta periódica». La consulta existe (`batch/audits.py::declared_minimum_violations`) pero
+solo la llama un test: ningún job de `reco-batch` la ejecuta.
+
+**Archivos**: `src/recomendaciones/batch/runtime.py`, `src/recomendaciones/batch/audits.py`,
+`src/recomendaciones/observability/metrics.py`, `ops/alerts.yaml`, `docs/runbook.md`
+
+**Dep.**: T017, T066
+
+**Criterios de aceptación**:
+- [ ] `reco-batch audits` ejecuta la auditoría de DI-28 y queda listado en `JOBS` y en la tabla de jobs del
+      runbook con su periodicidad
+- [ ] El resultado se expone como `declared_minimum_violations_total` (valor esperado 0) por el mecanismo de
+      T066, con una alerta que dispara ante cualquier valor mayor que 0 y su entrada en el runbook
+- [ ] Una violación se registra con `user_id` y módulo, sin datos de la declaración
+
+**🔴 Paso 1 — Rojo** (`tests/integration/test_audits_job.py`, commit propio): una declaración con menos de
+`declared_tags_min` filas propias, insertada saltando el endpoint → `reco-batch audits` la reporta y la
+métrica expuesta vale 1; sin violaciones vale 0.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar.
+
+---
+
+### T070 [TDD] — `vector_recompute_lag_seconds` que no quede en rojo con un catálogo estable
+
+**Descripción**: `data-model.md` §7.9 define la métrica como `now() − min(computed_at)` sobre la versión
+activa, con alerta a las 26 h. Una corrida sin cambios de catálogo no reescribe vectores (T030,
+idempotencia), así que con un catálogo estable el mínimo envejece para siempre y `VectorRecomputeLag`
+queda disparada sin que falte ningún vector. Lo que la alerta quiere detectar es un ítem vigente **sin**
+vector bajo la versión activa que no se reconcilia.
+
+**Archivos**: `src/recomendaciones/transformer/vocabulary_sync.py`, `ops/alerts.yaml`, `docs/runbook.md`,
+`specs/001-recomendaciones-precomputadas/data-model.md` (§7.9)
+
+**Dep.**: T030, T066
+
+**Criterios de aceptación**:
+- [ ] La métrica mide la antigüedad del ítem vigente más viejo que debería tener vector bajo la versión
+      activa y no lo tiene, y vale 0 si no hay ninguno
+- [ ] Con un catálogo estable y totalmente vectorizado, la métrica vale 0 corrida tras corrida
+- [ ] `data-model.md` §7.9 y la regla de `ops/alerts.yaml` se actualizan con la definición nueva; el umbral
+      de 26 h conserva su justificación o se revisa por escrito
+
+**🔴 Paso 1 — Rojo** (`tests/integration/test_vector_reconciliation.py`, commit propio): dos corridas sin
+cambios de catálogo separadas por más de 26 h simuladas → la métrica vale 0; un ítem vigente sin vector
+durante 27 h → supera el umbral.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar.
+
+---
+
+### T071 — Test de entrypoints portable a Windows
+
+**Descripción**: `tests/unit/test_layout.py::test_entrypoint_fails_explicitly_without_configuration` busca
+el ejecutable como `Path(sys.executable).parent / script`. En Windows los scripts de consola se instalan como
+`reco-api.exe`, así que los cuatro casos fallan con `FileNotFoundError` aunque el comportamiento sea
+correcto. El CI corre en Linux y no lo detecta. Exenta de TDD: es una tarea de test.
+
+**Archivos**: `tests/unit/test_layout.py`
+
+**Dep.**: T001
+
+**Criterios de aceptación**:
+- [ ] El test resuelve el ejecutable de forma portable (`shutil.which` sobre el directorio del intérprete, o
+      el sufijo de la plataforma) y lee su salida con una codificación explícita
+- [ ] `pytest tests/unit` pasa en Windows y en Linux sin cambios en el código de producción
+
+**Tests**: es la tarea de test.
+
+---
+
+### Bloqueos externos detectados por la convergencia *(no son tareas de este repositorio)*
+
+| Bloqueo | De quién depende | Registro |
+|---|---|---|
+| Consumir `recomendacion.actualizar.v3` con exchange propio | Aprobación escrita de `api-general` | `docs/contracts/migracion-v3.md` |
+| Endpoint del checkpoint de recepción del evento de baja | Aprobación escrita de los tres equipos | `docs/contracts/checkpoint-baja.md` |
+| Rutas, header e identificadores UUID de la sincronización | Cambios en el runtime de `api-general` | `docs/contracts/alineacion-sync.md` |
+| Autenticación del mantenimiento de catálogo y vocabulario; etiquetado del catálogo | `api-general` | `docs/contracts/vocabulario-catalogo-actividad.md` |
+| Revisión obligatoria de PR y rama al día en el ruleset de `main` | Un administrador del repositorio | `docs/runbook.md` (sección CI), RD-113 |
+| Ejecución de prueba del runbook (T046) y revisión de umbrales de alertas | Personas ajenas a la feature | `docs/validation/runbook-dry-run.md`, `docs/validation/alert-threshold-review.md` |
