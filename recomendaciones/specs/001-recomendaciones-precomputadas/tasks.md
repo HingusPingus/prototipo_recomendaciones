@@ -2989,7 +2989,7 @@ correcto. El CI corre en Linux y no lo detecta. Exenta de TDD: es una tarea de t
 > tareas viven en esta sección —**Fase 5 — Convergencia: T072–T073**—. Los bloqueos externos listados al
 > final de la fase 4 siguen vigentes y no generan tareas.*
 
-- [ ] T072 [TDD] [US7] Dejar de incrementar `age_stale_config_users_total` desde la API, en `src/recomendaciones/api/app.py` per data-model §7.5.1 (contradicts)
+- [X] T072 [TDD] [US7] Dejar de incrementar `age_stale_config_users_total` desde la API, en `src/recomendaciones/api/app.py` per data-model §7.5.1 (contradicts)
 - [ ] T073 Agregar `process_runs` e `items.first_synced_at` a los diagramas del modelo de datos, en `specs/001-recomendaciones-precomputadas/data-model.md` per T066, T070 (partial)
 
 ### T072 [TDD] — `age_stale_config_users_total` es un recuento de filas, no un contador de la API
@@ -3008,11 +3008,11 @@ hasta que se reinicia, aunque el refresco ya haya corregido a todos. El `503` ya
 **Dep.**: T035, T051, T066
 
 **Criterios de aceptación**:
-- [ ] La API no fija ni incrementa `age_stale_config_users_total`: su único emisor es el refresco etario,
+- [X] La API no fija ni incrementa `age_stale_config_users_total`: su único emisor es el refresco etario,
       re-expuesto por el worker (§7.5.1, §2.17)
-- [ ] Un `503` por escala etaria incompatible (DI-23) se sigue contando en
+- [X] Un `503` por escala etaria incompatible (DI-23) se sigue contando en
       `reco_unavailable_responses_total{error="filters_unavailable"}`
-- [ ] El gancho `on_stale_age_scale` se elimina o pasa a registrar solo un log con `user_id`; no queda
+- [X] El gancho `on_stale_age_scale` se elimina o pasa a registrar solo un log con `user_id`; no queda
       código muerto
 
 **🔴 Paso 1 — Rojo** (`tests/invariants/test_data_invariants.py`, commit propio): con un usuario cuya

@@ -72,7 +72,6 @@ class ReadService:
         readable_versions: Sequence[str],
         age_compatible_versions: frozenset[str],
         on_signal_failure: Callable[[], None] | None = None,
-        on_stale_age_scale: Callable[[], None] | None = None,
     ) -> None:
         self._repository = repository
         self._filters = filters
@@ -82,7 +81,6 @@ class ReadService:
         self._readable = tuple(readable_versions)
         self._compatible = age_compatible_versions
         self._on_signal_failure = on_signal_failure
-        self._on_stale_age_scale = on_stale_age_scale
 
     # --- resolución del resultado ----------------------------------------------------------------
     def _usable(self, entry: RecommendationEntry | None, filters: UserFilters) -> RecommendationEntry | None:
@@ -140,7 +138,7 @@ class ReadService:
     # --- entrada pública ------------------------------------------------------------------------
     def read(self, user_id: uuid.UUID, module: Module, *, top_n: int, prefer_stale: bool = False) -> ReadResult:
         module = Module(module)
-        filters = check_preconditions(self._filters, user_id, module, self._compatible, self._on_stale_age_scale)
+        filters = check_preconditions(self._filters, user_id, module, self._compatible)
         retired = self._retired.members(module)
 
         fresh = self._resolve(lambda v: self._repository.read_fresh(v, user_id, module), filters)

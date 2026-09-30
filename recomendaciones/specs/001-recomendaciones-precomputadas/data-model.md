@@ -1112,7 +1112,7 @@ tabla del instantáneo etario (§3.2):
 |---|---|---|
 | `filters.age_config_version == activa` | El permiso es comparable | **Proceder.** Aplicar `item.min_age_ordinal <= max_age_ordinal` |
 | `filters.age_config_version ≠ activa` | La entrada de caché se derivó bajo una escala retirada | **Descartar la entrada** y repoblar desde `users` (miss de caché, no de resultado). Costo: una lectura a Postgres |
-| `users.age_config_version ≠ activa` tras repoblar | El **derivado durable** está desactualizado: el job de §7.5 no alcanzó a este usuario | **Fail-closed: no servir.** Responder `503` con `Retry-After` (FR-065) e incrementar `age_stale_config_users_total`. **Nunca servir con un ordinal incomparable** |
+| `users.age_config_version ≠ activa` tras repoblar | El **derivado durable** está desactualizado: el job de §7.5 no alcanzó a este usuario | **Fail-closed: no servir.** Responder `503` con `Retry-After` (FR-065), contado en `reco_unavailable_responses_total{error="filters_unavailable"}`. El recuento de estos usuarios es `age_stale_config_users_total`, que fija el job de §7.5.1, no la API. **Nunca servir con un ordinal incomparable** |
 
 La asimetría con el instantáneo etario es intencional y se apoya en la misma lógica: allí el caso
 `snapshot < usuario` era **seguro por construcción** y se servía; acá **ninguna** dirección del

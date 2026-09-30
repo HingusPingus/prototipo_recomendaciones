@@ -8,7 +8,6 @@ sexto `result_type` —los estados siguen siendo cinco (DEP-6)— y se resuelve 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
 
 from recomendaciones.shared.domain import Module
 from recomendaciones.shared.errors import DeclarationRequired, StaleAgeScale, UnknownUser
@@ -20,11 +19,12 @@ def check_preconditions(
     user_id: uuid.UUID,
     module: Module,
     age_compatible_versions: frozenset[str],
-    on_stale_age_scale: Callable[[], None] | None = None,
 ) -> UserFilters:
     """Filtros del usuario listos para las guardas, o el error de precondición que corresponda.
 
-    Usuario desconocido ⟹ 404. Escala etaria incompatible ⟹ se repuebla y, si persiste, 503 (DI-23).
+    Usuario desconocido ⟹ 404. Escala etaria incompatible ⟹ se repuebla y, si persiste, 503 (DI-23); ese 503 se
+    cuenta en `reco_unavailable_responses_total`; el recuento de usuarios con escala incompatible es del refresco
+    etario (§7.5.1), no de la API.
     Módulo sin declaración ⟹ 412 (FR-088).
     """
     filters = filters_cache.get(user_id)
@@ -35,8 +35,6 @@ def check_preconditions(
         if filters is None:
             raise UnknownUser()
         if filters.age_config_version not in age_compatible_versions:
-            if on_stale_age_scale:
-                on_stale_age_scale()
             raise StaleAgeScale()  # nunca servir con un ordinal incomparable
     if Module(module) not in filters.declared_modules:
         raise DeclarationRequired("el usuario no declaró sus gustos en este módulo: debe declararlos antes de pedir recomendaciones")
