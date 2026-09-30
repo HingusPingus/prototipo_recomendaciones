@@ -122,6 +122,8 @@ class Item(Base):
     age_rating: Mapped[str] = mapped_column(AgeRating, nullable=False, server_default="+18")
     age_rating_source: Mapped[str] = mapped_column(AgeRatingSource, nullable=False)
     synced_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False)
+    # T070: primera sincronización; la proyección no la reescribe (a diferencia de `synced_at`).
+    first_synced_at: Mapped[datetime] = mapped_column(TSTZ, nullable=False, server_default=text("now()"))
 
     __table_args__ = (
         CheckConstraint("(retired_at IS NOT NULL) = (status = 'retired')", name="ck_items_retired_at"),

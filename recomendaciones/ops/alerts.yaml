@@ -42,8 +42,8 @@ groups:
         for: 10m
         labels: {severity: warning, owner: guardia-de-plataforma}
         annotations:
-          summary: Hay vectores de la versión activa sin recalcular hace más de 26 horas
-          justification: "§7.9 fija > 26 h sobre la versión activa solamente (las anteriores tienen computed_at viejo por definición). Indica que el job de vocabulario reportó éxito omitiendo filas: degrada calidad, no corrección."
+          summary: Hay ítems vigentes sin vector bajo la versión activa hace más de 26 horas
+          justification: "§7.9 fija > 26 h: la sincronización es diaria y el job de vocabulario vectoriza en la misma corrida, así que un ítem sin vector pasado ese plazo es una reconciliación que falla. Se mide desde lo último entre la primera sincronización del ítem y la activación de la versión (T070); con un catálogo estable vale 0. Degrada calidad, no corrección."
           runbook: docs/runbook.md#vectorrecomputelag
       - alert: VocabTransitionStalled
         expr: vocab_transition_progress < 1

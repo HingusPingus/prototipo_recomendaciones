@@ -59,7 +59,7 @@ SPECS: dict[str, MetricSpec] = {
     "projection_field_anomalies_total": MetricSpec("counter", ("field", "reason"), "Anomalías de proyección (§7.8)"),
     "retired_set_size": MetricSpec("gauge", ("module",), "Tamaño del set retired: (§4.4)"),
     # --- Vocabulario y vectores (T030) ------------------------------------------------------------
-    "vector_recompute_lag_seconds": MetricSpec("gauge", (), "now − min(computed_at) sobre la versión activa (§7.9)"),
+    "vector_recompute_lag_seconds": MetricSpec("gauge", (), "Antigüedad del ítem vigente más viejo sin vector bajo la versión activa (§7.9, T070)"),
     "vocab_transition_progress": MetricSpec("gauge", (), "Vectores de la versión entrante / esperados (§7.9)"),
     "catalog_unvectorized_ratio": MetricSpec("gauge", (), "Vigentes sin vector bajo la versión activa (§7.9)"),
     "declarable_tags_total": MetricSpec("gauge", ("module",), "Tags elegibles para declarar (DEP-10, RD-110)"),

@@ -215,6 +215,7 @@ de §7.6, y es una defensa débil. Ver RD-4 para la alternativa descartada.
 | `age_rating` | enum | **No** | **Integridad** | **Dato de origen**, no derivado. Default = valor más restrictivo (FR-051). Permite re-derivar el ordinal ante cambio de catálogo |
 | `age_rating_source` | enum(`declared`,`unknown_defaulted`) | No | **Auditoría (accionable)** | Excepción a la regla forense: sostiene una métrica de cobertura (§7.7, RD-9) |
 | `synced_at` | timestamptz | No | **Operativo** | Última sincronización |
+| `first_synced_at` | timestamptz | No | **Operativo** | Primera sincronización; la proyección no la reescribe. Consumidor: `vector_recompute_lag_seconds` (§7.9). *(T070, migración `0005`; las filas previas tomaron su `synced_at`)* |
 
 > 🔄 **`like_count_window` reubicado a `item_popularity` (§2.11, RD-12).** No provenía del origen:
 > lo produce un proceso propio desde señales locales. Su presencia acá rompía la desechabilidad de
@@ -2117,9 +2118,15 @@ es el recomendable.
 
 | Métrica | Umbral | Acción que dispara | Responsable |
 |---|---|---|---|
-| `vector_recompute_lag_seconds` = `now() − min(computed_at)` **sobre la versión activa** | **> 26 h** | **Alerta.** Hay vectores de la versión activa sin recalcular: el job reportó éxito habiendo omitido filas. Re-ejecutar e investigar | Guardia de plataforma |
+| `vector_recompute_lag_seconds` = antigüedad del **ítem vigente más viejo sin vector** bajo la versión activa, desde `greatest(items.first_synced_at, vocab_versions.activated_at)`; 0 si no falta ninguno | **> 26 h** | **Alerta.** Un ítem que debería tener vector no lo tiene: la reconciliación falla. Re-ejecutar e investigar | Guardia de plataforma |
 | `vocab_transition_progress` = vectores en versión entrante / total esperado | **Estancado > 2 h** | **Alerta.** Transición de vocabulario detenida a mitad de camino (RD-22) | Guardia de plataforma |
 | `catalog_unvectorized_ratio` = ítems vigentes sin vector / vigentes | **> 10 %** | **Alerta.** Esa fracción no participa de las señales α ni γ (RD-24). Escalar al proveedor: son ítems sin tags | Dueño de producto |
+
+> 🔄 **Redefinida el 2026-09-30 (T070)**. La definición anterior, `now() − min(computed_at)`, quedaba en rojo
+> permanente con un catálogo estable: una corrida sin cambios no reescribe vectores (T030), así que el
+> mínimo envejece sin que falte ninguno. Lo que la alerta busca es un ítem vigente **sin** vector que no se
+> reconcilia. `computed_at` conserva su otro consumidor, la detección de recálculo parcial. El párrafo
+> siguiente queda como registro de la definición anterior.
 
 **Sobre `vector_recompute_lag_seconds`** — es la métrica que justifica conservar `computed_at`, y su
 definición evita el error que RD-6 encontró en la métrica etaria: se calcula **solo sobre la versión

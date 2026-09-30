@@ -2777,7 +2777,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] T067 CRITICAL: agregar el gate de lint (`ruff`) al CI y dejar `src/` y `tests/` sin errores, en `.github/workflows/ci.yml` per Constitution (Flujo de Desarrollo: «CI obligatorio: linters») (contradicts)
 - [X] T068 [TDD] [US5] Invalidar `retired:{module}` al retirar ítems en la sincronización, en `src/recomendaciones/transformer/pipeline.py` per FR-072, DI-10 (contradicts)
 - [X] T069 [TDD] Ejecutar la auditoría periódica de DI-28 como job `reco-batch audits`, en `src/recomendaciones/batch/runtime.py` per DI-28 (partial)
-- [ ] T070 [TDD] [US7] Redefinir `vector_recompute_lag_seconds` como antigüedad del ítem vigente más viejo sin vector, en `src/recomendaciones/transformer/vocabulary_sync.py` per data-model §7.9, T042 (partial)
+- [X] T070 [TDD] [US7] Redefinir `vector_recompute_lag_seconds` como antigüedad del ítem vigente más viejo sin vector, en `src/recomendaciones/transformer/vocabulary_sync.py` per data-model §7.9, T042 (partial)
 - [X] T071 Volver portable a Windows el test de entrypoints, en `tests/unit/test_layout.py` per T001 (partial)
 
 ### T066 [TDD] — Métricas de los procesos de una corrida, observables desde el worker
@@ -2935,10 +2935,10 @@ vector bajo la versión activa que no se reconcilia.
 **Dep.**: T030, T066
 
 **Criterios de aceptación**:
-- [ ] La métrica mide la antigüedad del ítem vigente más viejo que debería tener vector bajo la versión
+- [X] La métrica mide la antigüedad del ítem vigente más viejo que debería tener vector bajo la versión
       activa y no lo tiene, y vale 0 si no hay ninguno
-- [ ] Con un catálogo estable y totalmente vectorizado, la métrica vale 0 corrida tras corrida
-- [ ] `data-model.md` §7.9 y la regla de `ops/alerts.yaml` se actualizan con la definición nueva; el umbral
+- [X] Con un catálogo estable y totalmente vectorizado, la métrica vale 0 corrida tras corrida
+- [X] `data-model.md` §7.9 y la regla de `ops/alerts.yaml` se actualizan con la definición nueva; el umbral
       de 26 h conserva su justificación o se revisa por escrito
 
 **🔴 Paso 1 — Rojo** (`tests/integration/test_vector_reconciliation.py`, commit propio): dos corridas sin

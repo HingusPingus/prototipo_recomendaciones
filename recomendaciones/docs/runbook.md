@@ -39,7 +39,8 @@ sincronización diaria también corrige el ordinal de quien ya cruzó el umbral,
 repara solo en la corrida siguiente de cualquiera de los dos.
 
 ### VectorRecomputeLag
-**Qué significa**: hay vectores de la versión activa sin recalcular hace más de 26 h.
+**Qué significa**: hay ítems vigentes sin vector bajo la versión activa hace más de 26 h, contadas desde su
+primera sincronización o desde la activación de la versión, lo que sea más reciente (T070).
 **Primer paso**: `SELECT count(*) FROM items i WHERE status='available' AND NOT EXISTS (SELECT 1 FROM
 item_vectors v JOIN vocab_versions vv ON vv.version = v.vocab_version WHERE v.item_id = i.id AND
 vv.deactivated_at IS NULL AND vv.activated_at IS NOT NULL);`
