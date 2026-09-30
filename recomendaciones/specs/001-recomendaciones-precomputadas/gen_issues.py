@@ -81,6 +81,15 @@ META = {
  "T063": ("M11","engine","feature","P0-bloqueante","size-M"),    # Wilson por ventana + promociones
  "T064": ("M11","worker","feature","P0-bloqueante","size-M"),    # persistencia de señal, dedupe, DLQ, resolutor
  "T065": ("M11","engine","feature","P2-media","size-M"),         # colocación de cuota con propiedades de truncado
+ # Fases de convergencia (/speckit-converge): misma vara de tallas.
+ "T066": ("M12","observability","observability","P0-bloqueante","size-L"),  # tabla nueva, registro en dos procesos, re-exposición
+ "T067": ("M12","infra","infra","P0-bloqueante","size-M"),       # gate de lint y correcciones sin efecto
+ "T068": ("M12","data-transformer","feature","P1-alta","size-M"),  # invalidación de retirados en el mismo acto
+ "T069": ("M12","observability","feature","P2-media","size-M"),  # job de auditoría, métrica y alerta
+ "T070": ("M12","data-transformer","feature","P2-media","size-M"),  # columna nueva y redefinición de la métrica
+ "T071": ("M12","infra","test","P3-baja","size-S"),              # portabilidad del test de entrypoints
+ "T072": ("M12","api","feature","P2-media","size-S"),            # la API deja de tocar un gauge ajeno
+ "T073": ("M12","database","docs","P3-baja","size-S"),           # diagramas del modelo de datos
 }
 
 MILESTONES = {
@@ -90,6 +99,7 @@ MILESTONES = {
  "M7":"M7 - API de lectura", "M8":"M8 - Observabilidad y operacion",
  "M9":"M9 - Testing y verificacion", "M10":"M10 - Cierre",
  "M11":"M11 - Requisitos de clarificacion",
+ "M12":"M12 - Convergencia",
 }
 
 # Ruta crítica recalculada el 2026-09-27 desde las líneas `Dep.` de tasks.md (ver sección «Ruta crítica»).
@@ -118,17 +128,20 @@ for b in blocks[1:]:
     body = re.split(r"\n---\s*\n", body)[0]
 
     def grab(label):
-        m = re.search(rf"\*\*{label}\*\*:(.*?)(?=\n\*\*|\n- \[ \]|\Z)", body, re.S)
+        m = re.search(rf"\*\*{label}\*\*:(.*?)(?=\n\*\*|\n- \[[ xX]\]|\Z)", body, re.S)
         return m.group(1).strip() if m else ""
 
     desc  = grab("Descripción")
     files = grab("Archivos")
     dep   = grab("Dep\\.")
-    acs   = re.findall(r"^- \[ \] (.+(?:\n      .+)*)$", body, re.M)
+    acs   = re.findall(r"^- \[[ xX]\] (.+(?:\n      .+)*)$", body, re.M)
     tm = re.search(r"(\*\*(?:🔴 Paso 1 — Rojo|Tests)\*\*.*)", body, re.S)
     tests = tm.group(1).strip() if tm else ""
     tasks[tid] = dict(id=tid, title=title, tags=tags, desc=desc,
                       files=files, dep=dep, acs=acs, tests=tests)
+
+# Tareas terminadas: su línea del índice está tildada (`- [X] T0NN …`), en cualquier fase.
+DONE = set(re.findall(r"^- \[[xX]\] (T\d{3}) ", raw, re.M))
 
 # ---------------------------------------------------------------- cuerpos
 def deps_of(tid):
@@ -171,8 +184,9 @@ def build(tid):
         L.append("2. Agregar los tests de la seccion *Tests requeridos*.")
         L.append("3. Verificar que los invariantes aplicables siguen en verde.")
     L.append("\n## Criterios de aceptacion\n")
+    box = "[x]" if tid in DONE else "[ ]"   # una tarea terminada llega con sus criterios tildados
     for a in t["acs"]:
-        L.append(f"- [ ] {' '.join(a.split())}")
+        L.append(f"- {box} {' '.join(a.split())}")
     L.append("\n## Tests requeridos\n")
     L.append(t["tests"] or "_Declarar en el PR: ninguna tarea de produccion se cierra sin test._")
     L.append("\n## Restricciones no negociables\n")
@@ -181,7 +195,7 @@ def build(tid):
     L.append("\n## Dependencias\n")
     if d:
         for x in d:
-            L.append(f"- [ ] {x} debe estar cerrado")
+            L.append(f"- {'[x]' if x in DONE else '[ ]'} {x} debe estar cerrado")
     else:
         L.append("- Ninguna. Puede arrancar de inmediato.")
     L.append("\n## Definition of Done\n")
@@ -225,6 +239,6 @@ if __name__ == "__main__":
         manifest[tid] = dict(title=verb_title(tid), milestone=MILESTONES[META[tid][0]],
                              labels=labels_for(tid), deps=deps_of(tid),
                              priority=META[tid][3], size=META[tid][4],
-                             critical=tid in CRITICAL)
+                             critical=tid in CRITICAL, done=tid in DONE)
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"OK: {len(manifest)} issues preparados en {OUT}")

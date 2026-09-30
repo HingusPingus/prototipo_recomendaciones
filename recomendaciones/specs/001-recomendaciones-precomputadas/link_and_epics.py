@@ -3,6 +3,8 @@
 
 Idempotente: los épicos existentes se buscan por título («[Mx] EPIC — …») y se **editan**; solo se crea
 el que falte. La versión anterior ejecutaba `gh issue create` para los diez épicos en cada corrida.
+Cada hijo terminado aparece tildado, y el épico se cierra cuando todos sus hijos están terminados (se reabre
+si alguno vuelve a quedar pendiente).
 
 Uso:  python link_and_epics.py            -> simula
       python link_and_epics.py --apply    -> ejecuta
@@ -43,12 +45,13 @@ for tid, m in MAN.items():
     body = p.read_text(encoding="utf-8")
     for d in m["deps"]:
         if d in NUM:
-            body = body.replace(f"- [ ] {d} debe estar cerrado", f"- [ ] #{NUM[d]} ({d}) debe estar cerrado")
+            body = re.sub(rf"^- \[([ x])\] {d} debe estar cerrado", rf"- [\1] #{NUM[d]} ({d}) debe estar cerrado",
+                          body, flags=re.M)
     p.write_text(body, encoding="utf-8")
     act(f"deps {tid} -> #{NUM[tid]}", "issue", "edit", NUM[tid], "--repo", REPO, "--body-file", str(p))
 
 # ---- 2. épicos por milestone
-MS_ORDER = ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11"]
+MS_ORDER = ["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"]
 MS_GOAL = {
  "M1": "Dejar el proyecto arrancable, con esquema de datos y configuracion versionada del motor.",
  "M2": "Implementar las tres senales del motor y su combinacion lineal, test-first.",
@@ -62,12 +65,16 @@ MS_GOAL = {
  "M10": "Cerrar la feature con trazabilidad verificable.",
  "M11": "Implementar los requisitos de la segunda y tercera sesion de clarificacion y las decisiones del 2026-09-27: "
         "declaracion de gustos, supresion verificada, popularidad por ventana, cuota de novedades y senal de obsoleto.",
+ "M12": "Cerrar las brechas entre spec, plan y codigo que encuentra /speckit-converge tras cada implementacion.",
 }
 epics = {}
-for i in json.loads(gh("issue", "list", "--repo", REPO, "--state", "all", "--limit", "1000", "--json", "number,title")):
+epic_state = {}
+for i in json.loads(gh("issue", "list", "--repo", REPO, "--state", "all", "--limit", "1000",
+                       "--json", "number,title,state")):
     m = re.match(r"\[(M\d+)\] EPIC", i["title"])
     if m:
         epics[m.group(1)] = i["number"]
+        epic_state[m.group(1)] = i["state"]
 
 by_ms = {}
 for tid, m in MAN.items():
@@ -86,11 +93,13 @@ for ms in MS_ORDER:
         if "parallelizable" in m["labels"]: marks.append("⚡ paralelizable")
         if "security-invariant" in m["labels"]: marks.append("🛡️ invariante")
         suf = f" — _{', '.join(marks)}_" if marks else ""
-        lines.append(f"- [ ] #{NUM[t]} {t} · `{m['priority']}` · `{m['size']}`{suf}")
+        lines.append(f"- [{'x' if m['done'] else ' '}] #{NUM[t]} {t} · `{m['priority']}` · `{m['size']}`{suf}")
+    done = all(MAN[t]["done"] for t in tids)
+    box = "[x]" if done else "[ ]"
     lines += ["\n## Cierre del epico\n",
-              "- [ ] Todos los issues hijos cerrados",
-              "- [ ] CI en verde sobre la rama del milestone",
-              "- [ ] Ningun invariante (INV-1 a INV-4) relajado en el camino",
+              f"- {box} Todos los issues hijos cerrados",
+              f"- {box} CI en verde sobre la rama del milestone",
+              f"- {box} Ningun invariante (INV-1 a INV-4) relajado en el camino",
               f"\n---\n<sub>Epico del milestone {full} · backlog en `specs/001-recomendaciones-precomputadas/tasks.md`</sub>"]
     p = BASE / f".issues/EPIC_{ms}.md"
     p.write_text("\n".join(lines), encoding="utf-8")
@@ -103,3 +112,11 @@ for ms in MS_ORDER:
                   "--body-file", str(p), "--milestone", full, "--label", "epic")
         if out:
             print("      ", out.splitlines()[-1])
+            epics[ms] = out.splitlines()[-1].rsplit("/", 1)[1]
+        epic_state[ms] = "OPEN"
+    if done and epic_state[ms] == "OPEN":
+        act(f"EPIC {ms} -> cerrar (hijos terminados)", "issue", "close", str(epics.get(ms, "?")), "--repo", REPO,
+            "--reason", "completed", "--comment", "Todos los issues hijos del milestone están terminados.")
+    elif not done and epic_state[ms] == "CLOSED":
+        act(f"EPIC {ms} -> reabrir", "issue", "reopen", str(epics[ms]), "--repo", REPO,
+            "--comment", "Hay issues hijos pendientes en el milestone.")

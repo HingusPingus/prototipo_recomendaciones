@@ -2979,3 +2979,67 @@ correcto. El CI corre en Linux y no lo detecta. Exenta de TDD: es una tarea de t
 | Autenticación del mantenimiento de catálogo y vocabulario; etiquetado del catálogo | `api-general` | `docs/contracts/vocabulario-catalogo-actividad.md` |
 | Revisión obligatoria de PR y rama al día en el ruleset de `main` | Un administrador del repositorio | `docs/runbook.md` (sección CI), RD-113 |
 | Ejecución de prueba del runbook (T046) y revisión de umbrales de alertas | Personas ajenas a la feature | `docs/validation/runbook-dry-run.md`, `docs/validation/alert-threshold-review.md` |
+
+---
+
+## Phase 5: Convergence
+
+> *Agregada el 2026-09-30 por `/speckit-converge` sobre `main` en `ae7dad3`, tras implementar la fase 4
+> (T066–T071, verificadas en el código y con CI en verde). Solo se **agrega**; el índice y la fase de estas
+> tareas viven en esta sección —**Fase 5 — Convergencia: T072–T073**—. Los bloqueos externos listados al
+> final de la fase 4 siguen vigentes y no generan tareas.*
+
+- [ ] T072 [TDD] [US7] Dejar de incrementar `age_stale_config_users_total` desde la API, en `src/recomendaciones/api/app.py` per data-model §7.5.1 (contradicts)
+- [ ] T073 Agregar `process_runs` e `items.first_synced_at` a los diagramas del modelo de datos, en `specs/001-recomendaciones-precomputadas/data-model.md` per T066, T070 (partial)
+
+### T072 [TDD] — `age_stale_config_users_total` es un recuento de filas, no un contador de la API
+
+**Descripción**: `data-model.md` §7.5.1 define `age_stale_config_users_total` como las filas de `users` con
+`age_config_version` fuera de las versiones compatibles: un **gauge** que fija el job de refresco etario
+(T051) y que el worker re-expone desde T066. La API, además, lo **incrementa** en cada respuesta `503` por
+escala etaria incompatible (`api/app.py`, `on_stale_age_scale`). Así mezcla dos hechos distintos bajo un
+nombre, y la serie de la API nunca baja: `AgeStaleConfigUsers` (`> 0`) queda disparada en esa instancia
+hasta que se reinicia, aunque el refresco ya haya corregido a todos. El `503` ya queda contado en
+`reco_unavailable_responses_total{error="filters_unavailable"}` por el manejador de errores (T035).
+
+**Archivos**: `src/recomendaciones/api/app.py`, `src/recomendaciones/api/services/read_service.py`,
+`src/recomendaciones/api/services/precondiciones.py`
+
+**Dep.**: T035, T051, T066
+
+**Criterios de aceptación**:
+- [ ] La API no fija ni incrementa `age_stale_config_users_total`: su único emisor es el refresco etario,
+      re-expuesto por el worker (§7.5.1, §2.17)
+- [ ] Un `503` por escala etaria incompatible (DI-23) se sigue contando en
+      `reco_unavailable_responses_total{error="filters_unavailable"}`
+- [ ] El gancho `on_stale_age_scale` se elimina o pasa a registrar solo un log con `user_id`; no queda
+      código muerto
+
+**🔴 Paso 1 — Rojo** (`tests/invariants/test_data_invariants.py`, commit propio): con un usuario cuya
+escala etaria no es compatible, la lectura responde `503`; después, en el registro de la API,
+`age_stale_config_users_total` sigue sin valor y `reco_unavailable_responses_total{error="filters_unavailable"}`
+vale 1. Hoy falla: el gauge queda en 1 y no vuelve a bajar.
+
+**🟢 Paso 2 — Verde**: implementar hasta pasar.
+
+---
+
+### T073 — Diagramas del modelo de datos al día con `process_runs` y `first_synced_at`
+
+**Descripción**: T066 agregó la tabla `process_runs` (§2.17) y T070 la columna `items.first_synced_at`
+(§2.2), ambas documentadas en §2, pero el diagrama entidad-relación de §5 todavía no las muestra —sí muestra
+`sync_runs` y `processed_events`— y el diagrama de escritura de §7.1 no dice quién escribe `process_runs`.
+Exenta de TDD: es documentación.
+
+**Archivos**: `specs/001-recomendaciones-precomputadas/data-model.md` (§5, §7.1)
+
+**Dep.**: T066, T070
+
+**Criterios de aceptación**:
+- [ ] §5: la entidad `process_runs`, sin relaciones —como `sync_runs`—, con sus columnas, y
+      `first_synced_at` en la entidad `items`
+- [ ] §7.1: el Data Transformer y los jobs batch escriben `process_runs`, y el worker la lee para re-exponer
+      métricas
+- [ ] Los dos diagramas Mermaid siguen parseando
+
+**Tests**: verificación del parseo de los diagramas Mermaid del documento.

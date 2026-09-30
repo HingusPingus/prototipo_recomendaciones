@@ -5,7 +5,8 @@ Sincroniza los issues de tarea con GitHub a partir de .issues/manifest.json (lo 
 Idempotente de verdad: cada tarea se busca por su ID en el título de los issues existentes. Si existe,
 se actualiza (título, cuerpo, milestone y etiquetas); si no, se crea. Nunca se crea un duplicado.
 Además crea los milestones y etiquetas que falten y cierra como «no planeado» el issue de toda tarea
-retirada (hoy T036).
+retirada (hoy T036). El estado sigue al índice de tasks.md: el issue de una tarea tildada (`- [X]`) se cierra
+como completado y el de una tarea destildada se reabre.
 
 Uso:  python publish_issues.py            -> muestra el plan, no toca GitHub
       python publish_issues.py --apply    -> ejecuta el plan
@@ -68,6 +69,11 @@ def main():
                          sorted((curl & MANAGED) - set(m["labels"]))))
         else:
             plan.append(("create", tid))
+        state = by_tid.get(tid, {}).get("state", "OPEN")
+        if m["done"] and state == "OPEN":
+            plan.append(("done", tid))
+        elif not m["done"] and state == "CLOSED" and tid not in RETIRED:
+            plan.append(("reopen", tid))
     for tid, why in RETIRED.items():
         if tid in by_tid and by_tid[tid]["state"] == "OPEN":
             plan.append(("close", tid, by_tid[tid]["number"], why))
@@ -106,6 +112,12 @@ def main():
             by_tid[tid] = {"number": int(url.rsplit("/", 1)[1]), "url": url}
         elif kind == "close":
             gh("issue", "close", str(p[2]), "--repo", REPO, "--reason", "not planned", "--comment", p[3])
+        elif kind == "done":
+            gh("issue", "close", str(by_tid[p[1]]["number"]), "--repo", REPO, "--reason", "completed",
+               "--comment", "Tarea tildada en tasks.md: implementada y en `main`.")
+        elif kind == "reopen":
+            gh("issue", "reopen", str(by_tid[p[1]]["number"]), "--repo", REPO,
+               "--comment", "La tarea volvió a quedar abierta en tasks.md.")
         print("ok", *p[:2])
 
     rows = [f"{tid}\t{by_tid[tid]['number']}\thttps://github.com/{REPO}/issues/{by_tid[tid]['number']}"
