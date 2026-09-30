@@ -361,9 +361,9 @@ aprobada sea detectable después. Aumentarlo es configuración normal.
 
 ### CI
 
-`.github/workflows/ci.yml` (en la raíz del repositorio git) corre ocho gates —configuración, arquitectura,
+`.github/workflows/ci.yml` (en la raíz del repositorio git) corre nueve gates —lint (`ruff`, versión fijada en `pyproject.toml`, T067), configuración, arquitectura,
 unitarios con cobertura de `engine/` ≥ 95 %, mutación de `postprocess`, invariantes, contratos, casos
-críticos e integración— y un job agregado `gates` que falla salvo que los ocho terminen en verde.
+críticos e integración— y un job agregado `gates` que falla salvo que los nueve terminen en verde.
 
 **Configuración obligatoria en GitHub** (no la puede hacer este archivo): una regla sobre `main` que
 exija el check **`gates`**. Sin ella un gate rojo no impide el merge, y un commit con `[skip ci]` deja el PR

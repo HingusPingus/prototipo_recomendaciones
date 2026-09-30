@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 from recomendaciones.api.app import build_services, create_app
 from recomendaciones.config.settings import load_settings
 from recomendaciones.observability.health import HealthReport, transformer_health
-from recomendaciones.worker.health import worker_health
 from recomendaciones.storage.cache.client import CacheClient
+from recomendaciones.worker.health import worker_health
 
 SECRET = "s3cr3t-0123456789abcdef"
 

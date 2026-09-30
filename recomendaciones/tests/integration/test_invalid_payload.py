@@ -6,7 +6,6 @@ import asyncio
 import json
 import logging
 
-
 from recomendaciones.worker.consumer import EventConsumer, RetryPolicy
 from tests.integration.test_retry_dlq import _body, _dead_letters, _publish, _topology
 

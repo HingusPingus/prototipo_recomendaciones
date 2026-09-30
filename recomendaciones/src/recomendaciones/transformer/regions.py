@@ -15,7 +15,7 @@ ISO_3166_1_ALPHA_2 = frozenset(
     PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV
     SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE
     YT ZA ZM ZW
-    """.split()
+    """.split()  # noqa: SIM905 — 249 códigos en bloque legible; una lista literal los vuelve ilegibles
 )
 
 

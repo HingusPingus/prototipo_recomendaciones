@@ -96,7 +96,7 @@ def test_contradictory_signals_with_same_timestamp_resolve_deterministically() -
 
 
 def test_declaration_without_signals_gives_affine_profile() -> None:
-    vocab, vectors, seed, items = _catalog()
+    vocab, vectors, seed, _items = _catalog()
     declared = frozenset({"horror", "comedia", "drama", "scifi", "anim"})
     profile = build_profile(ProfileInputs(declared, frozenset(), ()), vectors, seed, vocab, WEIGHTS)
     assert profile is not None
@@ -107,7 +107,7 @@ def test_declaration_without_signals_gives_affine_profile() -> None:
 def test_inherited_tags_are_derived_not_declared() -> None:
     inherited = derive_inherited(declared_other=frozenset({"horror", "rpg"}), shared_tags=frozenset({"horror", "comedia"}))
     assert inherited == frozenset({"horror"})
-    vocab, vectors, seed, items = _catalog()
+    vocab, vectors, seed, _items = _catalog()
     own = frozenset({"comedia", "drama", "scifi", "anim", "h1"})
     profile = build_profile(ProfileInputs(own, inherited, ()), vectors, seed, vocab, WEIGHTS)
     assert profile.vector.component(vocab, "horror") > 0  # type: ignore[union-attr]
@@ -138,7 +138,7 @@ def test_general_profile_aggregates_both_modules() -> None:
 
 
 def test_signals_on_items_without_vector_are_ignored_without_failing() -> None:
-    vocab, vectors, seed, items = _catalog()
+    vocab, vectors, seed, _items = _catalog()
     ghost = ProfileSignal(uuid.uuid4(), "like", T0, 1)
     assert build_profile(ProfileInputs(frozenset(), frozenset(), (ghost,)), vectors, seed, vocab, WEIGHTS) is None
 

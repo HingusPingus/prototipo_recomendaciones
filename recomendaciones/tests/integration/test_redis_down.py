@@ -24,7 +24,6 @@ class SpySource:
 
     def load_user_filters(self, user_id: uuid.UUID):  # noqa: ANN201
         SpySource.calls += 1
-        return None
 
     def load_retired(self, module: Module, window_seconds: int):  # noqa: ANN201
         SpySource.calls += 1

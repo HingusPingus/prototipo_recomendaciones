@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass, field
 
 from fastapi import Depends, FastAPI, Request
+
 from recomendaciones.api.deps import require_api_key
 from recomendaciones.api.errors import install_error_handlers
 from recomendaciones.api.services.declaracion import DeclarationService

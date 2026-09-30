@@ -320,4 +320,4 @@ def postprocess(scoring: ScoringResult, req: PostprocessRequest) -> PostprocessR
     return PostprocessResult(items, final.config_version, final.discarded, final.relaxations, final.quota_available, final.quota_occupied)
 
 
-__all__ = ["postprocess", "PostprocessRequest", "PostprocessResult", "RankedItem", "max_cluster_share", "reserved_positions"]
+__all__ = ["PostprocessRequest", "PostprocessResult", "RankedItem", "max_cluster_share", "postprocess", "reserved_positions"]

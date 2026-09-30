@@ -16,7 +16,7 @@ from typing import Protocol
 
 from recomendaciones.engine.vocabulary import TagVector
 
-_NEUTRAL = float()  # señal ausente para un candidato ⟹ aporte nulo
+_NEUTRAL = float()  # noqa: UP018 — señal ausente ⟹ aporte nulo; sin literal: el motor no lleva constantes numéricas (FR-025, test_scoring)
 
 
 class Weights(Protocol):

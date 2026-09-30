@@ -6,7 +6,7 @@ import ast
 import inspect
 from pathlib import Path
 
-import recomendaciones.api.services.read_service as read_service
+from recomendaciones.api.services import read_service
 
 
 def test_read_service_imports_no_engine_nor_similarity() -> None:

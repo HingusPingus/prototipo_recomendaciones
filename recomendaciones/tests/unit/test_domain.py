@@ -10,8 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import recomendaciones.shared.domain as domain
-import recomendaciones.shared.errors as errors
+from recomendaciones.shared import domain, errors
 from recomendaciones.shared.domain import Module, ResultType, Signal, SignalType
 
 

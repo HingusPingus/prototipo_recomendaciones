@@ -120,8 +120,7 @@ def test_unknown_user_is_404(api, valid_env, db_factory) -> None:  # noqa: ANN00
 def test_the_engine_is_never_invoked(api, valid_env, db_factory, monkeypatch) -> None:  # noqa: ANN001
     """FR-089b: se verifica por ausencia de llamada, no por tiempo de respuesta."""
     import recomendaciones.engine.postprocess as pp
-    import recomendaciones.engine.profile as profile
-    import recomendaciones.engine.scoring as scoring
+    from recomendaciones.engine import profile, scoring
 
     def boom(*a: object, **k: object) -> None:
         raise AssertionError("el endpoint de declaración ejecutó el motor")

@@ -15,6 +15,7 @@ Este módulo no contiene valores del motor: viven en `engine_config/vN.yaml`.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import math
 from dataclasses import dataclass
@@ -156,7 +157,7 @@ def _catalog_errors(catalog: tuple[AgeRatingLevel, ...]) -> list[str]:
     if len({level.rating for level in catalog}) != len(catalog):
         errors.append("age_rating_catalog: rating repetido (§4.1)")
     ordered = sorted(catalog, key=lambda level: level.ordinal)
-    if any(a.min_age >= b.min_age for a, b in zip(ordered, ordered[1:])):
+    if any(a.min_age >= b.min_age for a, b in itertools.pairwise(ordered)):
         errors.append("age_rating_catalog: min_age debe crecer estrictamente con el ordinal (§4.1)")
     if ordered and ordered[0].min_age != 0:
         errors.append("age_rating_catalog: el ordinal 0 debe tener min_age 0 (§4.1)")
@@ -333,7 +334,6 @@ def readable_versions_from_files(active: EngineConfig, deployed: list[EngineConf
     compatible = age_compatible_versions(active, deployed)
     ordered: list[str] = []
     for cfg in deployed:
-        if cfg.config_version != active.config_version and cfg.config_version in compatible:
-            if cfg.config_version not in ordered:
-                ordered.append(cfg.config_version)
+        if cfg.config_version != active.config_version and cfg.config_version in compatible and cfg.config_version not in ordered:
+            ordered.append(cfg.config_version)
     return tuple(ordered)

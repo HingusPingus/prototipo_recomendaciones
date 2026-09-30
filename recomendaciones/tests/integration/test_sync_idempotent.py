@@ -95,13 +95,13 @@ def test_item_without_rating_or_with_unknown_rating_gets_most_restrictive(db_fac
     missing = env.double.add_item("peliculas", ["drama"], rating=None)
     garbage = env.double.add_item("peliculas", ["drama"], rating="NC-17")
     env.pipeline.run()
-    rows = dict((r[0], r[1:]) for r in env.q("SELECT id, age_rating::text, min_age_ordinal, age_rating_source::text FROM items"))
+    rows = {r[0]: r[1:] for r in env.q("SELECT id, age_rating::text, min_age_ordinal, age_rating_source::text FROM items")}
     assert rows[missing] == rows[garbage] == ("+18", CFG.max_ordinal, "unknown_defaulted")
 
 
 def test_activity_keeps_signal_type_and_origin_timestamp(db_factory, redis_client) -> None:  # noqa: ANN001
     env = Env(db_factory, redis_client)
-    user, minor, movie = _populate(env.double)
+    user, _minor, _movie = _populate(env.double)
     env.pipeline.run()
     assert (str(user), "like", T0) in [(str(u), k, t) for u, k, t in env.q("SELECT user_id, signal_type::text, occurred_at FROM user_signals")]
 
@@ -154,7 +154,7 @@ def test_tags_are_not_normalized(db_factory, redis_client) -> None:  # noqa: ANN
 
 def test_reused_interaction_with_other_type_is_a_contract_violation(db_factory, redis_client) -> None:  # noqa: ANN001
     env = Env(db_factory, redis_client)
-    user, _, movie = _populate(env.double)
+    user, _, _movie = _populate(env.double)
     env.pipeline.run()
     env.double.activity[0]["signal_type"] = "dislike"  # mismo origin_interaction_id, otro hecho
     env.pipeline.run()

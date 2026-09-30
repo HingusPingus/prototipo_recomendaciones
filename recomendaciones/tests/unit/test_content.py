@@ -21,7 +21,7 @@ def _setup() -> tuple[Vocabulary, dict[uuid.UUID, TagVector]]:
 
 
 def test_horror_profile_scores_horror_item_higher() -> None:
-    vocab, vectors = _setup()
+    _vocab, vectors = _setup()
     profile = vectors[HORROR.item_id]
     scores = content_scores(profile, {**vectors, NO_VECTOR: None})
     assert scores[HORROR.item_id] > scores[COMEDY.item_id]

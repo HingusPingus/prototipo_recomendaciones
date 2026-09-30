@@ -80,7 +80,7 @@ def _uuid(data: dict[str, Any], field: str) -> uuid.UUID:
 
 def _instant(data: dict[str, Any], field: str) -> datetime:
     try:
-        value = datetime.fromisoformat(str(data[field]).replace("Z", "+00:00"))
+        value = datetime.fromisoformat(str(data[field]))  # Python ≥ 3.11 admite el sufijo Z
     except ValueError:
         raise InvalidEventPayload(f"{field}: no es una marca temporal ISO 8601") from None
     if value.tzinfo is None:

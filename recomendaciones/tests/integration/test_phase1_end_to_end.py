@@ -64,7 +64,7 @@ async def _publish(amqp_url: str, body: dict) -> None:
 async def test_declared_user_gets_a_materialized_top_n_end_to_end(stack_env, db_factory, redis_client, amqp_url) -> None:  # noqa: ANN001
     settings = load_settings()
     double = ApiGeneralDouble(api_key=stack_env["RECO_INTERNAL_API_KEY"], page_size=4)
-    user, items = _catalog(double)
+    user, _items = _catalog(double)
 
     # Data Transformer: sincroniza y reconcilia vocabulario (T029, T030)
     assert run_once(settings, transport=double.transport()) == 0

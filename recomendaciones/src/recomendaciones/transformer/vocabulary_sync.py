@@ -199,4 +199,4 @@ class VocabularySync:
         self._metrics.set("vector_recompute_lag_seconds", max(lag, 0.0))
 
 
-__all__ = ["VocabularySync", "VocabularyReport", "TagVector"]
+__all__ = ["TagVector", "VocabularyReport", "VocabularySync"]

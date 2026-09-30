@@ -169,7 +169,7 @@ def _ordinals(db_factory) -> dict[uuid.UUID, int]:  # noqa: ANN001
 
 
 def test_di_2b_no_stored_or_served_result_exceeds_permission(db_factory, redis_client) -> None:  # noqa: ANN001
-    items, minor, _ = _world(db_factory)
+    _items, minor, _ = _world(db_factory)
     recomputer, repo = _recomputer(db_factory, redis_client)
     recomputer.recompute(minor, Module.PELICULAS, "miss")
     stored = repo.read_fresh(CFG.config_version, minor, Module.PELICULAS)
@@ -180,7 +180,7 @@ def test_di_2b_no_stored_or_served_result_exceeds_permission(db_factory, redis_c
 
 
 def test_di_2e_user_with_incompatible_scale_is_not_evaluated(db_factory, redis_client) -> None:  # noqa: ANN001
-    items, minor, _ = _world(db_factory)
+    _items, minor, _ = _world(db_factory)
     with db_factory.begin() as s:
         s.execute(sa.text("INSERT INTO engine_config_versions VALUES ('sha256:otra-escala', CAST(:p AS jsonb), now(), now())"),
                   {"p": '{"age_rating_catalog": [{"rating": "ATP", "ordinal": 0, "min_age": 0}]}'})
@@ -191,7 +191,7 @@ def test_di_2e_user_with_incompatible_scale_is_not_evaluated(db_factory, redis_c
 
 
 def test_di_4_stored_config_versions_exist(db_factory, redis_client) -> None:  # noqa: ANN001
-    items, minor, adult = _world(db_factory)
+    _items, minor, adult = _world(db_factory)
     recomputer, _ = _recomputer(db_factory, redis_client)
     for user in (minor, adult):
         recomputer.recompute(user, Module.PELICULAS, "miss")
@@ -330,7 +330,7 @@ def test_di_18_vector_must_reference_existing_version(db_factory) -> None:  # no
 
 
 def test_di_19_persisted_vectors_are_l2_normalized(db_factory, redis_client) -> None:  # noqa: ANN001
-    items, minor, adult = _world(db_factory)
+    _items, _minor, adult = _world(db_factory)
     recomputer, _ = _recomputer(db_factory, redis_client)
     recomputer.recompute(adult, Module.PELICULAS, "miss")
     with db_factory() as s:
@@ -339,7 +339,7 @@ def test_di_19_persisted_vectors_are_l2_normalized(db_factory, redis_client) -> 
 
 
 def test_di_23_incomparable_scale_is_503_never_200(db_factory, redis_client) -> None:  # noqa: ANN001
-    items, minor, _ = _world(db_factory)
+    _items, minor, _ = _world(db_factory)
     with db_factory.begin() as s:
         s.execute(sa.text("INSERT INTO engine_config_versions VALUES ('sha256:otra-escala', '{}', now(), now())"))
         s.execute(sa.text("UPDATE users SET age_config_version = 'sha256:otra-escala' WHERE id = :u"), {"u": minor})
