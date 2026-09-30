@@ -93,12 +93,16 @@ def test_three_entrypoints_and_batch_are_declared() -> None:
 def test_entrypoint_fails_explicitly_without_configuration(script: str) -> None:
     """Los entrypoints arrancan de forma independiente y fallan con error explícito si falta config."""
     import os
+    import shutil
     import subprocess
     import sys
 
-    exe = Path(sys.executable).parent / script
+    # Portable (T071): en Windows el script de consola es `reco-api.exe`; `which` resuelve el sufijo.
+    exe = shutil.which(script, path=str(Path(sys.executable).parent))
+    assert exe, f"{script} no está instalado junto al intérprete"
     env = {k: v for k, v in os.environ.items() if not k.startswith("RECO_")}
-    proc = subprocess.run([str(exe)], env=env, capture_output=True, text=True, timeout=60)
+    env["PYTHONIOENCODING"] = "utf-8"  # el mensaje lleva acentos; la consola de Windows no es UTF-8 por defecto
+    proc = subprocess.run([exe], env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     assert proc.returncode == 2
     assert "no arranca" in proc.stderr and "RECO_" in proc.stderr
     assert "Traceback" not in proc.stderr
