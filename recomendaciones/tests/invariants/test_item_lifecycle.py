@@ -210,3 +210,52 @@ def test_retired_and_reinstated_item_is_recommendable_again_and_previous_signals
     assert liked not in recommended  # su like sigue excluyéndolo (señal previa vigente)
     assert world.signals() == signals
     np.testing.assert_array_equal(world.profile(), profile_before)
+
+
+# --- FR-072, DI-10 con `retired:` ya poblado (T068) ----------------------------------------------------
+
+
+def test_retirement_by_sync_invalidates_a_warm_retired_set(api, db_factory, redis_client) -> None:
+    """El caso real: `retired:{module}` ya está en caché cuando llega el retiro. La lectura siguiente no lo sirve.
+
+    Un set vacío no se guarda en Redis, así que primero se retira otro ítem y se lee: el set queda poblado.
+    """
+    _client, services = api
+    world = World(db_factory, redis_client)
+    earlier, target = world.items[5], world.items[3]
+    assert target in world.recompute()
+    world.retire_explicitly(earlier)
+    services.read_service.read(world.user, Module.PELICULAS, top_n=50, prefer_stale=False)
+    assert redis_client.exists("retired:peliculas")  # set poblado antes del retiro
+    world.retire_explicitly(target)
+    result = services.read_service.read(world.user, Module.PELICULAS, top_n=50, prefer_stale=False)
+    assert target not in {i.item_id for i in result.items}
+
+
+class _RetiredDeleteFails(CacheClient):
+    """Redis cae justo al invalidar `retired:` (T068)."""
+
+    def delete(self, *keys: str) -> int:
+        from recomendaciones.shared.errors import CacheUnavailable
+
+        if any(k.startswith("retired:") for k in keys):
+            raise CacheUnavailable()
+        return super().delete(*keys)
+
+
+def test_retirement_is_not_applied_silently_when_the_retired_set_cannot_be_invalidated(db_factory, redis_client) -> None:
+    world = World(db_factory, redis_client)
+    target = world.items[3]
+    world._record(target)["status"] = "retired"
+    cache = _RetiredDeleteFails(redis_client)
+    client = ApiGeneralClient("http://api-general.internal", KEY, timeout_seconds=5, transport=world.double.transport())
+    pipeline = SyncPipeline(
+        db_factory, client, FiltersCache(cache, DbFiltersSource(db_factory), 3600), cache, CFG, Metrics(),
+        volume_delta_ratio=0.9, redelivery_window_hours=48,
+    )
+    report = pipeline.run()
+    assert report.status == "failed" and "Redis" in (report.reason or "")
+    assert world.status(target) == "available"  # la transacción se revirtió: la próxima corrida lo retira
+    with db_factory() as s:
+        last = s.execute(sa.text("SELECT status::text, failure_reason FROM sync_runs ORDER BY id DESC LIMIT 1")).one()
+    assert last[0] == "failed" and "Redis" in (last[1] or "")
