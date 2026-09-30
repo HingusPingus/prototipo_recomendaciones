@@ -2775,7 +2775,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 
 - [ ] T066 [TDD] [US7] CRITICAL: exponer las métricas de los procesos de una corrida (`reco-transformer`, `reco-batch`) persistiendo su resultado y re-exponiéndolo desde el worker, en `src/recomendaciones/worker/runtime.py` per Constitution VII, FR-044, FR-068d1 (contradicts)
 - [X] T067 CRITICAL: agregar el gate de lint (`ruff`) al CI y dejar `src/` y `tests/` sin errores, en `.github/workflows/ci.yml` per Constitution (Flujo de Desarrollo: «CI obligatorio: linters») (contradicts)
-- [ ] T068 [TDD] [US5] Invalidar `retired:{module}` al retirar ítems en la sincronización, en `src/recomendaciones/transformer/pipeline.py` per FR-072, DI-10 (contradicts)
+- [X] T068 [TDD] [US5] Invalidar `retired:{module}` al retirar ítems en la sincronización, en `src/recomendaciones/transformer/pipeline.py` per FR-072, DI-10 (contradicts)
 - [ ] T069 [TDD] Ejecutar la auditoría periódica de DI-28 como job `reco-batch audits`, en `src/recomendaciones/batch/runtime.py` per DI-28 (partial)
 - [ ] T070 [TDD] [US7] Redefinir `vector_recompute_lag_seconds` como antigüedad del ítem vigente más viejo sin vector, en `src/recomendaciones/transformer/vocabulary_sync.py` per data-model §7.9, T042 (partial)
 - [X] T071 Volver portable a Windows el test de entrypoints, en `tests/unit/test_layout.py` per T001 (partial)
@@ -2873,15 +2873,15 @@ primera lectura lo repuebla. Misma solución que RD-96 aplicó a `filters:`: inv
 **Dep.**: T029, T037
 
 **Criterios de aceptación**:
-- [ ] Una corrida que retira ítems de un módulo invalida `retired:{module}` **antes** de escribir (regla de
+- [X] Una corrida que retira ítems de un módulo invalida `retired:{module}` **antes** de escribir (regla de
       FR-080c) **y otra vez después** de confirmar la transacción: una lectura concurrente que repueble el
       set con el estado previo no puede dejarlo vigente por `TTL_FILTERS`
-- [ ] Solo se invalidan los módulos con retiros en la corrida; una corrida sin retiros no toca Redis
-- [ ] Redis caído durante la invalidación no deja el retiro sin efecto en silencio: la corrida lo registra y
+- [X] Solo se invalidan los módulos con retiros en la corrida; una corrida sin retiros no toca Redis
+- [X] Redis caído durante la invalidación no deja el retiro sin efecto en silencio: la corrida lo registra y
       el rezago queda acotado por `TTL_FILTERS`, como hoy
-- [ ] `data-model.md` §4.4 deja de presentar el rezago de `TTL_FILTERS` como normal y lo reduce al caso de
+- [X] `data-model.md` §4.4 deja de presentar el rezago de `TTL_FILTERS` como normal y lo reduce al caso de
       Redis caído
-- [ ] Los tests de DI-10 y de T052 cubren el caso de **set poblado antes del retiro**
+- [X] Los tests de DI-10 y de T052 cubren el caso de **set poblado antes del retiro**
 
 **🔴 Paso 1 — Rojo** (`tests/invariants/test_data_invariants.py`, commit propio): poblar `reco:` y
 `retired:{module}` con una lectura, retirar el ítem por sincronización y leer de inmediato → el ítem no

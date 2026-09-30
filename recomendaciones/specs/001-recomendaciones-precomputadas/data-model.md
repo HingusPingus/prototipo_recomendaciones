@@ -1403,8 +1403,13 @@ devolver menos de `top_n` elementos; no se rellena con sustitutos, porque rellen
 —cómputo prohibido—. Si la lista queda vacía, aplica la precedencia de FR-056 (`empty_no_candidates`).
 
 **`retired:{module}` es una caché, no fuente de verdad.** Su ausencia en Redis es un miss que se
-repuebla desde Postgres, igual que `filters:`. `TTL_FILTERS` corto (1 h) acota el rezago entre el
-retiro y su efecto en la guarda.
+repuebla desde Postgres, igual que `filters:`. **El retiro lo invalida en el mismo acto** (T068, como
+RD-96 hace con `filters:`): la sincronización borra `retired:{módulo}` antes de confirmar la
+transacción —Redis primero, FR-080c— y otra vez después, por si una lectura concurrente lo repobló con el
+estado previo. Así la lectura siguiente ya no sirve el ítem (DI-10). Si Redis cae antes de confirmar, la
+corrida se revierte y queda fallida; si cae solo en la segunda invalidación, el rezago queda acotado por
+`TTL_FILTERS` (1 h) y la corrida lo registra. *(Decía que `TTL_FILTERS` acotaba el rezago en todos los
+casos; corregido el 2026-09-30.)*
 
 **Cota del conjunto (RD-39).** El set **no** contiene todo el histórico de retiros: contiene los
 retirados en los **últimos 8 días**. La cota no es arbitraria ni una heurística de memoria — se

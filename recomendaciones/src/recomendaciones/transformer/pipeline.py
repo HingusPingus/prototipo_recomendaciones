@@ -41,7 +41,8 @@ from sqlalchemy.orm import Session
 from recomendaciones.config.loader import EngineConfig
 from recomendaciones.engine.age import derive_max_age_ordinal, min_age_ordinal_for_rating
 from recomendaciones.observability.metrics import Metrics
-from recomendaciones.shared.errors import UpstreamError
+from recomendaciones.shared.domain import Module
+from recomendaciones.shared.errors import CacheUnavailable, UpstreamError
 from recomendaciones.storage.cache import keys
 from recomendaciones.storage.cache.client import CacheClient, delete_user_scope
 from recomendaciones.storage.cache.filters import FiltersCache
@@ -218,16 +219,41 @@ class SyncPipeline:
         counts = {"users": len(users.rows), "items": len(catalog.rows), "activity": len(activity.rows)}
         status = "failed" if plan.violations else "success"
         reason = f"violaciones de contrato en usuarios: {len(plan.violations)}" if plan.violations else None
-        with self._factory.begin() as s:
-            changed_age = self._write_users(s, plan.users)
-            retired = self._write_items(s, plan.items)
-            affected = self._write_activity(s, plan.activity)
-            resolved = self._resolver.resolve(s, affected)
-            for user_id in sorted(changed_age, key=str):  # Redis primero (FR-080c)
-                delete_user_scope(self._cache, keys.user_scoped_patterns(user_id))
-            self._finish_in(s, run_id, status, reason, counts)
+        try:
+            with self._factory.begin() as s:
+                changed_age = self._write_users(s, plan.users)
+                retired, retired_modules = self._write_items(s, plan.items)
+                affected = self._write_activity(s, plan.activity)
+                resolved = self._resolver.resolve(s, affected)
+                for user_id in sorted(changed_age, key=str):  # Redis primero (FR-080c)
+                    delete_user_scope(self._cache, keys.user_scoped_patterns(user_id))
+                # T068: el retiro invalida `retired:{módulo}` antes de confirmarse (FR-080c, FR-072, DI-10)
+                self._invalidate_retired(retired_modules)
+                self._finish_in(s, run_id, status, reason, counts)
+        except CacheUnavailable:
+            # La transacción se revirtió: nada se aplicó sin invalidar. La próxima corrida lo reintenta.
+            failure = "Redis no disponible al invalidar la caché: la corrida se revirtió sin aplicar cambios"
+            self._finish(run_id, "failed", failure, counts)
+            log.warning("sincronización revertida por Redis caído", extra={"sync_run_id": run_id})
+            return SyncReport(run_id, "failed", failure, counts)
         self._after_commit(resolved, changed_age)
+        self._reinvalidate_retired(run_id, retired_modules)
         return SyncReport(run_id, status, reason, counts, retired, len(plan.violations))
+
+    def _invalidate_retired(self, modules: set[str]) -> None:
+        if modules:
+            self._cache.delete(*(keys.retired_key(m) for m in sorted(modules)))
+
+    def _reinvalidate_retired(self, run_id: int, modules: set[str]) -> None:
+        """Segunda invalidación tras confirmar: una lectura concurrente pudo repoblar el set con el estado previo."""
+        try:
+            self._invalidate_retired(modules)
+        except CacheUnavailable:
+            # El retiro ya está confirmado: el rezago queda acotado por TTL_FILTERS (§4.4) y la corrida lo registra.
+            log.warning(
+                "retiro confirmado sin reinvalidar retired:{módulo}; rezago acotado por TTL_FILTERS",
+                extra={"sync_run_id": run_id, "reco_modules": sorted(modules)},
+            )
 
     def _completeness_problem(self, catalog: Listing) -> str | None:
         if not catalog.complete:
@@ -281,12 +307,14 @@ class SyncPipeline:
             s.execute(sa.update(User).where(User.id == row.id).values(**values))
         return changed_age
 
-    def _write_items(self, s: Session, items: list[dict[str, Any]]) -> int:
+    def _write_items(self, s: Session, items: list[dict[str, Any]]) -> tuple[int, set[str]]:
+        """Proyecta el catálogo. Devuelve cuántos ítems se retiraron y de qué módulos (T068)."""
         listed = {item["id"] for item in items}
         for name in sorted({t for item in items for t in item["tags"]}):
             s.execute(insert(Tag).values(name=name, synced_at=sa.func.now()).on_conflict_do_update(index_elements=[Tag.name], set_={"synced_at": sa.func.now()}))
         current_status = dict(s.execute(sa.select(Item.id, Item.status)).all())
         retired = 0
+        retired_modules: set[str] = set()
         for item in items:
             status = "retired" if item["retired"] else "available"
             stmt = insert(Item).values(
@@ -318,6 +346,7 @@ class SyncPipeline:
             )
             if status == "retired" and current_status.get(item["id"]) != "retired":
                 retired += 1
+                retired_modules.add(Module(item["module"]).value)
             wanted = set(item["tags"])
             have = set(s.scalars(sa.select(ItemTag.tag_name).where(ItemTag.item_id == item["id"])))
             if have - wanted:
@@ -329,7 +358,8 @@ class SyncPipeline:
         if absent:
             s.execute(sa.update(Item).where(Item.id.in_(absent)).values(status="retired", retired_at=sa.func.now()))
             retired += len(absent)
-        return retired
+            retired_modules |= {Module(m).value for m in s.scalars(sa.select(Item.module).where(Item.id.in_(absent)).distinct())}
+        return retired, retired_modules
 
     def _write_activity(self, s: Session, rows: list[dict[str, Any]]) -> set[uuid.UUID]:
         users = set(s.scalars(sa.select(User.id)))
