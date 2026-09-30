@@ -349,6 +349,31 @@ def test_di_23_incomparable_scale_is_503_never_200(db_factory, redis_client) -> 
     assert exc.value.http_status == 503
 
 
+def test_di_23_the_503_is_counted_once_and_does_not_touch_the_stale_users_gauge(api, db_factory) -> None:  # noqa: ANN001
+    """T072: `age_stale_config_users_total` es un recuento de filas (§7.5.1) que fija el refresco etario y re-expone
+    el worker. El `503` de la API se cuenta en `reco_unavailable_responses_total`; si además tocara el gauge, su
+    serie nunca bajaría y `AgeStaleConfigUsers` quedaría disparada hasta reiniciar la instancia."""
+    client, services = api
+    _items, minor, _ = _world(db_factory)
+    with db_factory.begin() as s:
+        s.execute(sa.text("INSERT INTO engine_config_versions VALUES ('sha256:otra-escala', '{}', now(), now())"))
+        s.execute(sa.text("UPDATE users SET age_config_version = 'sha256:otra-escala' WHERE id = :u"), {"u": minor})
+    response = client.get(
+        f"/internal/v1/recommendations/{minor}",
+        params={"module": "peliculas"},
+        headers={"X-Internal-API-Key": services.settings.internal_api_key.get_secret_value()},
+    )
+    assert response.status_code == 503 and response.json()["error"] == "filters_unavailable"
+    assert services.metrics.registry.get_sample_value("reco_unavailable_responses_total", {"error": "filters_unavailable"}) == 1
+    assert services.metrics.value("age_stale_config_users_total") == 0  # sin valor: la API no emite esta serie
+
+
+def test_the_api_does_not_emit_the_stale_users_gauge() -> None:
+    """T072: el único emisor de `age_stale_config_users_total` es el refresco etario (§7.5.1, §2.17)."""
+    emitters = sorted(p.relative_to(SRC).as_posix() for p in SRC.rglob("*.py") if "age_stale_config_users_total" in p.read_text(encoding="utf-8"))
+    assert emitters == ["batch/age_threshold_refresh.py", "observability/metrics.py"]  # emisor y declaración
+
+
 def test_di_28_declared_minimum_audit(db_factory) -> None:  # noqa: ANN001
     """El único invariante que el esquema no sostiene: lo audita una consulta periódica."""
     from recomendaciones.batch.audits import declared_minimum_violations
