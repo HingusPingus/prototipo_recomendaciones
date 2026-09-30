@@ -88,7 +88,6 @@ def build_services(
         readable_versions=readable,
         age_compatible_versions=compatible,
         on_signal_failure=lambda: metrics.inc("reco_recompute_signal_failures_total"),
-        on_stale_age_scale=lambda: metrics.inc("age_stale_config_users_total"),
     )
     declaration_service = DeclarationService(
         factory, DeclarationRepository(), filters, signaler, declared_tags_min=engine_config.declared_tags_min
