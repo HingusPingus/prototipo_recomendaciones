@@ -75,6 +75,23 @@ def test_la_paginacion_recorre_todo_con_un_mismo_snapshot(client: TestClient) ->
     assert len(rows) == page["total"] and len(snapshots) == 1
 
 
+@pytest.mark.parametrize("token", ["no-es-un-numero", "-5", "999999"])
+def test_un_page_token_invalido_es_400(client: TestClient, token: str) -> None:
+    """Un token que el simulado no emitió es un error del cliente, no un 500 ni una página arbitraria."""
+    response = client.get("/internal/v1/sync/users", params={"page_token": token}, headers={"X-Internal-API-Key": KEY})
+    assert response.status_code == 400
+
+
+def test_since_sin_zona_horaria_se_interpreta_en_utc(client: TestClient) -> None:
+    """`occurred_at` lleva zona: un `since` sin zona no puede compararse y daba 500. Se toma como UTC."""
+    since = (datetime.now(UTC) - timedelta(days=5)).replace(tzinfo=None).isoformat()
+    headers = {"X-Internal-API-Key": KEY}
+    naive = client.get("/internal/v1/sync/activity", params={"since": since}, headers=headers)
+    aware = client.get("/internal/v1/sync/activity", params={"since": since + "+00:00"}, headers=headers)
+    assert naive.status_code == 200
+    assert naive.json()["total"] == aware.json()["total"] > 0
+
+
 def test_una_api_key_ajena_se_rechaza(client: TestClient) -> None:
     with pytest.raises(UpstreamError):
         _sync_client(client, "demo.otra-clave-0123456789").list_users()
