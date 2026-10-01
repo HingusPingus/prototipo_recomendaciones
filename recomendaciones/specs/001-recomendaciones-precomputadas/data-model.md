@@ -4864,6 +4864,37 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
+### RD-114 — Modo demo: un `api-general` simulado, fuera del camino de producción
+
+**Fecha**: 2026-10-01 · **Origen**: PR #92 (demo local) y su revisión posterior · **Tipo**: herramienta de
+desarrollo y dependencia externa
+
+**Contexto**: la integración con `api-general` no está disponible, porque las propuestas de `docs/contracts/`
+siguen sin acuerdo, y hacía falta mostrar el servicio de punta a punta. El PR #92 agregó
+`src/recomendaciones/demo/` (comando `reco-demo`), un `Dockerfile` y un `docker-compose.yml`. Ningún
+requisito de `spec.md` ni tarea de `tasks.md` lo pedía.
+
+**Decisiones**:
+1. **El modo demo es una herramienta de desarrollo, no parte del servicio.** No implementa requisitos ni
+   tiene tarea. Su alcance es un `api-general` simulado que cumple el contrato **propuesto** (sync y
+   `recomendacion.actualizar`), datos de ejemplo y una semilla de declaraciones.
+2. **Aislamiento verificado**: ningún módulo fuera de `demo/` lo importa
+   (`tests/unit/test_demo.py::test_el_modo_demo_no_se_importa_desde_los_procesos_reales`), y los procesos
+   reales corren sin cambios contra el simulado.
+3. **La imagen del servicio incluye `reco-demo`.** Se acepta: ningún despliegue lo invoca y, sin el stack de
+   demo, no tiene a qué reenviar. Un entorno real no debe correrlo.
+4. **El stack local publica sus puertos solo en `127.0.0.1`.** Los endpoints `/demo` no piden credenciales y
+   reenvían a la API con la API key interna.
+5. **Una demo en verde no prueba compatibilidad con el `api-general` actual.** Su runtime difiere del
+   contrato propuesto en la ruta de sync, el header de la API key, los IDs, los tags del catálogo y el
+   exchange de los eventos v2 y v3. La conexión real sigue condicionada a las propuestas de `docs/contracts/`
+   (ver «Cuando esté el `api-general` real» en `docs/demo.md`).
+
+**Condición de revisión**: cuando `api-general` cumpla el contrato en staging, decidir si el simulado se
+conserva para demos locales o se elimina (procedimiento en `src/recomendaciones/demo/README.md`, §5).
+
+---
+
 ### RD-113 — Contratos acordados, protección de `main` y usuarios con `region` y `birth_date` desde el alta
 
 **Fecha**: 2026-09-29 · **Origen**: decisiones del autor · **Tipo**: gobernanza y dependencia externa

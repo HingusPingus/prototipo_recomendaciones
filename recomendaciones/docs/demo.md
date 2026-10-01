@@ -34,6 +34,9 @@ La primera vez tarda unos minutos, porque construye la imagen. Está lista cuand
 | http://localhost:8000 | API de recomendaciones real (pide `X-Internal-API-Key`; sin Swagger, por FR-060) |
 | http://localhost:15672 | Consola de RabbitMQ (usuario `reco`, clave `reco`) |
 
+Los tres puertos se publican solo en `127.0.0.1`: se llega desde esta máquina, no desde la red. Los endpoints
+`/demo` no piden credenciales y reenvían a la API con la API key interna, así que no conviene exponerlos.
+
 ## Guion sugerido
 
 Todo desde http://localhost:8080/docs, con **Try it out**. En `usuario` se puede poner el alias (`ana`, `tomas`).
@@ -96,15 +99,39 @@ Una declaración es definitiva (FR-086a): para repetir el guion con la misma per
 - `docker compose logs preparacion`: la sincronización o los jobs de popularidad y respaldo.
 - `docker compose logs worker`: el cálculo de recomendaciones y el consumo de eventos.
 - `docker compose logs api-general-simulada`: los pedidos del Transformer y las llamadas de la demo.
-- Si el puerto 8000, 8080 o 15672 está ocupado, cambiarlo en `ports:` de `docker-compose.yml`.
+- Si el puerto 8000, 8080 o 15672 está ocupado, cambiar el primero de los dos números en `ports:` de
+  `docker-compose.yml` (por ejemplo, `"127.0.0.1:8081:8080"`).
 
 ## Cuando esté el `api-general` real
 
+El simulado cumple el contrato **que propusimos**
+([`api-general-sync.openapi.yaml`](../specs/001-recomendaciones-precomputadas/contracts/api-general-sync.openapi.yaml)
+y los schemas de eventos), no el runtime actual de `api-general`. Hoy el real difiere en cosas que impiden
+conectarse: la ruta de sync, el header de la API key, los IDs (`Long` en lugar de UUID), el catálogo sin tags y
+el exchange compartido por los eventos v2 y v3. Si se le apunta el Transformer así, las llamadas dan 404 o 401,
+o la pasada se aborta. Cada diferencia, y lo que le pedimos, está en [`docs/contracts/`](contracts/):
+`alineacion-sync.md`, `vocabulario-catalogo-actividad.md`, `migracion-v3.md` y `checkpoint-baja.md`.
+
+Cuando `api-general` las cierre:
+
 1. Sacar del `docker-compose.yml` los servicios `api-general-simulada` y `semilla-declaraciones`.
 2. Apuntar `RECO_API_GENERAL_BASE_URL` a su URL, con `/api/v1` (ver `docs/contracts/alineacion-sync.md`).
-3. Usar su API key del entorno.
+3. Usar su API key del entorno, recibida por un canal seguro: nunca en el repo.
+4. Si v3 pasa a un exchange propio (`migracion-v3.md`), cambiar esa constante en `worker/topology.py`. Es el
+   único cambio de código de este lado.
+5. Verificar en staging como indica `alineacion-sync.md` («Cómo lo verificamos»).
 
-Los procesos del servicio no cambian: el paquete `recomendaciones.demo` solo lo usa `reco-demo`.
+Fuera de eso, los procesos del servicio no cambian: el paquete `recomendaciones.demo` solo lo usa `reco-demo`.
+
+### Qué no simula
+
+Una demo en verde prueba este servicio contra el contrato propuesto, no la compatibilidad con el
+`api-general` de hoy. El simulado no cubre:
+
+- la baja de cuenta: no publica `usuario.eliminado`, así que la supresión no se ve en la demo;
+- ítems retirados: todo el catálogo va como `available`;
+- el vencimiento del snapshot de catálogo (410) del runtime real;
+- los IDs `Long`, el header `X-Service-Api-Key` y los mensajes v2 en el mismo exchange.
 
 ## Imagen sin compose
 

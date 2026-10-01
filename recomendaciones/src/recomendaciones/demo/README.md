@@ -120,10 +120,14 @@ interno de este servicio.
 
 ### 1.4 Con el `api-general` real
 
-No cambia nada del lado de este servicio: el worker ya declara y consume lo mismo. Lo que hace hoy el simulado lo
-tiene que hacer `api-general` con su outbox (`RECOMMENDATIONS_OUTBOX_*`), publicando en el mismo exchange. Hay
-una propuesta abierta para mover v3 a un exchange propio: ver
-[`docs/contracts/migracion-v3.md`](../../../docs/contracts/migracion-v3.md).
+Lo que hace hoy el simulado lo tiene que hacer `api-general` con su outbox (`RECOMMENDATIONS_OUTBOX_*`). Del
+lado de este servicio, el worker ya declara y consume lo mismo. La única excepción posible es el exchange: hay
+una propuesta abierta para mover v3 a un exchange propio, y en ese caso cambia una constante de
+`worker/topology.py` (ver [`docs/contracts/migracion-v3.md`](../../../docs/contracts/migracion-v3.md)).
+
+Pero el simulado sigue el contrato **propuesto**, no el runtime actual de `api-general`. Hasta que este cierre
+las diferencias de ruta, header, IDs y catálogo, no alcanza con cambiar la configuración: ver «Cuando esté el
+`api-general` real» en [`docs/demo.md`](../../../docs/demo.md).
 
 ---
 
