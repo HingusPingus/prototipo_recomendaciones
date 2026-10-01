@@ -42,6 +42,7 @@ reco-api = "recomendaciones.api.main:run"
 reco-worker = "recomendaciones.worker.main:run"
 reco-transformer = "recomendaciones.transformer.main:run"
 reco-batch = "recomendaciones.batch.main:run"
+reco-demo = "recomendaciones.demo.main:run"  # solo demo: api-general simulado (guía en docs/demo.md)
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/recomendaciones"]

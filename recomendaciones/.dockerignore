@@ -1,0 +1,17 @@
+# Contexto de build del Dockerfile: solo hace falta pyproject.toml, src/, migrations/ y alembic.ini.
+.git
+.venv
+venv
+.env
+.env.*
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.hypothesis
+recome-api-general
+Prototipo-Referencia
+specs
+docs
+tests
+tools
+ops
