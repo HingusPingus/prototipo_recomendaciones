@@ -4,8 +4,10 @@
 #
 # Orden de arranque: infraestructura → migraciones → api-general simulada → sincronización y batch
 # → API + worker → declaraciones de los usuarios de fondo.
+# Los puertos se publican solo en 127.0.0.1: `/demo` no pide credenciales y reenvía con la API key interna.
 # Para usar el api-general real: sacar `api-general-simulada` y `semilla-declaraciones`, y apuntar
-# RECO_API_GENERAL_BASE_URL y RECO_INTERNAL_API_KEY a los valores de su entorno.
+# RECO_API_GENERAL_BASE_URL y RECO_INTERNAL_API_KEY a los valores de su entorno. Antes, `api-general` tiene
+# que cerrar las diferencias con el contrato propuesto: ver «Cuando esté el api-general real» en docs/demo.md.
 
 name: recomendaciones
 
@@ -70,7 +72,7 @@ services:
       RABBITMQ_DEFAULT_USER: reco
       RABBITMQ_DEFAULT_PASS: reco
     ports:
-      - "15672:15672"  # consola web de RabbitMQ (usuario reco / reco)
+      - "127.0.0.1:15672:15672"  # consola web de RabbitMQ (usuario reco / reco)
     healthcheck:
       # `ping` da OK apenas arranca el nodo, antes de que el puerto AMQP acepte conexiones.
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
@@ -87,7 +89,7 @@ services:
     <<: *app
     command: ["reco-demo", "api-general"]
     ports:
-      - "8080:8080"  # Swagger de la demo: http://localhost:8080/docs
+      - "127.0.0.1:8080:8080"  # Swagger de la demo: http://localhost:8080/docs
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
       interval: 3s
@@ -108,7 +110,7 @@ services:
     <<: *app
     command: ["reco-api"]
     ports:
-      - "8000:8000"  # API de recomendaciones (requiere X-Internal-API-Key)
+      - "127.0.0.1:8000:8000"  # API de recomendaciones (requiere X-Internal-API-Key)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live', timeout=2)"]
       interval: 3s

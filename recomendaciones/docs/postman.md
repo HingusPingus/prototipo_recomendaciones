@@ -6,7 +6,7 @@ La API necesita Postgres, Redis, RabbitMQ y el worker. Todo eso se levanta junto
 [`docker-compose.yml`](../docker-compose.yml). Con **Docker Desktop abierto**:
 
 ```powershell
-cd C:\Users\Gabriel\Desktop\Work\prototipo_recomendaciones\recomendaciones
+cd <ruta-del-repo>\recomendaciones
 docker compose up --build -d     # la primera vez, o después de cambiar código
 docker compose ps -a             # lista cuando `api` dice (healthy)
 ```
@@ -16,6 +16,8 @@ docker compose ps -a             # lista cuando `api` dice (healthy)
 | `http://localhost:8000` | **API de recomendaciones** (la real). Exige el header `X-Internal-API-Key` |
 | `http://localhost:8080` | `api-general` simulado. Swagger en http://localhost:8080/docs |
 | `http://localhost:15672` | Consola de RabbitMQ (`reco` / `reco`) |
+
+Los puertos se publican solo en `127.0.0.1`: Postman tiene que correr en la misma máquina que el stack.
 
 Para apagar: `docker compose down`. Para **volver a cero** (borra declaraciones e interacciones):
 `docker compose down -v` y después `docker compose up -d`.

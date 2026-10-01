@@ -21,7 +21,7 @@ cp .env.example .env            # completar; todos los parámetros operativos so
 ```
 
 Procesos: `reco-api`, `reco-worker`, `reco-transformer` (una corrida) y
-`reco-batch popularity|fallback|warmup|age-refresh|purge-signals`.
+`reco-batch popularity|fallback|warmup|age-refresh|purge-signals|suppressions|audits`.
 
 ## Demo local
 
