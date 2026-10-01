@@ -118,7 +118,7 @@ def _autorizado(request: Request, key: str | None) -> EstadoDemo:
 
 
 def _pagina(estado: EstadoDemo, rows: list[dict], page_token: str | None, page_size: int) -> dict:
-    start = int(page_token) if page_token else 0
+    start = _inicio(page_token, len(rows))
     nxt = start + min(page_size, _MAX_PAGE_SIZE)
     return {
         "snapshot_id": estado.snapshot,
@@ -126,6 +126,19 @@ def _pagina(estado: EstadoDemo, rows: list[dict], page_token: str | None, page_s
         "next_page_token": str(nxt) if nxt < len(rows) else None,
         "items": rows[start:nxt],
     }
+
+
+def _inicio(page_token: str | None, total: int) -> int:
+    """Posición del token. Uno que este simulado no emitió es un error del cliente: 400, no 500 ni otra página."""
+    if not page_token:
+        return 0
+    try:
+        start = int(page_token)
+    except ValueError:
+        start = -1
+    if not 0 <= start < total:
+        raise HTTPException(status_code=400, detail=f"page_token inválido: {page_token}")
+    return start
 
 
 @router.get("/internal/v1/sync/users", tags=[_SYNC])
@@ -164,6 +177,8 @@ def sync_activity(
     x_internal_api_key: str | None = Header(default=None),
 ) -> dict:
     estado = _autorizado(request, x_internal_api_key)
+    if since is not None and since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)  # `occurred_at` lleva zona: un `since` sin zona se toma en UTC
     rows = [r for r in estado.actividad if since is None or datetime.fromisoformat(r["occurred_at"]) >= since]
     return _pagina(estado, rows, page_token, page_size)
 
