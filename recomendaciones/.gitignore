@@ -18,6 +18,9 @@ htmlcov/
 .env.*
 !.env.example
 
+# Clon local de consulta del repo api-general (tiene su propio git)
+recome-api-general/
+
 # Editor / SO
 .vscode/
 .idea/

@@ -22,3 +22,8 @@ cp .env.example .env            # completar; todos los parámetros operativos so
 
 Procesos: `reco-api`, `reco-worker`, `reco-transformer` (una corrida) y
 `reco-batch popularity|fallback|warmup|age-refresh|purge-signals`.
+
+## Demo local
+
+Stack completo en Docker, con un `api-general` simulado mientras la integración real no está disponible:
+[`docs/demo.md`](docs/demo.md). Para probar los endpoints con Postman: [`docs/postman.md`](docs/postman.md).

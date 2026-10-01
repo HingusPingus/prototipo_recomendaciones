@@ -1,0 +1,910 @@
+{
+  "info": {
+    "name": "Recomendaciones · demo local",
+    "description": "Endpoints de la API de recomendaciones y del api-general simulado. Levantar el stack con `docker compose up -d` desde la carpeta recomendaciones/ (ver docs/demo.md y docs/postman.md).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "api_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "demo_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "api_key",
+      "value": "demo.clave-local-solo-para-la-demo"
+    },
+    {
+      "key": "ana_id",
+      "value": "87d0e2b0-b3ba-5d0a-90af-33694fa70903"
+    },
+    {
+      "key": "tomas_id",
+      "value": "b215a316-0b3b-54c4-a7a7-6084b723ccc6"
+    },
+    {
+      "key": "usuario_inexistente_id",
+      "value": "00000000-0000-0000-0000-000000000001"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. API de recomendaciones (directa, puerto 8000)",
+      "description": "La API real del servicio. Todo menos /health exige el header X-Internal-API-Key. Recorre el flujo con Ana, en orden: correr sobre un stack recién levantado (docker compose down -v; docker compose up -d).",
+      "item": [
+        {
+          "name": "Salud: proceso vivo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_url}}/health/live",
+            "description": "Pública. Responde aunque Postgres o Redis estén caídos."
+          }
+        },
+        {
+          "name": "Salud: lista para atender",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_url}}/health/ready",
+            "description": "Pública. 503 si Postgres o Redis no responden."
+          }
+        },
+        {
+          "name": "Salud: detalle",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_url}}/health",
+            "description": "Pública. Estado de cada dependencia y versión de configuración del motor."
+          }
+        },
+        {
+          "name": "Sin API key → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect([401]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{api_url}}/internal/v1/recommendations/{{ana_id}}?module=peliculas",
+            "description": "Sin el header, o con una key de otro entorno, la respuesta es siempre la misma (FR-059)."
+          }
+        },
+        {
+          "name": "Ana sin declaración → 412",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 412', () => pm.expect([412]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/recommendations/{{ana_id}}?module=peliculas",
+            "description": "Sin declaración de gustos en el módulo no hay recomendaciones (FR-088)."
+          }
+        },
+        {
+          "name": "Declarar gustos de Ana (películas) → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.expect([201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/declarations/{{ana_id}}",
+            "description": "Al menos 5 tags del vocabulario del módulo (GET {{demo_url}}/demo/tags?module=peliculas). Pide el recálculo al worker.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"module\": \"peliculas\",\n  \"tags\": [\n    \"terror\",\n    \"sobrenatural\",\n    \"suspenso\",\n    \"misterio\",\n    \"drama\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Declarar otra vez → 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.expect([409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/declarations/{{ana_id}}",
+            "description": "La declaración es definitiva (FR-086a).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"module\": \"peliculas\",\n  \"tags\": [\n    \"terror\",\n    \"sobrenatural\",\n    \"suspenso\",\n    \"misterio\",\n    \"drama\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Recomendaciones de Ana",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "pm.test('result_type', () => pm.expect([\"fallback\", \"personalized\"]).to.include(pm.response.json().result_type));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/recommendations/{{ana_id}}?module=peliculas",
+            "description": "Primero puede venir `fallback` (populares) mientras el worker calcula; repetir y pasa a `personalized`. Los ítems vienen como item_id: para ver títulos usar la carpeta 2."
+          }
+        },
+        {
+          "name": "Recomendaciones de Ana, top_n=10",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "pm.test('result_type', () => pm.expect([\"fallback\", \"personalized\"]).to.include(pm.response.json().result_type));",
+                  "pm.test('10 ítems', () => pm.expect(pm.response.json().items.length).to.be.at.most(10));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/recommendations/{{ana_id}}?module=peliculas&top_n=10",
+            "description": "top_n entre 10 y 50; por defecto 20."
+          }
+        },
+        {
+          "name": "Preferir resultado anterior (prefer=stale)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "pm.test('result_type', () => pm.expect([\"fallback\", \"personalized\", \"personalized_stale\"]).to.include(pm.response.json().result_type));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/recommendations/{{ana_id}}?module=peliculas&prefer=stale",
+            "description": "Si no hay resultado vigente pero sí uno anterior, lo sirve como `personalized_stale` en vez del respaldo."
+          }
+        },
+        {
+          "name": "top_n fuera de rango → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.expect([422]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/recommendations/{{ana_id}}?module=peliculas&top_n=5"
+          }
+        },
+        {
+          "name": "Paginación no admitida → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.expect([422]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/recommendations/{{ana_id}}?module=peliculas&limit=5",
+            "description": "El contrato no admite limit ni cursor (FR-005)."
+          }
+        },
+        {
+          "name": "Módulo inválido → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.expect([422]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/recommendations/{{ana_id}}?module=series",
+            "description": "module: peliculas | juegos."
+          }
+        },
+        {
+          "name": "Usuario inexistente → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.expect([404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/recommendations/{{usuario_inexistente_id}}?module=peliculas"
+          }
+        },
+        {
+          "name": "Tags fuera del vocabulario → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.expect([422]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/declarations/{{tomas_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"module\": \"peliculas\",\n  \"tags\": [\n    \"terror\",\n    \"inventado\",\n    \"otro\",\n    \"x\",\n    \"y\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Menos de 5 tags → 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.expect([422]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{api_url}}/internal/v1/declarations/{{tomas_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"module\": \"peliculas\",\n  \"tags\": [\n    \"terror\",\n    \"drama\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. api-general simulada (puerto 8080)",
+      "description": "Hace lo que hará api-general: reenvía a la API con la key, agrega títulos y publica eventos en RabbitMQ. No necesita API key. Swagger: {{demo_url}}/docs. Se puede usar `ana`/`tomas` en lugar del UUID.",
+      "item": [
+        {
+          "name": "Personas de la demo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/usuarios"
+          }
+        },
+        {
+          "name": "Usuarios de fondo incluidos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/usuarios?incluir_fondo=true"
+          }
+        },
+        {
+          "name": "Catálogo de películas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/catalogo?module=peliculas"
+          }
+        },
+        {
+          "name": "Catálogo de juegos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/catalogo?module=juegos"
+          }
+        },
+        {
+          "name": "Tags declarables (películas)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/tags?module=peliculas"
+          }
+        },
+        {
+          "name": "Tags declarables (juegos)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/tags?module=juegos"
+          }
+        },
+        {
+          "name": "Recomendaciones de Ana con títulos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "pm.test('result_type', () => pm.expect([\"fallback\", \"personalized\"]).to.include(pm.response.json().result_type));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/usuarios/ana/recomendaciones?module=peliculas"
+          }
+        },
+        {
+          "name": "Ana: dislike a El conjuro (publica evento)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{demo_url}}/demo/usuarios/ana/interacciones",
+            "description": "Publica recomendacion.actualizar en RabbitMQ; el worker guarda la señal, excluye el ítem y recalcula.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item\": \"El conjuro\",\n  \"signal_type\": \"dislike\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Ana: like a Los otros (publica evento)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{demo_url}}/demo/usuarios/ana/interacciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item\": \"Los otros\",\n  \"signal_type\": \"like\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Ana declara juegos (hereda terror)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.expect([201]).to.include(pm.response.code));",
+                  "pm.test('hereda terror', () => pm.expect(pm.response.json().respuesta_recomendaciones.inherited_tags).to.include('terror'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{demo_url}}/demo/usuarios/ana/declaracion",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"module\": \"juegos\",\n  \"tags\": [\n    \"terror\",\n    \"supervivencia\",\n    \"puzzle\",\n    \"accion\",\n    \"aventura\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Recomendaciones de juegos de Ana",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "pm.test('result_type', () => pm.expect([\"fallback\", \"personalized\"]).to.include(pm.response.json().result_type));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/usuarios/ana/recomendaciones?module=juegos"
+          }
+        },
+        {
+          "name": "Tomás (15) declara películas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.expect([201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{demo_url}}/demo/usuarios/tomas/declaracion",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"module\": \"peliculas\",\n  \"tags\": [\n    \"terror\",\n    \"sobrenatural\",\n    \"suspenso\",\n    \"misterio\",\n    \"drama\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Recomendaciones de Tomás: sin +18",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));",
+                  "pm.test('result_type', () => pm.expect([\"fallback\", \"personalized\"]).to.include(pm.response.json().result_type));",
+                  "pm.test('ningún ítem +18', () => pm.response.json().items.forEach(i => pm.expect(i.age_rating).to.not.equal('+18')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/demo/usuarios/tomas/recomendaciones?module=peliculas"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Sync de api-general (lo que lee el Data Transformer)",
+      "description": "Contrato api-general-sync: páginas con snapshot_id, total y next_page_token. Requieren la API key.",
+      "item": [
+        {
+          "name": "Usuarios",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{demo_url}}/internal/v1/sync/users?page_size=500"
+          }
+        },
+        {
+          "name": "Catálogo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{demo_url}}/internal/v1/sync/catalog/items?page_size=500"
+          }
+        },
+        {
+          "name": "Actividad (primera página de 100)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{demo_url}}/internal/v1/sync/activity",
+            "description": "Pasar next_page_token como page_token para la página siguiente."
+          }
+        },
+        {
+          "name": "Actividad desde una fecha",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect([200]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": "{{demo_url}}/internal/v1/sync/activity?since=2026-09-25T00:00:00%2B00:00"
+          }
+        },
+        {
+          "name": "Sin API key → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.expect([401]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{demo_url}}/internal/v1/sync/users"
+          }
+        }
+      ]
+    }
+  ]
+}
