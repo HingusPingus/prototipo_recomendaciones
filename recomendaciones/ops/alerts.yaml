@@ -78,7 +78,7 @@ groups:
         labels: {severity: warning, owner: guardia-de-plataforma}
         annotations:
           summary: La cola de eventos crece sin drenarse
-          justification: "Con el objetivo de recálculo ≤ 2 s p95 por usuario, 1000 eventos pendientes son más de media hora de atraso para un worker; sostenido 15 minutos distingue un pico de tráfico de un consumo detenido."
+          justification: "Con el objetivo de recálculo ≤ 2 s p95 por usuario, 1000 eventos pendientes son más de media hora de atraso para un worker; sostenido 15 minutos distingue un pico de tráfico de un consumo detenido. Valor inicial aprobado en la revisión del 2026-10-01: se recalibra con el tráfico real."
           runbook: docs/runbook.md#queuedepthgrowth
       - alert: SignalIngestLag
         expr: histogram_quantile(0.95, sum by (le) (rate(signal_ingest_lag_seconds_bucket{source="evento"}[15m]))) > 3600
