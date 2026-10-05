@@ -221,6 +221,17 @@ texto, registrados en RD-112. Ninguno agrega alcance.
 - **FR-091a**: la idempotencia por identificador del evento de baja se registra igual que la de
   `recomendacion.actualizar`, con resultado propio (hallazgo U5).
 
+### Session 2026-10-05 — consumo de `recomendacion.actualizar.v3`
+
+Contrato publicado por `api-general` (spec 004, commit `9137825`), registrado en RD-116. No agrega alcance
+funcional: cambia por cuál evento y exchange llega lo que FR-009 y FR-061 ya pedían.
+
+- **FR-009, FR-061**: el evento consumido es `recomendacion.actualizar.v3` (schema 3.0.0), en su exchange
+  propio. En este documento, `recomendacion.actualizar` designa a ese contrato. El v2 que `api-general`
+  conserva para otros consumidores no se consume.
+- **FR-012**: un mensaje sin los headers AMQP `event_type` y `event_version` que el contrato declara
+  obligatorios, o con otro valor, es inválido y va a dead-letter con su causa.
+
 ## Dependencias Externas Bloqueantes
 
 > Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature

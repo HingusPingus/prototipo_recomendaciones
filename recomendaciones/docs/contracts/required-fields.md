@@ -42,13 +42,18 @@ distingue un listado completo de uno truncado y **un listado parcial retiraría 
 
 ### Dónde publicar los eventos
 
-Ambos eventos se publican en un exchange *fanout* con el nombre del evento: **`recomendacion.actualizar`** y
-**`usuario.eliminado`** (nombre propuesto). El worker de este repositorio declara al arrancar esos exchanges y
-sus propias colas quorum, con la convención del broker de `notificaciones`: TTL de 24 h y `x-delivery-limit`
-de 5. `api-general` no necesita crear colas: solo publicar en el exchange. Si se acuerdan otros nombres, se
-cambian en un único lugar de este repositorio.
+Cada evento se publica en un exchange *fanout* con el nombre del evento: **`recomendacion.actualizar.v3`** y
+**`usuario.eliminado`**. El v2 (`recomendacion.actualizar`) queda en su propio exchange y este repositorio no lo
+consume: un exchange compartido le entregaría también los v2 a nuestra cola. El worker declara al arrancar esos
+exchanges y sus propias colas quorum, con la convención del broker de `notificaciones`: TTL de 24 h y
+`x-delivery-limit` de 5. `api-general` no necesita crear colas: solo publicar en el exchange. Si se acuerdan
+otros nombres, se cambian en un único lugar de este repositorio (`worker/topology.py`) (RD-116).
 
-### Evento `recomendacion.actualizar` — `recomendacion-actualizar.schema.json`
+Cada mensaje de v3 lleva los headers AMQP **`event_type = recomendacion.actualizar.v3`** y
+**`event_version = 3.0.0`**, que el contrato declara obligatorios (`x-amqp-transport`). Sin ellos, o con otro
+valor, el mensaje va a la dead-letter sin interpretarse.
+
+### Evento `recomendacion.actualizar.v3` — `recomendacion-actualizar-v3.schema.json`
 
 | Campo | Obligatorio | Requisito | Si falta |
 |---|---|---|---|

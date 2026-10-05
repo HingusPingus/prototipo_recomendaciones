@@ -104,21 +104,20 @@ Una declaración es definitiva (FR-086a): para repetir el guion con la misma per
 
 ## Cuando esté el `api-general` real
 
-El simulado cumple el contrato **que propusimos**
+El simulado cumple los contratos publicados
 ([`api-general-sync.openapi.yaml`](../specs/001-recomendaciones-precomputadas/contracts/api-general-sync.openapi.yaml)
-y los schemas de eventos), no el runtime actual de `api-general`. Hoy el real difiere en cosas que impiden
-conectarse: la ruta de sync, el header de la API key, los IDs (`Long` en lugar de UUID), el catálogo sin tags y
-el exchange compartido por los eventos v2 y v3. Si se le apunta el Transformer así, las llamadas dan 404 o 401,
-o la pasada se aborta. Cada diferencia, y lo que le pedimos, está en [`docs/contracts/`](contracts/):
-`alineacion-sync.md`, `vocabulario-catalogo-actividad.md`, `migracion-v3.md` y `checkpoint-baja.md`.
+y los schemas de eventos). Desde el 2026-10-05 el runtime de `api-general` también los cumple: ruta de sync,
+header, IDs UUID, `module` en la actividad y v3 en su propio exchange (`docs/contracts/alineacion-sync.md`,
+`migracion-v3.md`). **Lo que todavía impide usarlo** es operativo: su catálogo no tiene tags cargados, y su
+sync de catálogo responde 503 hasta que todo ítem incluido tenga tags elegibles
+(`vocabulario-catalogo-actividad.md`).
 
-Cuando `api-general` las cierre:
+Cuando el catálogo esté etiquetado:
 
 1. Sacar del `docker-compose.yml` los servicios `api-general-simulada` y `semilla-declaraciones`.
-2. Apuntar `RECO_API_GENERAL_BASE_URL` a su URL, con `/api/v1` (ver `docs/contracts/alineacion-sync.md`).
+2. Apuntar `RECO_API_GENERAL_BASE_URL` a su URL, con `/api/v1`.
 3. Usar su API key del entorno, recibida por un canal seguro: nunca en el repo.
-4. Si v3 pasa a un exchange propio (`migracion-v3.md`), cambiar esa constante en `worker/topology.py`. Es el
-   único cambio de código de este lado.
+4. Confirmar con `notificaciones` los exchanges `recomendacion.actualizar.v3` y `usuario.eliminado`.
 5. Verificar en staging como indica `alineacion-sync.md` («Cómo lo verificamos»).
 
 Fuera de eso, los procesos del servicio no cambian: el paquete `recomendaciones.demo` solo lo usa `reco-demo`.
@@ -131,7 +130,7 @@ Una demo en verde prueba este servicio contra el contrato propuesto, no la compa
 - la baja de cuenta: no publica `usuario.eliminado`, así que la supresión no se ve en la demo;
 - ítems retirados: todo el catálogo va como `available`;
 - el vencimiento del snapshot de catálogo (410) del runtime real;
-- los IDs `Long`, el header `X-Service-Api-Key` y los mensajes v2 en el mismo exchange.
+- el 503 de la sync de catálogo cuando un ítem no tiene tags elegibles o tiene una clasificación inválida.
 
 ## Imagen sin compose
 

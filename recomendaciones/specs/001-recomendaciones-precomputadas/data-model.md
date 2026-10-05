@@ -4864,6 +4864,37 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
+### RD-116 — Se consume `recomendacion.actualizar.v3`, en su propio exchange y con headers obligatorios
+
+**Fecha**: 2026-10-05 · **Origen**: propuesta `docs/contracts/migracion-v3.md`, aplicada por `api-general` en
+el commit `9137825` de su repositorio · **Tipo**: contrato consumido
+
+**Contexto**: `api-general` publica por cada interacción dos eventos: el v2 (`{evento_id, usuario_id}`, para sus
+otros consumidores) y el v3, con los siete campos de FR-061. Su borrador de ruteo los mandaba al mismo exchange
+fanout, lo que dejaba en nuestra DLQ un v2 por cada interacción.
+
+**Decisiones**:
+1. **Este repositorio consume solo v3**, ligado al exchange fanout **`recomendacion.actualizar.v3`**. Nunca se liga
+   al exchange de v2. Las colas propias conservan su nombre: no forman parte del contrato.
+2. **Nombre en los textos**: `recomendacion.actualizar`, tal como aparece en `spec.md`, `plan.md`, `tasks.md`, este
+   documento y la constitución, designa al contrato publicado como `recomendacion.actualizar.v3`, schema 3.0.0.
+   No se renombran sus 41 menciones; la copia derivada sí lleva el nombre del evento
+   (`contracts/recomendacion-actualizar-v3.schema.json`).
+3. **La copia derivada es literal** de la de `api-general`: payload cerrado (`additionalProperties: false`) y bloque
+   `x-amqp-transport`, que declara el exchange y los headers `event_type` y `event_version` como obligatorios. El
+   worker toma los valores esperados de esa copia (`worker/schemas.transport_headers`). Un mensaje sin ellos, o con
+   otra versión, va a la DLQ con una causa que nombra el header, sin interpretar el payload.
+4. **Contrato de sync**: la copia de `api-general-sync.openapi.yaml` también pasa a ser literal. Suma `module`
+   obligatorio en la actividad, que el Transformer no lee porque toma el módulo del ítem, y el prefijo `/api/v1`.
+
+**Lo que no cambia**: idempotencia por `event_id`, reintentos con backoff, DLQ, persistencia de la señal (T064) y
+el evento `usuario.eliminado`.
+
+**Pendiente externo**: que `notificaciones` confirme el exchange, su tipo y los bindings antes de habilitar la
+publicación en un entorno compartido.
+
+---
+
 ### RD-114 — Modo demo: un `api-general` simulado, fuera del camino de producción
 
 **Fecha**: 2026-10-01 · **Origen**: PR #92 (demo local) y su revisión posterior · **Tipo**: herramienta de

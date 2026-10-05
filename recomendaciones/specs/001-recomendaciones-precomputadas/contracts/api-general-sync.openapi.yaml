@@ -1,195 +1,235 @@
 openapi: 3.1.0
 info:
-  title: RecoMe · api-general — endpoints internos consumidos por el Data Transformer
+  title: RecoMe · api-general — sincronización interna para recomendaciones
   version: 1.0.0-propuesta
   description: |
-    **Propuesta** de este repositorio (prioridad de definición, RD-47) de los endpoints REST que el
-    Data Transformer **consume** (FR-015). Ninguna tarea de `tasks.md` los definía —T049 cubre la API
-    propia y los eventos—, y T028/T029 (Fase 1) necesitan un contrato contra el cual construirse y un
-    doble contra el cual probarse. El contrato vigente será el que publique `api-general`.
-
-    Materializa CR-1…CR-12, CR-15…CR-18 y DEP-1, DEP-2, DEP-5, DEP-7…DEP-11 (data-model.md §10).
-    Solo lectura: el Data Transformer no invoca operaciones que muten estado (FR-017, Principio IV).
+    Propuesta no publicada alineada con los contratos recibidos en `files/` y con
+    `files/required-fields.md`. Estos artefactos son la referencia funcional para ruta,
+    autenticación, paginación y forma de los registros. La implementación local se está alineando
+    con esta propuesta; no representa publicación ni conformidad de despliegue. Una pasada solo es completa si todas sus páginas comparten snapshot_id,
+    la última tiene next_page_token nulo y el total recibido coincide con total.
+    Clasificación: conjunto nuevo/aditivo frente a los contratos publicados de api-general.
+  x-change-classification: compatible-additive-new-endpoints
+  x-change-reason: Reflejar los contratos recibidos y detectar listados parciales.
   x-contract-origin:
     status: propuesta-no-publicada
     drafted: "2026-09-28"
-    source: specs/001-recomendaciones-precomputadas (hueco detectado en /speckit-implement)
+    source: specs/004-contratos-recomendaciones/spec.md
+servers:
+  - url: /api/v1
+    description: Prefijo de contexto del host privado de api-general.
 security:
-  - InternalApiKey: []
+  - ServiceApiKey: []
 paths:
   /internal/v1/sync/users:
     get:
-      operationId: listUsers
-      summary: Listado paginado de usuarios (proyección)
+      operationId: listSyncUsers
+      summary: Proyección paginada de usuarios
       parameters:
-        - $ref: "#/components/parameters/PageToken"
-        - $ref: "#/components/parameters/PageSize"
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
       responses:
-        "200":
-          description: Página de usuarios
+        '200':
+          description: Página de usuario; la pasada se completa al recibir todas las páginas del mismo snapshot, con next_page_token nulo y la cantidad recibida igual a total.
           content:
             application/json:
               schema:
                 allOf:
-                  - $ref: "#/components/schemas/PageEnvelope"
+                  - $ref: '#/components/schemas/Page'
                   - type: object
                     required: [items]
                     properties:
                       items:
                         type: array
-                        items:
-                          $ref: "#/components/schemas/User"
+                        items: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /internal/v1/sync/catalog/items:
     get:
-      operationId: listCatalogItems
-      summary: Listado paginado del catálogo, con marcador de completitud (CR-9)
+      operationId: listSyncCatalogItems
+      summary: Página de catálogo vinculada a un snapshot inmutable
       description: |
-        Todas las páginas de una misma pasada comparten `snapshot_id` y declaran el `total` de esa
-        instantánea. El listado es **completo** si y solo si se recibieron todas las páginas de un
-        mismo `snapshot_id`, la última trae `next_page_token: null` y la cantidad recibida iguala a
-        `total`. Si no puede confirmarse, la sincronización aborta **sin marcar retiros** (CR-9,
-        FR-074). Un ítem ausente de un listado completo se interpreta como retirado (CR-8).
+        Todas las páginas de una pasada comparten snapshot_id y total. Una lectura solo es completa
+        si se obtuvieron todas las páginas del mismo snapshot, la última tiene next_page_token nulo
+        y la cantidad acumulada coincide con total. Un recorrido truncado o inconsistente no permite
+        marcar ausencias como retiros.
       parameters:
-        - $ref: "#/components/parameters/PageToken"
-        - $ref: "#/components/parameters/PageSize"
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
       responses:
-        "200":
-          description: Página del catálogo
+        '200':
+          description: Página de catálogo dentro del snapshot
           content:
             application/json:
               schema:
                 allOf:
-                  - $ref: "#/components/schemas/PageEnvelope"
+                  - $ref: '#/components/schemas/CatalogPage'
                   - type: object
                     required: [items]
                     properties:
                       items:
                         type: array
-                        items:
-                          $ref: "#/components/schemas/CatalogItem"
+                        items: { $ref: '#/components/schemas/CatalogItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '410': { $ref: '#/components/responses/ExpiredCatalogSnapshot' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /internal/v1/sync/activity:
     get:
-      operationId: listActivity
-      summary: Actividad incremental como hechos inmutables (CR-17, CR-18)
+      operationId: listSyncActivity
+      summary: Hechos de actividad incrementales, ordenados e inclusivos
       description: |
-        Devuelve interacciones cuyo `occurred_at` es posterior o igual a `since`. Cada transición de
-        estado es un hecho propio con identificador nuevo (CR-18). El Data Transformer pide desde su
-        marca de agua menos la ventana de reentrega; el solapamiento se deduplica por
-        `origin_interaction_id` (DI-21), de modo que no hace falta persistir un cursor.
+        Incluye occurred_at >= since. Orden ascendente por occurred_at y después por
+        origin_interaction_id. Todas las páginas comparten snapshot_id y total; la pasada está
+        completa cuando next_page_token es null y la cantidad acumulada coincide con total.
+        El consumidor deduplica solapamientos por origin_interaction_id. Cada cambio de estado es
+        un hecho propio; timestamps son los provistos por el origen y llevan zona horaria. Mientras
+        haya estado legacy sin historial de procedencia completo, el servicio falla cerrado con 503.
       parameters:
         - name: since
           in: query
           required: false
-          schema:
-            type: string
-            format: date-time
-        - $ref: "#/components/parameters/PageToken"
-        - $ref: "#/components/parameters/PageSize"
+          schema: { type: string, format: date-time }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
       responses:
-        "200":
-          description: Página de actividad
+        '200':
+          description: Página de hechos de actividad
           content:
             application/json:
               schema:
                 allOf:
-                  - $ref: "#/components/schemas/PageEnvelope"
+                  - $ref: '#/components/schemas/Page'
                   - type: object
                     required: [items]
                     properties:
                       items:
                         type: array
-                        items:
-                          $ref: "#/components/schemas/Interaction"
+                        items: { $ref: '#/components/schemas/Interaction' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
 components:
   securitySchemes:
-    InternalApiKey:
+    ServiceApiKey:
       type: apiKey
       in: header
       name: X-Internal-API-Key
+      description: Clave interna específica del entorno; nunca incluirla en logs.
   parameters:
-    PageToken:
-      name: page_token
-      in: query
-      required: false
-      schema:
-        type: string
     PageSize:
       name: page_size
       in: query
       required: false
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 1000
-        default: 500
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+    PageToken:
+      name: page_token
+      in: query
+      required: false
+      schema: { type: string, minLength: 1 }
+      description: Token opaco de continuación; ligado al recurso y, para catálogo, al snapshot.
   schemas:
-    PageEnvelope:
+    Page:
       type: object
       required: [snapshot_id, total, next_page_token]
       properties:
         snapshot_id:
           type: string
-        total:
-          type: integer
-          minimum: 0
-        next_page_token:
-          type: [string, "null"]
+          minLength: 1
+          description: Identifica el snapshot común a todas las páginas de la pasada.
+        total: { type: integer, minimum: 0 }
+        next_page_token: { type: [string, 'null'] }
+        items: { type: array }
+    CatalogPage:
+      allOf:
+        - $ref: '#/components/schemas/Page'
+        - type: object
+          required: [expires_at]
+          properties:
+            expires_at:
+              type: string
+              format: date-time
+              description: Vencimiento del snapshot; constante en todas las páginas de esa pasada.
     User:
       type: object
+      additionalProperties: false
       required: [id, birth_date, region]
       properties:
-        id:
-          type: string
-          format: uuid
+        id: { type: string, format: uuid }
         birth_date:
-          description: Obligatoria y confiable (CR-1, CR-2, DEP-5). Sin campo `age` (CR-3)
           type: string
           format: date
+          description: Fecha confiable de origen; nunca se expone edad derivada.
         region:
-          description: ISO 3166-1 alfa-2 en mayúsculas, obligatoria (CR-5, DEP-11)
           type: string
-          pattern: "^[A-Z]{2}$"
+          pattern: '^[A-Z]{2}$'
+          description: Código ISO 3166-1 alfa-2 en mayúsculas.
     CatalogItem:
       type: object
+      additionalProperties: false
       required: [id, module, age_rating, tags]
       properties:
-        id:
-          type: string
-          format: uuid
-        module:
-          type: string
-          enum: [peliculas, juegos]
-        age_rating:
-          description: Literal exacto del age_rating_catalog activo, incluido el `+` (CR-15)
-          type: string
-          enum: [ATP, "+13", "+18"]
-        status:
-          description: Disponibilidad y retiro explícito (CR-7, deseable no bloqueante)
-          type: string
-          enum: [available, retired]
+        id: { type: string, format: uuid }
+        module: { type: string, enum: [peliculas, juegos] }
+        age_rating: { type: string, enum: [ATP, '+13', '+18'] }
         tags:
-          description: Conjunto NO vacío de tags temáticos, nombres estables y sin variantes de formato (CR-10, CR-11, CR-16, DEP-7)
           type: array
           minItems: 1
-          items:
-            type: string
+          items: { type: string, minLength: 1 }
+        status:
+          type: string
+          enum: [available, retired]
+          description: Campo deseable, no bloqueante; una ausencia solo indica retiro tras snapshot completo.
     Interaction:
       type: object
-      required: [origin_interaction_id, user_id, item_id, signal_type, occurred_at]
+      additionalProperties: false
+      required: [origin_interaction_id, user_id, item_id, module, signal_type, occurred_at]
       properties:
         origin_interaction_id:
-          description: Único, estable y no reutilizado; el mismo que viaja en recomendacion.actualizar (CR-17, DEP-8)
           type: string
-        user_id:
-          type: string
-          format: uuid
-        item_id:
-          type: string
-          format: uuid
-        signal_type:
-          type: string
-          enum: [like, dislike, consumo]
+          minLength: 1
+          description: Identificador propio estable y no reutilizado; coincide con el evento.
+        user_id: { type: string, format: uuid }
+        item_id: { type: string, format: uuid }
+        module: { type: string, enum: [peliculas, juegos] }
+        signal_type: { type: string, enum: [like, dislike, consumo] }
         occurred_at:
-          description: Provisto por el origen (CR-12, DEP-2)
           type: string
           format: date-time
+          description: Momento provisto por el origen; debe incluir zona horaria.
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string }
+        message: { type: string }
+  responses:
+    BadRequest:
+      description: Parámetros inválidos o token de página no válido.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: API key ausente, inválida o de otro entorno.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: API key reconocida pero expirada.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ExpiredCatalogSnapshot:
+      description: El snapshot de catálogo venció; descartar toda la pasada e iniciar una nueva.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: Datos o baseline de actividad no verificables; no se entrega un listado parcial como completo.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

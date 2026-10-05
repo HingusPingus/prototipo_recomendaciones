@@ -4,8 +4,10 @@ Propuesta de `recomendaciones` para el ítem 2 de la respuesta de `api-general` 
 de los eventos, `specs/004-contratos-recomendaciones`). Se basa en el runtime de `api-general` del commit
 `4636c17` (2026-09-29) y en `docs/operations/recommendation-outbox-routing.md`.
 
-> **Estado: propuesta, sin acuerdo.** Nada de esto está implementado de nuestro lado. Según el Principio II,
-> lo implementamos después de que `api-general` lo apruebe por escrito.
+> **Estado: aplicada el 2026-10-05 (RD-116).** `api-general` separó el exchange de v3 y alineó el contrato
+> (commit `9137825` de su repositorio); de nuestro lado se aplicaron los pasos de «Cambios de nuestro lado».
+> Falta que `notificaciones` confirme la topología antes de habilitar la publicación en un entorno compartido.
+> El resto del documento describe la situación al momento de la propuesta.
 
 ## En corto
 

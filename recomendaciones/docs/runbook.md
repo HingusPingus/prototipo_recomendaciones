@@ -23,6 +23,10 @@ interrumpió.
 **Acción**: `api-general no disponible` → verificar su salud y reintentar (`reco-transformer`); `listado
 no confirmado completo` o `volumen anómalo` → ver [SyncVolumeDrop](#syncvolumedrop); violaciones de
 contrato → ver [ContractViolationRegion](#contractviolationregion).
+Si `api-general` responde **503 en `/internal/v1/sync/catalog/items`** con su salud en orden, la causa más
+probable es su propia validación: rechaza el catálogo entero si un ítem incluido no tiene tags elegibles o tiene
+una clasificación fuera de `ATP`, `+13`, `+18`. No se arregla de este lado: escalar a `api-general` con la hora
+de la corrida, para que corrija el ítem y corra su verificador de preparación.
 
 ### PopularityStale
 **Qué significa**: la popularidad no se recalcula hace más de 26 h; el respaldo sirve un ranking congelado.

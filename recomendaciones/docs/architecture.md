@@ -53,7 +53,7 @@ desempate es fijo y determinista (`scoring.py`).
 
 ## Broker
 
-El broker lo opera `notificaciones`. El worker declara al arrancar sus exchanges (`recomendacion.actualizar`,
+El broker lo opera `notificaciones`. El worker declara al arrancar sus exchanges (`recomendacion.actualizar.v3`,
 `usuario.eliminado`) y sus colas, con la convención de ese broker: **quorum**, la principal con
 `x-message-ttl` = `RECO_EVENT_REDELIVERY_WINDOW_HOURS`, `x-delivery-limit` = `RECO_RETRY_MAX_ATTEMPTS` y
 dead-letter a una DLQ propia sin TTL (`worker/topology.py`). Los reintentos con backoff van por una cola de
