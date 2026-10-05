@@ -489,9 +489,9 @@ mismo día:
 
 **Siguen abiertos**: ninguna decisión de diseño. CHK072 se cerró agregando SC-028…SC-031.
 
-**Valores a calibrar**, que no son decisiones sino mediciones pendientes: frecuencia de sincronización ·
-periodicidad del respaldo · `event_redelivery_window_hours` (se copia del broker de `notificaciones`) ·
-`signal_retention_days` dentro del rango 18–24 meses.
+**Valores a calibrar**, que no son decisiones sino mediciones pendientes: periodicidad del respaldo · `event_redelivery_window_hours` (se copia del broker de `notificaciones`) ·
+`signal_retention_days` dentro del rango 18–24 meses. *(La frecuencia de sincronización se fijó el 2026-10-05 en
+**cada 15 minutos**: un usuario recién registrado no existe para este servicio hasta la corrida siguiente.)*
 
 > Todos son configuración versionada u operativa y su error es **reversible**, salvo
 > `signal_retention_days`, que puede acortarse pero **no alargarse** porque lo purgado no vuelve. Por eso

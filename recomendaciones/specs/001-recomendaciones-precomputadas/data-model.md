@@ -1,6 +1,6 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-116, 2026-10-05) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -2075,7 +2075,7 @@ cuesta credibilidad y puede tener consecuencias contractuales del lado del catá
 |---|---|---|---|
 | `catalog_sync_last_success_timestamp` | **> 26 h** | **Alerta.** Catálogo congelado: altas y retiros no se reflejan. Ejecutar sync, investigar | Guardia de plataforma |
 | `catalog_popularity_last_success_timestamp` | **> 26 h** | **Alerta.** El respaldo sirve un ranking congelado (RD-11). Degradación silenciosa de la calidad del `fallback` | Guardia de plataforma |
-| `catalog_unrated_ratio` = `age_rating_source='unknown_defaulted'` / total vigentes | **> 5 %** | **Alerta.** Esa fracción del catálogo es **inalcanzable para todo usuario** por el fail-closed etario. Escalar al proveedor del catálogo para que declare las clasificaciones faltantes (RD-9) | Dueño de producto |
+| `catalog_unrated_ratio` = `age_rating_source='unknown_defaulted'` / total vigentes | **> 0** *(era > 5 % hasta la revisión B7 del 2026-10-05: la clasificación es obligatoria por CR-15)* | **Alerta.** Esa fracción del catálogo es **inalcanzable para todo usuario** por el fail-closed etario. Escalar al proveedor del catálogo para que declare las clasificaciones faltantes (RD-9) | Dueño de producto |
 | `catalog_retired_total` | Sin umbral | **Ninguna.** Panel: dimensiona el catálogo vigente vs. histórico | — |
 | `projection_field_anomalies_total{field="tag_name", reason="collision"\|"empty"}` | **> 0** | **Alerta.** El origen emite tags que colisionan o valores fuera de dominio. Escalar al proveedor (RD-16) | Guardia de plataforma |
 
@@ -7387,8 +7387,8 @@ Los tres **conflictos entre textos ya decididos** que detectó el saneamiento de
 **resueltos por el autor** el mismo día: el peso de consumo (RD-73 frente a FR-022b → RD-99), el orden del
 emergente por afinidad (RD-70 frente a FR-033c/d → RD-102) y la convivencia de versiones de configuración
 (§2.8 frente a FR-025c → RD-103). Los valores que quedaban abiertos se fijaron en RD-104 (conteo por
-usuario y módulo) y RD-108. Solo quedan valores operativos: frecuencia de sincronización, periodicidad
-del respaldo y `event_redelivery_window_hours`.
+usuario y módulo) y RD-108. Solo quedan valores operativos: periodicidad del respaldo y
+`event_redelivery_window_hours`; la frecuencia de sincronización se fijó el 2026-10-05 en cada 15 minutos.
 
 
 
