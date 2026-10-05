@@ -202,6 +202,17 @@ Escalar al responsable del repo.
 **Acción**: `failed` → [UserDeletionResidualKeys](#userdeletionresidualkeys); `in_progress` antiguo →
 revisar el worker. **Escalamiento de severidad alta** (FR-095a): responsable del repo en el día.
 
+### DeletionReceiptLate
+**Qué significa**: una baja de cuenta llegó más de 15 minutos después de confirmarse en `api-general`, el
+límite acordado para el checkpoint de recepción (FR-095b). La supresión igual se ejecuta: lo que se incumplió
+es el plazo de entrega.
+**Primer paso**: `SELECT event_id, requested_at, received_at, received_at - requested_at AS lag FROM
+user_suppressions WHERE received_at > now() - interval '1 hour' ORDER BY lag DESC LIMIT 10;`
+**Acción**: si el worker estuvo caído o con cola acumulada en ese intervalo
+([QueueDepthGrowth](#queuedepthgrowth)), la demora es nuestra. Si no, está antes de este servicio: escalar a
+`api-general` (antigüedad de su outbox) y a `notificaciones` (broker) con los `event_id` del primer paso. Un
+lag de varias horas en todos los eventos a la vez suele ser desfase de reloj de `api-general`.
+
 ---
 
 ## Procedimientos
