@@ -15,7 +15,7 @@ causa está en el origen de datos o en un contrato) o de `notificaciones` (si es
 ## Alertas
 
 ### CatalogSyncStale
-**Qué significa**: no hubo sincronización exitosa en más de 26 h; altas y retiros del catálogo no se
+**Qué significa**: no hubo sincronización exitosa en más de 1 h (unas cuatro corridas, que van cada 15 minutos); altas y retiros del catálogo no se
 reflejan.
 **Primer paso**: `SELECT id, status, failure_reason, started_at FROM sync_runs ORDER BY id DESC LIMIT 5;`
 — si hay `failed`, leer `failure_reason`; si la última está `running` sin `finished_at`, la corrida se
@@ -43,7 +43,7 @@ sincronización (cada 15 minutos) también corrige el ordinal de quien ya cruzó
 perdido se repara solo en la corrida siguiente de cualquiera de los dos.
 
 ### VectorRecomputeLag
-**Qué significa**: hay ítems vigentes sin vector bajo la versión activa hace más de 26 h, contadas desde su
+**Qué significa**: hay ítems vigentes sin vector bajo la versión activa hace más de 1 h, contadas desde su
 primera sincronización o desde la activación de la versión, lo que sea más reciente (T070).
 **Primer paso**: `SELECT count(*) FROM items i WHERE status='available' AND NOT EXISTS (SELECT 1 FROM
 item_vectors v JOIN vocab_versions vv ON vv.version = v.vocab_version WHERE v.item_id = i.id AND

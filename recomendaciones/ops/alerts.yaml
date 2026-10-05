@@ -14,12 +14,12 @@ groups:
   - name: recomendaciones.frescura
     rules:
       - alert: CatalogSyncStale
-        expr: time() - catalog_sync_last_success_timestamp > 93600
+        expr: time() - catalog_sync_last_success_timestamp > 3600
         for: 10m
         labels: {severity: critical, owner: guardia-de-plataforma}
         annotations:
-          summary: El catálogo no se sincroniza con éxito hace más de 26 horas
-          justification: "§7.7 fija > 26 h: la sincronización es diaria, y 2 h de margen absorben una corrida demorada sin tolerar una perdida. Pasado ese punto altas y retiros no se reflejan y un ítem retirado se sigue recomendando."
+          summary: El catálogo no se sincroniza con éxito hace más de una hora
+          justification: "> 1 h desde el 2026-10-05: la sincronización corre cada 15 minutos, así que una hora son unas cuatro corridas perdidas, con margen para una demorada. Pasado ese punto altas y retiros no se reflejan y un ítem retirado se sigue recomendando."
           runbook: docs/runbook.md#catalogsyncstale
       - alert: PopularityStale
         expr: time() - catalog_popularity_last_success_timestamp > 93600
@@ -38,12 +38,12 @@ groups:
           justification: "§7.5.1 fija > 26 h y reemplaza a age_ordinal_staleness_seconds, que no disparaba con el job muerto. El desfasaje es siempre conservador (menos contenido, nunca más): warning, no crítica."
           runbook: docs/runbook.md#agerefreshstale
       - alert: VectorRecomputeLag
-        expr: vector_recompute_lag_seconds > 93600
+        expr: vector_recompute_lag_seconds > 3600
         for: 10m
         labels: {severity: warning, owner: guardia-de-plataforma}
         annotations:
-          summary: Hay ítems vigentes sin vector bajo la versión activa hace más de 26 horas
-          justification: "§7.9 fija > 26 h: la sincronización es diaria y el job de vocabulario vectoriza en la misma corrida, así que un ítem sin vector pasado ese plazo es una reconciliación que falla. Se mide desde lo último entre la primera sincronización del ítem y la activación de la versión (T070); con un catálogo estable vale 0. Degrada calidad, no corrección."
+          summary: Hay ítems vigentes sin vector bajo la versión activa hace más de una hora
+          justification: "> 1 h desde el 2026-10-05: la sincronización corre cada 15 minutos y el job de vocabulario vectoriza en la misma corrida, así que un ítem sin vector pasado ese plazo es una reconciliación que falla. Se mide desde lo último entre la primera sincronización del ítem y la activación de la versión (T070); con un catálogo estable vale 0. Degrada calidad, no corrección."
           runbook: docs/runbook.md#vectorrecomputelag
       - alert: VocabTransitionStalled
         expr: vocab_transition_progress < 1
