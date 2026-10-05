@@ -101,7 +101,8 @@ frontends (FR-008).
 
 **Resultado** *(revisado 2026-09-29)*: **sin violaciones**. La enmienda v1.1.0 y su aclaración v1.1.1
 (RD-111: el Principio III nombra los dos disparadores del recálculo) quedaron aprobadas en el PR #77, con
-la revisión de HingusPingus del 2026-09-28, registrada después del merge (RD-112). La tensión que registraba esta sección —la escritura de declaración frente al Principio III—
+la revisión de HingusPingus del 2026-09-28, registrada después del merge (RD-112). La **v1.2.0** (RD-117), con la
+excepción de lectura de T077 y el nombre `recomendacion.actualizar.v3`, está **pendiente de aprobación por PR**. La tensión que registraba esta sección —la escritura de declaración frente al Principio III—
 se resolvió enmendando el principio (RD-98), que era la única vía: la constitución prevalece sobre la
 spec y una excepción al principio exige enmendarlo (Governance). La otra excepción, el cómputo en la
 carga de configuración, no toca el request path.

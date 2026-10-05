@@ -24,7 +24,7 @@ producción**)
 - [checklists/requirements-contracts.md](./checklists/requirements-contracts.md) — 30/30 resueltos
 - [checklists/requirements-clarify-2026-09-14.md](./checklists/requirements-clarify-2026-09-14.md) —
   **46/46 tildados — cerrado** (los 10 🔴 se cerraron el 2026-09-22)
-- [constitution v1.1.1](../../.specify/memory/constitution.md) — enmendada el 2026-09-27 (RD-98) y
+- [constitution v1.2.0](../../.specify/memory/constitution.md) — **v1.2.0 propuesta el 2026-10-05 (RD-117), pendiente de aprobación por PR**: excepción de lectura del Principio III para T077. Antes, v1.1.1: enmendada el 2026-09-27 (RD-98) y
   aclarada el 2026-09-28 (RD-111); **aprobada** en el PR #77 (revisión APPROVED de HingusPingus del
   2026-09-28, registrada después del merge; RD-112)
 
@@ -2752,7 +2752,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] **Matriz de trazabilidad ítem → evidencia completa** en `docs/validation/traceability-matrix.md`;
       ningún ítem marcado sin evidencia concreta (T048)
 - [X] `test_traceability.py` en verde: toda evidencia referenciada existe (T048)
-- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111)
+- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111) — *la v1.2.0 (RD-117) está pendiente de aprobación y bloquea el merge de T077*
 - [X] Valores cargados: `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
       `diversity_max_cluster_share` = 0,4, `recompute_requests_maxlen` = 100 000 (RD-108), y
       `event_redelivery_window_hours` copiado del broker real (RD-110)

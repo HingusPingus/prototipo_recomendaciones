@@ -4,7 +4,7 @@
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
-[constitution v1.1.1](../../.specify/memory/constitution.md) (enmendada el 2026-09-27, RD-98; aclarada el 2026-09-28, RD-111).
+[constitution v1.2.0](../../.specify/memory/constitution.md) (enmendada el 2026-09-27, RD-98; aclarada el 2026-09-28, RD-111; v1.2.0 propuesta el 2026-10-05, RD-117, pendiente de aprobación).
 
 **Regla de lectura**: este documento especifica **qué datos existen y por qué**, no con qué ORM se
 acceden. Los tipos son lógicos; su mapeo concreto es decisión de T003.
@@ -7394,4 +7394,4 @@ usuario y módulo) y RD-108. Solo quedan valores operativos: periodicidad del re
 
 ---
 
-<sub>Refinamiento de `plan.md` §2 · Trazable a spec.md (FR-001…FR-096) y constitution v1.1.1 · Prototipo consultado como referencia (no normativo)</sub>
+<sub>Refinamiento de `plan.md` §2 · Trazable a spec.md (FR-001…FR-096) y constitution v1.2.0 · Prototipo consultado como referencia (no normativo)</sub>
