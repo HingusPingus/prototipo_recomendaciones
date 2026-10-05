@@ -22,6 +22,7 @@ def test_workflow_lives_at_the_git_root_and_runs_on_pull_requests() -> None:
     assert WORKFLOW.exists(), "GitHub Actions solo lee .github/workflows/ desde la raíz del repositorio"
     triggers = _workflow()[True]  # YAML 1.1 lee la clave `on` como booleano
     assert "pull_request" in triggers
+    assert {"main", "dev"} <= set(triggers["push"]["branches"])  # dev integra; main recibe lo cerrado
 
 
 def test_every_required_gate_exists_and_the_aggregate_needs_all_of_them() -> None:
