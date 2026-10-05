@@ -18,10 +18,13 @@ La DLQ no lleva TTL: lo que llega ahí se conserva para el reproceso (runbook, �
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 import aio_pika
+
+from recomendaciones.worker.schemas import transport_headers
 
 _QUORUM = {"x-queue-type": "quorum"}
 
@@ -34,6 +37,17 @@ class Topology:
     retry_queue: str | None = None  # espera con TTL por mensaje para el backoff (T025)
     message_ttl_ms: int | None = None
     delivery_limit: int | None = None
+    required_headers: Mapping[str, str] | None = None  # headers AMQP que exige el contrato del evento (RD-116)
+
+    def transport_mismatch(self, headers: Mapping[str, Any] | None) -> str | None:
+        """Causa para la DLQ si el mensaje no trae los headers que exige el contrato; `None` si cumple."""
+        received = dict(headers or {})
+        for name, expected in (self.required_headers or {}).items():
+            value = received.get(name)
+            value = value.decode() if isinstance(value, bytes) else value
+            if value != expected:
+                return f"{name}: se esperaba {expected!r} y llegó {value!r}"
+        return None
 
     def queue_arguments(self) -> dict[str, Any]:
         arguments: dict[str, Any] = {
@@ -75,13 +89,18 @@ def broker_limits(settings: _BrokerSettings) -> dict[str, int]:
 
 
 def actualizar_topology(prefix: str = "", *, message_ttl_ms: int | None = None, delivery_limit: int | None = None) -> Topology:
+    """`recomendacion.actualizar.v3` (RD-116): exchange propio, separado del de v2, que este worker no consume.
+
+    Las colas conservan su nombre: son nuestras y no forman parte del contrato.
+    """
     return Topology(
-        exchange=f"{prefix}recomendacion.actualizar",
+        exchange=f"{prefix}recomendacion.actualizar.v3",
         queue=f"{prefix}recomendaciones.recomendacion-actualizar",
         dead_letter_queue=f"{prefix}recomendaciones.recomendacion-actualizar.dlq",
         retry_queue=f"{prefix}recomendaciones.recomendacion-actualizar.retry",
         message_ttl_ms=message_ttl_ms,
         delivery_limit=delivery_limit,
+        required_headers=transport_headers(),
     )
 
 

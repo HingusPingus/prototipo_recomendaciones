@@ -24,9 +24,26 @@ from recomendaciones.shared.errors import InvalidEventPayload
 _CONTRACTS = Path(__file__).with_name("contracts")
 
 
+ACTUALIZAR_SCHEMA = "recomendacion-actualizar-v3.schema.json"
+
+
+@cache
+def _schema(name: str) -> dict[str, Any]:
+    return json.loads((_CONTRACTS / name).read_text(encoding="utf-8"))
+
+
 @cache
 def _validator(name: str) -> Draft202012Validator:
-    return Draft202012Validator(json.loads((_CONTRACTS / name).read_text(encoding="utf-8")))
+    return Draft202012Validator(_schema(name))
+
+
+def transport_headers(name: str = ACTUALIZAR_SCHEMA) -> dict[str, str]:
+    """Headers AMQP que el contrato declara obligatorios (`x-amqp-transport`), con su valor exacto (RD-116).
+
+    Salen de la copia derivada del contrato, no del código: si `api-general` los cambia, se actualiza la copia.
+    """
+    headers = _schema(name).get("x-amqp-transport", {}).get("headers", {})
+    return {header: spec["value"] for header, spec in headers.items() if spec.get("required")}
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +106,7 @@ def _instant(data: dict[str, Any], field: str) -> datetime:
 
 
 def parse_actualizar(body: bytes) -> ActualizarEvent:
-    data = _load(body, "recomendacion-actualizar.schema.json")
+    data = _load(body, ACTUALIZAR_SCHEMA)
     return ActualizarEvent(
         event_id=_uuid(data, "event_id"),
         origin_interaction_id=data["origin_interaction_id"],
