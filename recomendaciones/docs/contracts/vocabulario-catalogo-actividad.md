@@ -4,9 +4,22 @@ Propuesta de `recomendaciones` para los ítems 6 y 7 de la respuesta de `api-gen
 (`specs/004-contratos-recomendaciones`, DEP-10 y CR-7 a CR-18, tareas T014, T027 y T037). Revisa los
 endpoints que escriben los datos de esos ítems y el verificador de preparación.
 
-> **Estado: propuesta, sin acuerdo.** La autenticación de usuarios y operadores es de `api-general`
-> (su Principio V). Acá decimos qué necesitamos que sea cierto, no cómo implementarlo, salvo cuando
-> una opción concreta ayuda a destrabar.
+> **Estado al 2026-10-05, verificado en el código de `api-general` (commit `9137825`):**
+>
+> | # | Pedido | Estado |
+> |---|---|---|
+> | 1 | Mantenimiento de catálogo y tags autenticado | ✅ Interino: clave de operador `X-Catalog-Operator-API-Key` con auditoría (opción A). Su equipo de Seguridad todavía tiene que aprobarla frente a su Principio V (su T052) |
+> | 2 | Responsable del vocabulario, cinco tags por módulo y catálogo etiquetado | ⏳ Pendiente: es carga de datos y responsable operativo |
+> | 3 | Omitir del snapshot los ítems desactivados sin tags | ✅ `includeInRecommendationSync` |
+> | 4a | Usuario derivado de una identidad validada | ✅ JWT (`UserIdentityPrincipal`); `X-User-Id` se ignora |
+> | 4b | Rechazar `occurred_at` futuro | ✅ Con 5 minutos de tolerancia |
+> | 4c | Serializar el v3 con `ObjectMapper` | ✅ |
+> | 5 | Correr el verificador en staging y el día del despliegue | ⏳ Pendiente (su T037) |
+>
+> Su sincronización de catálogo responde **503 a todo el catálogo** si un ítem incluido no tiene tags
+> elegibles o tiene una clasificación fuera de `ATP`, `+13`, `+18`. Hasta completar el pedido 2, el
+> Transformer no puede sincronizar el catálogo real. El resto del documento describe la situación al momento
+> de la propuesta.
 
 ## En corto
 

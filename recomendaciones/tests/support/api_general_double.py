@@ -47,8 +47,11 @@ class ApiGeneralDouble:
 
     def add_interaction(self, user_id: uuid.UUID, item_id: uuid.UUID, kind: str, occurred_at: datetime, oid: str | None = None) -> str:
         oid = oid or f"int-{uuid.uuid4()}"
+        # `module` es obligatorio en el contrato de sync de api-general (spec 004); se toma del ítem, como el origen.
+        module = next((it["module"] for it in self.items if it["id"] == str(item_id)), "peliculas")
         self.activity.append(
-            {"origin_interaction_id": oid, "user_id": str(user_id), "item_id": str(item_id), "signal_type": kind, "occurred_at": occurred_at.isoformat()}
+            {"origin_interaction_id": oid, "user_id": str(user_id), "item_id": str(item_id), "module": module,
+             "signal_type": kind, "occurred_at": occurred_at.isoformat()}
         )
         return oid
 

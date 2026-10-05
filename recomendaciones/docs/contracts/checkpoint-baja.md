@@ -4,8 +4,13 @@ Propuesta de `recomendaciones` para el ítem 3 de la respuesta de `api-general`
 (`specs/004-contratos-recomendaciones`, FR-016, SC-003). Completa la tabla «Acuerdo medible de entrega del
 evento de baja» de `contracts/approval.md`.
 
-> **Estado: propuesta, sin acuerdo.** Nada de esto está implementado de nuestro lado. Según el Principio II,
-> lo implementamos después de que los tres equipos lo aprueben por escrito.
+> **Estado al 2026-10-05.** `api-general` implementó su lado (commit `9137825` de su repositorio): el job
+> `DeletionReceiptCheckpointPoller`, apagado por defecto, consulta `GET /internal/v1/deletion-receipts/{event_id}`
+> con una credencial propia (`RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`). Espera `200` con `event_id` y
+> `received_at`, o `404` si todavía no hay recepción. Propone **2026-10-30 (UTC)** para la primera
+> habilitación de `usuario.eliminado` en staging. En su registro la propuesta sigue «sin acuerdo» hasta las
+> conformidades escritas. De nuestro lado, el registro de la recepción, su métrica y su alerta se implementan
+> en RD-115; el endpoint de consulta espera una decisión de gobernanza (Principio III).
 
 ## En corto
 
