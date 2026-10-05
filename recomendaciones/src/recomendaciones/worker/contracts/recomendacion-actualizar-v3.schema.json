@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.recome.internal/events/recomendacion.actualizar.v3/3.0.0",
+  "title": "recomendacion.actualizar.v3",
+  "description": "Propuesta no publicada de evento de hecho de interacción. Cambio BREAKING frente a recomendacion.actualizar 2.0.0: nuevo nombre/schema y campos obligatorios para identidad del hecho, señal y hora de origen. El consumidor reportó aprobación general el 2026-09-28, pero la respuesta primaria y los términos de coexistencia, migración y deprecación no constan. El 2026-10-01 solicitó un exchange fanout propio para v3; api-general y plataforma aún no lo aprobaron. V2 no se retira sin migración y aprobación expresa.",
+  "x-change-classification": "breaking",
+  "x-change-reason": "Incorporar un hecho inmutable con identidad estable, signal_type y occurred_at verificables sin sobrescribir el evento v2 vigente.",
+  "x-event-type": "recomendacion.actualizar.v3",
+  "x-event-version": "3.0.0",
+  "x-contract-origin": {
+    "status": "propuesta-no-publicada",
+    "drafted": "2026-09-28",
+    "schema_version": "3.0.0",
+    "coexists_with": "recomendacion.actualizar 2.0.0"
+  },
+  "x-amqp-transport": {
+    "exchange": {
+      "name": "recomendacion.actualizar.v3",
+      "type": "fanout",
+      "status": "propuesta-pendiente-de-aprobacion"
+    },
+    "messageId": {"required": true, "source": "event_id"},
+    "headers": {
+      "event_type": {"required": true, "value": "recomendacion.actualizar.v3"},
+      "event_version": {"required": true, "value": "3.0.0"}
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "origin_interaction_id",
+    "user_id",
+    "module",
+    "item_id",
+    "signal_type",
+    "occurred_at"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identidad del mensaje, estable ante reintentos de publicación."
+    },
+    "origin_interaction_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identidad estable y no reutilizada del hecho; igual a la expuesta por la API REST."
+    },
+    "user_id": { "type": "string", "format": "uuid" },
+    "module": { "type": "string", "enum": ["peliculas", "juegos"] },
+    "item_id": { "type": "string", "format": "uuid" },
+    "signal_type": { "type": "string", "enum": ["like", "dislike", "consumo"] },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Marca temporal provista por el origen, con zona horaria; no se infiere ni sustituye."
+    },
+    "correlation_id": { "type": "string", "minLength": 1 }
+  }
+}
