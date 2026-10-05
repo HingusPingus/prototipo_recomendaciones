@@ -11,12 +11,17 @@ el requisito que lo exige y qué pasa si falta.
 
 ## La dependencia más grave: DEP-10
 
-**DEP-10 (vocabulario de tags con al menos 5 tags elegibles por módulo) es la única cuyo incumplimiento
-deja al sistema sin ningún usuario atendible.** La cadena: sin 5 tags elegibles, ningún usuario puede
-completar la declaración de gustos (FR-083); sin declaración, toda lectura de ese módulo se rechaza (FR-088).
-Ninguna de las dos reglas cede, y el módulo queda no disponible para todos los usuarios nuevos. DEP-7 es la
-más grave **para el motor** (sin tags no existe la mitad del score), pero DEP-10 es la que corta el acceso.
-Se vigila con `declarable_tags_total{module}` y la alerta `DeclarableTagsBelowMinimum`.
+**DEP-10 (vocabulario de tags con al menos 5 tags elegibles por módulo) es la de mayor severidad por su
+alcance: corta un módulo entero.** La cadena: sin 5 tags elegibles, ningún usuario puede completar la
+declaración de gustos (FR-083); sin declaración, toda lectura de ese módulo se rechaza (FR-088). Ninguna de
+las dos reglas cede: el módulo queda no disponible para todo usuario que todavía no declaró sus gustos en él
+—el día del despliegue, todos— mientras dure la falta, y no hay mitigación técnica. DEP-7 es la más grave
+**para el motor** (sin tags no existe la mitad del score), pero DEP-10 es la que corta el acceso. Se vigila
+con `declarable_tags_total{module}` y la alerta `DeclarableTagsBelowMinimum`.
+
+**No es la única que puede dejar a muchos usuarios sin servicio a la vez** (RD-118). DEP-11 corta una
+**cohorte**: los usuarios preexistentes sin `region` quedan sin recomendaciones en todos los módulos (ver
+abajo), hasta que se completa el backfill. DEP-10 corta un **módulo**; DEP-11, una cohorte.
 
 ## Por canal
 
@@ -39,6 +44,15 @@ distingue un listado completo de uno truncado y **un listado parcial retiraría 
 | Interacción | `user_id`, `item_id` | sí | — | La interacción no es procesable |
 | Interacción | `signal_type` (`like` \| `dislike` \| `consumo`) | sí | DEP-1, FR-062 | El perfil no puede construirse |
 | Interacción | `occurred_at` | sí | DEP-2, CR-12, FR-029d | No se resuelve el conflicto entre señales contradictorias |
+
+**Los ítems retirados no bloquean la sincronización** (RD-118). Un retirado nunca se recomienda, así que su
+clasificación no alcanza a nadie, y este repositorio no exige coherencia entre el módulo del ítem y sus tags.
+Lo preferible es proyectarlo con sus tags y `status: retired`: sus tags siguen alimentando los perfiles de
+quienes lo consumieron (FR-073), y sus interacciones solo se ingieren si el ítem está en la proyección.
+Omitirlo también es correcto: en un listado completo, la ausencia se lee como retiro (CR-8). Para un retirado,
+incumplir la tabla no es una falta de contrato: si no trae tags no se proyecta, igual que si se omitiera, y si
+trae una clasificación inválida toma el valor no apto, que no afecta a nadie. Las exigencias rigen para los
+ítems **activos**.
 
 ### Dónde publicar los eventos
 
@@ -114,7 +128,7 @@ FR-079 (la región no se infiere) y es catastrófico al mismo tiempo.
 | CR-1 | `birth_date` obligatoria y no nula | vigente |
 | CR-2 | `birth_date` confiable, validada en origen | vigente |
 | CR-3 | Sin campo `age` ni escalar equivalente | vigente |
-| CR-4 | Toda corrección de `birth_date` genera evento de sincronización | vigente |
+| CR-4 | Toda corrección de `birth_date` se refleja en la siguiente sincronización, sin evento dedicado | vigente; **modificado por RD-118** (decía «genera evento de sincronización», un evento que ningún contrato define) |
 | CR-5 | `region` ISO 3166-1 alfa-2 obligatoria | vigente |
 | CR-6 | Toda corrección de `region` se refleja en la siguiente sincronización | vigente |
 | CR-7 | Estado de disponibilidad y retiro explícito del ítem | vigente, deseable no bloqueante |

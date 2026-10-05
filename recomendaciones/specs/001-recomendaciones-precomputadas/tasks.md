@@ -13,7 +13,7 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
-  RD-1→RD-117 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-118 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **169 requisitos definidos** *(167 hasta FR-095b y FR-095c, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
@@ -1954,6 +1954,8 @@ repo necesita.
       cumple la aplicación web y aquí solo se verifica su efecto (rechazo en la ingesta, SC-028)
 - [X] Señala cuál es la dependencia de mayor severidad y por qué: **DEP-10** es la única cuyo
       incumplimiento deja al sistema **sin ningún usuario atendible**, por encadenamiento con FR-088
+      *(Precisado el 2026-10-05, RD-118: la severidad es por alcance —un módulo entero—, no por
+      exclusividad. DEP-11 deja sin servicio a una cohorte, y el documento ahora lo dice)*
 - [X] Declara explícitamente que la fuente de verdad del contrato es `api-general`
 - [X] Está enlazado desde el README y desde los contract tests
 
@@ -3145,6 +3147,10 @@ no hay recepción. Responder exige leer `user_suppressions` en Postgres desde un
 - [ ] **Enmienda v1.2.0 de la constitución aprobada por PR** (excepción de lectura del Principio III)
 - [ ] Contrato 1.1.0 publicado en `api-general` (Principio II) y su `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`
       configurada con la clave interna del entorno
+      > *Estado al 2026-10-05 (RD-118)*: publicada en `api-general` (commit `83e6b59`), pero sin `422`, `503`, el
+      > cuerpo del `404`, `receipt_not_found`, `receipts_unavailable` ni `/health`; se le pidió que los sume. La
+      > clave está documentada en su spec (FR-028) con el mismo valor que `RECO_INTERNAL_API_KEY`; cargarla es su
+      > T056, abierta hasta que haya entornos.
 
 **🔴 Paso 1 — Rojo**: `tests/contract/test_deletion_receipt.py`, el gate y la conformidad (commit `31e406b`).
 **🟢 Paso 2 — Verde**: commit `c7eec50`.

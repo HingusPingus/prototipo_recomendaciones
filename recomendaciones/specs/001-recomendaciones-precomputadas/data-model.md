@@ -1,6 +1,6 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -2916,7 +2916,7 @@ Este repositorio tiene **prioridad de definición** sobre el modelo de datos; `a
 | **CR-1** | El usuario expone **`birth_date`** (`date`, ISO 8601), **obligatoria y no nula** | El usuario se rechaza en ingesta y no recibe recomendaciones |
 | **CR-2** | `birth_date` es **confiable**: validada en origen, no derivada ni estimada | Un dato erróneo produce un permiso etario erróneo. Es la fuente única |
 | **CR-3** | No se expone campo `age` ni escalar equivalente | Un segundo formato reintroduce la resolución ambigua que RD-1 elimina |
-| **CR-4** | Toda corrección de `birth_date` genera evento de sincronización | Sin él, un permiso restringido tarda hasta el próximo sync completo |
+| **CR-4** | Toda corrección de `birth_date` se refleja en la **siguiente sincronización**: la próxima lectura REST de usuarios trae el valor corregido. No exige evento dedicado. **Modificado por RD-118**: decía «genera evento de sincronización», un evento que ningún contrato define | Sin él, un permiso restringido por la corrección **no llega nunca**. Con él tarda como máximo un intervalo de sincronización (cada 15 minutos desde el 2026-10-05) y, al llegar, T029 invalida los resultados del usuario en el mismo acto (DI-2c, FR-080c) |
 | **CR-5** | El usuario expone **`region`** como código **ISO 3166-1 alfa-2** en mayúsculas, **obligatoria y no nula**. Se recoge al crear la cuenta | **El usuario se rechaza en la ingesta**, igual que ante `birth_date` ausente (CR-1). **Modificado por RD-52**: era best-effort mientras nada la consumía |
 | **CR-6** | Toda corrección de `region` se refleja en la siguiente sincronización | **Ya no es inocua** (RD-52): la región segmenta el vecindario colaborativo, de modo que una corrección cambia **qué recomendaciones recibe** esa persona. No exige evento dedicado —el cambio de país es infrecuente y el recálculo natural lo absorbe—, pero deja de ser «ninguna consecuencia» |
 | **CR-7** | El catálogo expone el **estado de disponibilidad** del ítem, y comunica el retiro de forma explícita | **Deseable, no bloqueante** (RD-92). Sin él el retiro se detecta igual, por desaparición (CR-8, FR-074), pero con el rezago del sync completo — y ese rezago **es la ventana durante la cual un ítem retirado se sigue recomendando**. Degrada latencia de detección, no corrección |
@@ -4874,6 +4874,54 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-118 — Respuesta a las observaciones de `api-general` sobre los campos requeridos y el contrato 1.1.0
+
+**Fecha**: 2026-10-05 · **Origen**: revisión de `api-general` (spec 004, `contracts/approval.md`, commits `83e6b59` y
+`e20d400`) · **Tipo**: corrección de requisito (CR-4), precisión de alcance (DEP-10, DEP-11) y aclaración de contrato
+
+**Contexto**: al publicar `recomendaciones-api` 1.1.0, `api-general` dejó tres observaciones sobre
+`docs/contracts/required-fields.md` y la revisión de su contrato encontró diferencias con el nuestro.
+
+**Decisiones**:
+1. **CR-4 se cumple por sincronización, sin evento.** Decía «genera evento de sincronización», pero el contrato de
+   usuarios es lectura REST y no define ningún evento de cambio de perfil. Pasa a la misma forma que CR-6: la
+   corrección se refleja en la siguiente lectura. Con la sincronización cada 15 minutos, la demora máxima de un
+   permiso restringido es un intervalo. El resto no cambia: al llegar, la ingesta invalida los resultados del
+   usuario en el mismo acto (T029, DI-2c, FR-080c) y la guarda del request path descarta el snapshot con ordinal
+   mayor (§3.2).
+2. **DEP-10 no es la única dependencia que deja a muchos usuarios sin servicio a la vez.** Sigue siendo la de mayor
+   severidad, pero por su alcance y no por exclusividad: corta **un módulo entero** para todo usuario que aún no
+   declaró sus gustos en él, durante todo el tiempo que dure la falta y sin mitigación técnica. DEP-11 corta **una
+   cohorte** (los usuarios preexistentes sin `region`) en todos los módulos, y se resuelve completando el backfill.
+   La afirmación «la única cuyo incumplimiento deja al sistema sin ningún usuario atendible» queda corregida donde
+   aparece como afirmación vigente: `required-fields.md` y `plan.md`.
+3. **Un ítem retirado nunca bloquea la sincronización.** `api-general` preguntó si un retirado que se incluye en el
+   listado pero tiene clasificación inválida, o solo tags de otro módulo, debe seguir bloqueándola. No: un retirado
+   nunca se recomienda, así que su clasificación no alcanza a nadie, y este repositorio no exige coherencia entre el
+   módulo del ítem y sus tags. Lo preferible es **proyectarlo con sus tags y `status: retired`**: sus tags siguen
+   alimentando los perfiles de quienes lo consumieron (FR-073; T030 vectoriza los retirados con señales), y sus
+   interacciones solo se ingieren si el ítem está materializado. Omitirlo también es correcto: desde un listado completo, la ausencia se interpreta como retiro
+   (CR-8). Para los ítems **activos** no cambia nada.
+4. **El contrato 1.1.0 publicado se adopta cuando declare las respuestas que la API devuelve.** El publicado declara,
+   para la consulta de recepción, solo `200`, `401` y `404`, y su enum de errores no incluye `receipt_not_found`
+   ni `receipts_unavailable`. La API devuelve además `422` (identificador que no es UUID) y `503
+   receipts_unavailable` (decisión 3 de RD-117). En ejecución son compatibles: el job de `api-general` trata como
+   reintento todo estado distinto de `200` y `404`, y siempre consulta con un UUID. Pero copiar el contrato
+   publicado tal cual haría fallar `test_openapi_conformance`. La comparación campo por campo encontró además dos
+   diferencias que no son de redacción: su `404` de la consulta no declara cuerpo, y la API devuelve el `Error`
+   con `receipt_not_found`; y la ruta pública `/health` (FR-025d, SC-023) **no figura en ninguna versión** del
+   contrato de `api-general`, ni siquiera en la 1.0.0, aunque su schema `Health` sí. La copia de este repositorio
+   nunca fue literal. Se le pide a `api-general` que agregue esas respuestas, esos códigos, el cuerpo del `404` y
+   la ruta `/health`: todo es compatible. Hasta entonces la copia de este repositorio se mantiene y las
+   diferencias quedan registradas en `contracts/README.md`. El resto son descripciones, `summary` y `tags`.
+
+**Alternativas descartadas**: para CR-4, pedir un evento de cambio de perfil. Exigía un contrato nuevo para acortar
+una demora de 15 minutos sobre un dato que ya era erróneo antes de corregirse, y CR-6 resolvió `region` igual. Para
+los retirados, exigirles el mismo contrato que a los activos bloquearía el catálogo entero por un ítem que nadie va
+a ver.
+
+---
 
 ### RD-117 — La consulta de la recepción vive en la API, como excepción de lectura del Principio III
 

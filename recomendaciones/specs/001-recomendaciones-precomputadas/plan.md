@@ -338,9 +338,12 @@ máx. 5 → DLQ.
 | DEP-11 | **Backfill de `region` en usuarios preexistentes**, por `api-general`, antes del despliegue | Vigente |
 | DEP-12 | **Notificación de baja de cuenta** como evento propio (CR-19) | Vigente — **sin contrato aún** (RD-101) |
 
-> **DEP-10 es la más severa del inventario.** Es la única dependencia cuyo incumplimiento deja al sistema
-> **sin ningún usuario atendible**: sin vocabulario no hay declaración posible, y FR-088 rechaza todo.
-> Se distingue de DEP-7, que es *por ítem*; DEP-10 es *sobre el conjunto*.
+> **DEP-10 es la más severa del inventario, por su alcance**: corta un módulo entero. Sin vocabulario no hay
+> declaración posible, y FR-088 rechaza a todo usuario que todavía no declaró en ese módulo, sin mitigación
+> técnica. Se distingue de DEP-7, que es *por ítem*; DEP-10 es *sobre el conjunto*.
+> *(Precisado el 2026-10-05, RD-118: decía que era la única cuyo incumplimiento deja al sistema «sin ningún
+> usuario atendible». DEP-11 también deja a muchos usuarios sin servicio a la vez, pero a una cohorte —los
+> preexistentes sin `region`— y no a un módulo.)*
 
 ---
 
