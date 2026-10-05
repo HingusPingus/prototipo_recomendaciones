@@ -2073,7 +2073,7 @@ cuesta credibilidad y puede tener consecuencias contractuales del lado del catá
 
 | Métrica | Umbral | Acción que dispara | Responsable |
 |---|---|---|---|
-| `catalog_sync_last_success_timestamp` | **> 26 h** | **Alerta.** Catálogo congelado: altas y retiros no se reflejan. Ejecutar sync, investigar | Guardia de plataforma |
+| `catalog_sync_last_success_timestamp` | **> 1 h** *(era > 26 h con sincronización diaria; cada 15 minutos desde el 2026-10-05)* | **Alerta.** Catálogo congelado: altas y retiros no se reflejan. Ejecutar sync, investigar | Guardia de plataforma |
 | `catalog_popularity_last_success_timestamp` | **> 26 h** | **Alerta.** El respaldo sirve un ranking congelado (RD-11). Degradación silenciosa de la calidad del `fallback` | Guardia de plataforma |
 | `catalog_unrated_ratio` = `age_rating_source='unknown_defaulted'` / total vigentes | **> 0** *(era > 5 % hasta la revisión B7 del 2026-10-05: la clasificación es obligatoria por CR-15)* | **Alerta.** Esa fracción del catálogo es **inalcanzable para todo usuario** por el fail-closed etario. Escalar al proveedor del catálogo para que declare las clasificaciones faltantes (RD-9) | Dueño de producto |
 | `catalog_retired_total` | Sin umbral | **Ninguna.** Panel: dimensiona el catálogo vigente vs. histórico | — |
@@ -2142,7 +2142,7 @@ es el recomendable.
 
 | Métrica | Umbral | Acción que dispara | Responsable |
 |---|---|---|---|
-| `vector_recompute_lag_seconds` = antigüedad del **ítem vigente más viejo sin vector** bajo la versión activa, desde `greatest(items.first_synced_at, vocab_versions.activated_at)`; 0 si no falta ninguno | **> 26 h** | **Alerta.** Un ítem que debería tener vector no lo tiene: la reconciliación falla. Re-ejecutar e investigar | Guardia de plataforma |
+| `vector_recompute_lag_seconds` = antigüedad del **ítem vigente más viejo sin vector** bajo la versión activa, desde `greatest(items.first_synced_at, vocab_versions.activated_at)`; 0 si no falta ninguno | **> 1 h** *(era > 26 h; sincronización cada 15 minutos desde el 2026-10-05)* | **Alerta.** Un ítem que debería tener vector no lo tiene: la reconciliación falla. Re-ejecutar e investigar | Guardia de plataforma |
 | `vocab_transition_progress` = vectores en versión entrante / total esperado | **Estancado > 2 h** | **Alerta.** Transición de vocabulario detenida a mitad de camino (RD-22) | Guardia de plataforma |
 | `catalog_unvectorized_ratio` = ítems vigentes sin vector / vigentes | **> 10 %** | **Alerta.** Esa fracción no participa de las señales α ni γ (RD-24). Escalar al proveedor: son ítems sin tags | Dueño de producto |
 
