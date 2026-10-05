@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RecoMe · API de Recomendaciones (interna)
-  version: 1.0.0-propuesta
+  version: 1.1.0-propuesta
   description: |
     Contrato **propuesto** por el repositorio `recomendaciones` (prioridad de definición, RD-47) para
     su publicación en `api-general`, que es su **custodio** (Principio II). Esta copia es derivada:
@@ -24,6 +24,7 @@ security:
 tags:
   - name: lectura
   - name: declaracion
+  - name: supresion
   - name: salud
 paths:
   /internal/v1/recommendations/{user_id}:
@@ -116,6 +117,41 @@ paths:
           $ref: "#/components/responses/UnknownUser"
         "409":
           $ref: "#/components/responses/DeclarationConflict"
+        "422":
+          $ref: "#/components/responses/InvalidRequest"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /internal/v1/deletion-receipts/{event_id}:
+    get:
+      tags: [supresion]
+      operationId: getDeletionReceipt
+      summary: Consultar si se recibió un evento de baja de cuenta
+      description: |
+        Checkpoint de entrega del evento `usuario.eliminado` (FR-095b, FR-095c; agregado en 1.1.0, cambio
+        compatible): `api-general` consulta por `event_id` si este repositorio registró la recepción, y mide
+        desde `occurred_at` hasta `received_at`.
+
+        **Excepción de lectura** del Principio III (constitución v1.2.0, **pendiente de aprobación**): lee
+        una fila por clave, sin cómputo, no depende de Redis y no devuelve datos del usuario. `404` mientras
+        no haya recepción registrada para ese evento; quien consulta reintenta.
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Recepción registrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletionReceipt"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ReceiptNotFound"
         "422":
           $ref: "#/components/responses/InvalidRequest"
         "503":
@@ -268,6 +304,23 @@ components:
           type: array
           items:
             type: string
+    DeletionReceipt:
+      type: object
+      additionalProperties: false
+      required: [event_id, received_at, suppression_state]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: El mismo identificador consultado
+        received_at:
+          type: string
+          format: date-time
+          description: Momento en que este repositorio registró la recepción (FR-095b)
+        suppression_state:
+          type: string
+          enum: [in_progress, completed, failed]
+          description: Estado de la supresión que disparó la baja (FR-095, FR-095a); informativo
     Error:
       type: object
       additionalProperties: false
@@ -284,6 +337,8 @@ components:
             - declaration_already_exists
             - cache_unavailable
             - filters_unavailable
+            - receipt_not_found
+            - receipts_unavailable
             - internal_error
         message:
           type: string
@@ -317,6 +372,12 @@ components:
             $ref: "#/components/schemas/Error"
     DeclarationRequired:
       description: Módulo sin declaración de gustos — precondición incumplida, no un estado (FR-088)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ReceiptNotFound:
+      description: No hay recepción registrada para ese `event_id` (todavía no llegó, o no es un evento de baja)
       content:
         application/json:
           schema:
