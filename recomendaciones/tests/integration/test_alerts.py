@@ -86,7 +86,6 @@ def test_orphaned_exclusions_have_no_alert() -> None:
         ("AgeRefreshStale", "93600"),  # > 26 h (§7.5.1)
         ("PopularityStale", "93600"),
         ("VectorRecomputeLag", "93600"),
-        ("CatalogUnrated", "0.05"),  # > 5 % (§7.7)
         ("CatalogUnvectorized", "0.1"),  # > 10 % (§7.9)
         ("RetiredSetLarge", "10000"),  # > 10 000 (§4.4)
         ("SyncVolumeDrop", "0.9"),  # < 0,9 (§7.12)
@@ -97,6 +96,12 @@ def test_orphaned_exclusions_have_no_alert() -> None:
 )
 def test_thresholds_come_from_the_data_model(alert: str, needle: str) -> None:
     assert needle in _rule(alert)["expr"]
+
+
+def test_catalog_unrated_fires_on_a_single_unrated_item() -> None:
+    """Revisión B7 (2026-10-05): toda clasificación es obligatoria (CR-15), así que un solo ítem sin ella ya
+    incumple el contrato, como en las alertas de contrato. Antes disparaba recién con el 5 % del catálogo."""
+    assert _rule("CatalogUnrated")["expr"] == "catalog_unrated_ratio > 0"
 
 
 # --- Nivel 1: promtool --------------------------------------------------------------------------------
@@ -132,7 +137,7 @@ SCENARIOS: dict[str, dict] = {
     "SuppressionsUnverified": {"series": {"suppressions_unverified_total": "1x60 0x30"}, "fire": "45m", "clear": "75m"},
     "RetiredSetLarge": {"series": {'retired_set_size{module="juegos"}': "20000x100 10x30"}, "fire": "80m", "clear": "120m", "labels": {"module": "juegos"}},
     "PopularityStale": {"series": {"catalog_popularity_last_success_timestamp": "-100000x40 2400x40"}, "fire": "30m", "clear": "60m"},
-    "CatalogUnrated": {"series": {"catalog_unrated_ratio": "0.2x100 0x30"}, "fire": "80m", "clear": "120m"},
+    "CatalogUnrated": {"series": {"catalog_unrated_ratio": "0.01x100 0x30"}, "fire": "80m", "clear": "120m"},  # 1 %: un ítem en cien
     "TagProjectionAnomalies": {"series": {'projection_field_anomalies_total{field="tag_name",reason="empty"}': "0x5 4x100"}, "fire": "10m", "clear": "90m"},
     "VectorRecomputeLag": {"series": {"vector_recompute_lag_seconds": "200000x40 0x40"}, "fire": "30m", "clear": "60m"},
     "VocabTransitionStalled": {"series": {"vocab_transition_progress": "0.5x200 1x30"}, "fire": "180m", "clear": "220m"},
