@@ -389,9 +389,14 @@ class UserSuppression(Base):
     state: Mapped[str] = mapped_column(SuppressionState, nullable=False)
     attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="0")
     verified_at: Mapped[datetime | None] = mapped_column(TSTZ)
+    # Checkpoint de recepción (FR-095b, RD-115): nulos solo en constancias anteriores a la migración 0006.
+    event_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    received_at: Mapped[datetime | None] = mapped_column(TSTZ)
 
     __table_args__ = (
         CheckConstraint("(state = 'completed') = (verified_at IS NOT NULL)", name="ck_suppressions_verified"),
+        CheckConstraint("(event_id IS NULL) = (received_at IS NULL)", name="ck_suppressions_receipt"),
+        UniqueConstraint("event_id", name="uq_suppressions_event_id"),
         Index("idx_suppressions_open", "requested_at", postgresql_where=text("state <> 'completed'")),
     )
 

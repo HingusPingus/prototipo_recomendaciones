@@ -238,3 +238,10 @@ groups:
           summary: Hay supresiones sin constancia de verificación
           justification: "FR-095a: valor esperado 0, con observador y responsable. El for de 30 minutos es el período de gracia de una supresión en curso (hallazgo A5 del análisis: la métrica cuenta también las que están en progreso); pasado ese tiempo, la supresión está trabada o fallida."
           runbook: docs/runbook.md#suppressionsunverified
+      - alert: DeletionReceiptLate
+        expr: sum(increase(user_deletion_receipt_lag_seconds_count[15m])) - sum(increase(user_deletion_receipt_lag_seconds_bucket{le="900"}[15m])) > 0
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: Una baja de cuenta llegó pasados los 15 minutos acordados con api-general
+          justification: "FR-095b fija 15 minutos desde occurred_at hasta la recepción (propuesta checkpoint-baja.md, RD-115). Sin for, como las alertas de contrato: cada recepción tardía ya es un incumplimiento. Es warning porque la supresión igual se ejecuta; la demora casi siempre está antes de este servicio (outbox de api-general o broker), y escala a esos equipos."
+          runbook: docs/runbook.md#deletionreceiptlate

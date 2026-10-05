@@ -36,7 +36,9 @@ def test_clean_suppression_is_verified_and_the_row_keeps_only_identifier_and_tim
     row = _row(db_factory, user)
     assert outcome.state == row["state"] == "completed" and row["verified_at"] is not None
     assert row["requested_at"] == REQUESTED and row["attempts"] == 1
-    assert set(row) == {"user_id", "requested_at", "state", "attempts", "verified_at"}  # sin datos personales
+    # Sin datos personales: identificador del usuario, marcas temporales y, desde FR-095b, el identificador del
+    # evento de baja con su recepción, que identifican al evento y no al usuario (RD-115).
+    assert set(row) == {"user_id", "requested_at", "state", "attempts", "verified_at", "event_id", "received_at"}
     assert metrics.value("user_deletion_residual_keys_total") == 0
     assert metrics.value("suppressions_unverified_total") == 0
 

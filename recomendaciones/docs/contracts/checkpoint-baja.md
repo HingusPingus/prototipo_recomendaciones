@@ -91,7 +91,7 @@ que ya usamos (`LAG_BUCKETS`, que incluyen 900 s). Es el mismo patrón que `sign
 
 | Quién | Alerta | Qué detecta |
 |---|---|---|
-| `recomendaciones` | `DeletionReceiptLate` (nueva): `increase(user_deletion_receipt_lag_seconds_count[15m]) - increase(user_deletion_receipt_lag_seconds_bucket{le="900"}[15m]) > 0` | Bajas que llegaron pasado el límite |
+| `recomendaciones` | `DeletionReceiptLate` (nueva): `sum(increase(user_deletion_receipt_lag_seconds_count[15m])) - sum(increase(user_deletion_receipt_lag_seconds_bucket{le="900"}[15m])) > 0` *(corregida el 2026-10-05: sin `sum()`, la resta no emparejaba series porque solo una lleva el label `le`, y la alerta nunca disparaba)* | Bajas que llegaron pasado el límite |
 | `recomendaciones` | `reco_dead_letter_depth{queue="recomendaciones.usuario-eliminado.dlq"} > 0` (existente) | Bajas que llegaron pero no se pueden procesar |
 | `api-general` | Antigüedad del outbox ≥ 300 s (existente) | Bajas que todavía no se publicaron, o que el broker devuelve por falta de ruta |
 | `api-general` | Confirmación vencida (nueva, ver abajo) | Bajas publicadas que **nunca llegaron** a nuestro checkpoint |
