@@ -181,12 +181,12 @@ groups:
   - name: recomendaciones.catalogo
     rules:
       - alert: CatalogUnrated
-        expr: catalog_unrated_ratio > 0.05
+        expr: catalog_unrated_ratio > 0
         for: 1h
         labels: {severity: warning, owner: dueno-de-producto}
         annotations:
-          summary: Más del 5 % del catálogo vigente no tiene clasificación etaria declarada
-          justification: "§7.7 fija > 5 %: esa fracción es inalcanzable para menores por el fail-closed etario (FR-051) y la degradación es silenciosa por naturaleza. Se escala al proveedor del catálogo."
+          summary: Hay ítems vigentes sin clasificación etaria declarada
+          justification: "Valor esperado 0 (revisión B7 del 2026-10-05): la clasificación es obligatoria en el contrato (CR-15), así que un solo ítem sin ella ya es un incumplimiento. Ese ítem queda inalcanzable para menores por el fail-closed etario (FR-051), sin ningún error visible. Hoy api-general rechaza el catálogo entero en ese caso (lo detecta CatalogSyncStale); esta alerta cubre que deje de hacerlo. Se escala al proveedor del catálogo."
           runbook: docs/runbook.md#catalogunrated
       - alert: CatalogUnvectorized
         expr: catalog_unvectorized_ratio > 0.1

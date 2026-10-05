@@ -1,14 +1,14 @@
 # Revisión de umbrales de alertas (B7, T042)
 
-Revisión humana de las 27 alertas de `ops/alerts.yaml`. Los tests prueban que cada regla dispara y se
+Revisión humana de las 28 alertas de `ops/alerts.yaml`. Los tests prueban que cada regla dispara y se
 apaga con su condición. Lo que falta decidir es si **el valor es razonable**, y eso no se puede
 automatizar.
 
-**Fecha**: 2026-09-29 · **Revisión**: 2026-10-01, por HingusPingus — 26 aprobadas, 1 pendiente (CatalogUnrated)
+**Fecha**: 2026-09-29 · **Revisión**: 2026-10-01 y 2026-10-05, por HingusPingus — 28 revisadas: 27 aprobadas y 1 ajustada (CatalogUnrated)
 
 ## Cómo usarla
 
-1. Revisá las **27 alertas de las secciones 1 y 2**. Tildá cada una al terminarla y marcá **aprobar** o
+1. Revisá las **28 alertas de las secciones 1 y 2**. Tildá cada una al terminarla y marcá **aprobar** o
    **ajustar**. Si es «ajustar», anotá el valor o el cambio que proponés.
 2. La sección 3 queda vacía: `VectorRecomputeLag` ya se redefinió en T070. *(Hasta el 2026-09-30,
    once alertas estaban bloqueadas porque su métrica no se exponía; T066 lo corrigió.)*
@@ -39,12 +39,12 @@ automatizar.
   - **Justificación actual**: §7.12 fija > 1 h. Es degradación de un invariante de seguridad (DI-3): un ítem ya rechazado puede volver a recomendarse. Por eso es crítica y con for corto.
   - **Decisión**: ☑ aprobada (2026-10-01)
 
-- [ ] **CatalogUnrated** · warning · dueño `dueno-de-producto`
+- [x] **CatalogUnrated** · warning · dueño `dueno-de-producto`
   - **Condición**: `catalog_unrated_ratio > 0.05` durante `1h`
   - **Qué avisa**: Más del 5 % del catálogo vigente no tiene clasificación etaria declarada
   - **Justificación actual**: §7.7 fija > 5 %: esa fracción es inalcanzable para menores por el fail-closed etario (FR-051) y la degradación es silenciosa por naturaleza. Se escala al proveedor del catálogo.
   - **A tener en cuenta**: El dueño es `dueno-de-producto`: la acción es escalar a api-general, no reparar algo de nuestro lado.
-  - **Decisión**: ⏳ **pendiente** — el revisor indica que no puede ocurrir, porque api-general debe enviar siempre la clasificación (CR-15). Falta decidir si se elimina la alerta o se ajusta a valor esperado 0
+  - **Decisión**: ✎ **ajustada (2026-10-05)**: umbral `> 0` en lugar de `> 0.05`. La clasificación es obligatoria (CR-15), así que un solo ítem sin ella ya incumple el contrato. Hoy api-general rechaza el catálogo entero en ese caso; la alerta queda como defensa si eso cambia
 
 - [x] **DeadLetterGrowth** · warning · dueño `guardia-de-plataforma`
   - **Condición**: `sum(increase(reco_dlq_messages_total[30m])) > 5` durante `15m`
@@ -129,7 +129,7 @@ automatizar.
   - **A tener en cuenta**: cuenta lo que encuentran la supresión del worker y el barrido `reco-batch suppressions`; el barrido se expone a través del worker desde T066. Sin `for`, a propósito.
   - **Decisión**: ☑ aprobada (2026-10-01)
 
-## 2. Desbloqueadas por T066/T070 o nuevas: para revisar (12)
+## 2. Desbloqueadas por T066/T070 o nuevas: para revisar (13)
 
 > *Actualizado el 2026-09-30.* Estas alertas no podían dispararse porque su métrica la fija un proceso que
 > corre una vez y termina. Desde T066 cada corrida deja su resultado en `process_runs` y el worker lo expone
@@ -212,6 +212,12 @@ automatizar.
   - **Qué avisa**: Hay ítems vigentes sin vector bajo la versión activa hace más de 26 horas
   - **Justificación actual**: §7.9 fija > 26 h: la sincronización es diaria y el job de vocabulario vectoriza en la misma corrida, así que un ítem sin vector pasado ese plazo es una reconciliación que falla. Se mide desde lo último entre la primera sincronización del ítem y la activación de la versión (T070); con un catálogo estable vale 0. Degrada calidad, no corrección.
   - **Decisión**: ☑ aprobada (2026-10-01)
+
+- [x] **DeletionReceiptLate** · warning · dueño `guardia-de-plataforma` *(nueva, T075)*
+  - **Condición**: `sum(increase(user_deletion_receipt_lag_seconds_count[15m])) - sum(increase(user_deletion_receipt_lag_seconds_bucket{le="900"}[15m])) > 0` (sin `for`)
+  - **Qué avisa**: Una baja de cuenta llegó pasados los 15 minutos acordados con api-general
+  - **Justificación actual**: FR-095b fija 15 minutos desde `occurred_at` hasta la recepción. Sin `for`, como las alertas de contrato. Es warning porque la supresión igual se ejecuta; la demora casi siempre está antes de este servicio y escala a esos equipos.
+  - **Decisión**: ☑ aprobada (2026-10-05)
 
 ## 3. Bloqueadas: ninguna
 
