@@ -57,8 +57,11 @@ async def _publish(amqp_url: str, body: dict) -> None:
     connection = await aio_pika.connect_robust(amqp_url)
     async with connection:
         channel = await connection.channel()
-        exchange = await channel.get_exchange(actualizar_topology().exchange)
-        await exchange.publish(aio_pika.Message(json.dumps(body).encode()), routing_key="")
+        topology = actualizar_topology()
+        exchange = await channel.get_exchange(topology.exchange)
+        # Como lo publica api-general: los headers AMQP que exige el contrato v3 (RD-116).
+        message = aio_pika.Message(json.dumps(body).encode(), headers=dict(topology.required_headers or {}))
+        await exchange.publish(message, routing_key="")
 
 
 async def test_declared_user_gets_a_materialized_top_n_end_to_end(stack_env, db_factory, redis_client, amqp_url) -> None:  # noqa: ANN001
