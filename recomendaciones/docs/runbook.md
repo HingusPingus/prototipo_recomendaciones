@@ -39,8 +39,8 @@ del último `reco-batch popularity`.
 cumplen años quedan sub-permitidos (degradación conservadora, no incidente de seguridad).
 **Primer paso**: revisar el log y el estado del CronJob del refresco etario.
 **Acción**: ejecutarlo manualmente (`reco-batch age-refresh`; es idempotente) e investigar la causa. La
-sincronización diaria también corrige el ordinal de quien ya cruzó el umbral, de modo que un día perdido se
-repara solo en la corrida siguiente de cualquiera de los dos.
+sincronización (cada 15 minutos) también corrige el ordinal de quien ya cruzó el umbral, de modo que un día
+perdido se repara solo en la corrida siguiente de cualquiera de los dos.
 
 ### VectorRecomputeLag
 **Qué significa**: hay ítems vigentes sin vector bajo la versión activa hace más de 26 h, contadas desde su
@@ -360,11 +360,11 @@ arrancar con `PRECONDITION_FAILED`. Para aplicarlo: detener los workers, esperar
 0, borrarla (`rabbitmqctl delete_queue recomendaciones.recomendacion-actualizar`, y lo mismo con
 `recomendaciones.usuario-eliminado`) y arrancar con el valor nuevo;
 la DLQ no se toca. Mientras tanto `api-general` puede seguir publicando: el exchange sin cola descarta, y la
-sincronización diaria trae esas interacciones (los eventos de baja no: hacerlo fuera de horario y con el
+sincronización trae esas interacciones en su próxima corrida (los eventos de baja no: hacerlo fuera de horario y con el
 productor de bajas avisado).
 
 **Cuánto esperar**: los eventos tienen valor mientras la señal es útil; más allá de
-`RECO_EVENT_REDELIVERY_WINDOW_HOURS` la sincronización diaria ya trajo la misma interacción desde
+`RECO_EVENT_REDELIVERY_WINDOW_HOURS` la sincronización ya trajo la misma interacción desde
 `api-general` (es idempotente por `origin_interaction_id`), de modo que una DLQ vieja de `recomendacion.actualizar`
 puede descartarse sin pérdida. Los de `usuario.eliminado` **nunca** se descartan: son supresiones
 pendientes (FR-091) y se reprocesan siempre.
@@ -373,7 +373,7 @@ pendientes (FR-091) y se reprocesan siempre.
 
 | Job | Frecuencia | Qué hace | Si falla |
 |---|---|---|---|
-| `reco-transformer` | diaria (o más) | sincroniza y regenera vocabulario | [CatalogSyncStale](#catalogsyncstale) |
+| `reco-transformer` | cada 15 minutos (decidido el 2026-10-05) | sincroniza y regenera vocabulario | [CatalogSyncStale](#catalogsyncstale) |
 | `reco-batch popularity` | diaria | Wilson por ventana, promociones | [PopularityStale](#popularitystale) |
 | `reco-batch fallback` | tras `popularity`, y cada `TTL_FALLBACK` | top-N de respaldo | [HitRateDrop](#hitratedrop) |
 | `reco-batch age-refresh` | diaria, fuera de pico | cruces de umbral etario y escala no compatible | [AgeRefreshStale](#agerefreshstale) |

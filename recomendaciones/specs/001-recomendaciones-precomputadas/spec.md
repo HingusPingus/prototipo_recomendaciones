@@ -1536,9 +1536,10 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   filtros 1 h, respaldo 6 h), ventana de supresión de señales de recálculo (5 min), latencia p95 de
   50 ms (SC-001, RD-105), `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
   `recompute_requests_maxlen` = 100 000, cluster = tag principal con `diversity_max_cluster_share` = 0,4
-  (RD-108). **Pendientes de calibrar**: frecuencia de sincronización, periodicidad del respaldo y
+  (RD-108). **Pendientes de calibrar**: periodicidad del respaldo y
   `event_redelivery_window_hours`, que debe copiarse de la configuración real del broker de
-  `notificaciones`. El «umbral de actividad mínima para considerar a un
+  `notificaciones`. La frecuencia de sincronización quedó fijada el 2026-10-05: **cada 15 minutos**, para que
+  un usuario recién registrado llegue pronto a este servicio y pueda declarar sus gustos. El «umbral de actividad mínima para considerar a un
   usuario personalizable» dejó de existir: la declaración de gustos personaliza desde el primer
   recálculo (FR-033g).
 - El prototipo Python de `Prototipo-Referencia/` es material de referencia del comportamiento

@@ -139,10 +139,9 @@ Sin la fecha o la región, nuestro servicio rechaza al usuario en la ingesta y n
 ## Un punto de nuestro lado: la demora del alta
 
 Un usuario recién creado no existe para nuestro servicio hasta la siguiente sincronización. Mientras tanto, los
-puntos 1 y 2 responden `unknown_user`. Con una sincronización diaria, alguien que se registra puede esperar hasta
-un día para declarar sus gustos. La frecuencia de sincronización es configuración nuestra y está en definición;
-proponemos que sea frecuente (por ejemplo, cada 15 minutos). Lo dejamos escrito para que el front muestre el estado
-«perfil en preparación» en vez de un error.
+puntos 1 y 2 responden `unknown_user`. Para acotar esa espera, la sincronización corre **cada 15 minutos** (decidido el
+2026-10-05): alguien que se registra puede declarar sus gustos en ese plazo. Lo dejamos escrito para que el front
+muestre el estado «perfil en preparación» en vez de un error.
 
 ## Cómo lo verificamos
 

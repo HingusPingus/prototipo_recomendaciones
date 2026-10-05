@@ -7359,8 +7359,8 @@ Los tres **conflictos entre textos ya decididos** que detectó el saneamiento de
 **resueltos por el autor** el mismo día: el peso de consumo (RD-73 frente a FR-022b → RD-99), el orden del
 emergente por afinidad (RD-70 frente a FR-033c/d → RD-102) y la convivencia de versiones de configuración
 (§2.8 frente a FR-025c → RD-103). Los valores que quedaban abiertos se fijaron en RD-104 (conteo por
-usuario y módulo) y RD-108. Solo quedan valores operativos: frecuencia de sincronización, periodicidad
-del respaldo y `event_redelivery_window_hours`.
+usuario y módulo) y RD-108. Solo quedan valores operativos: periodicidad del respaldo y
+`event_redelivery_window_hours`; la frecuencia de sincronización se fijó el 2026-10-05 en cada 15 minutos.
 
 
 
