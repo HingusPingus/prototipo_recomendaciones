@@ -970,6 +970,8 @@ la constancia de FR-095— y funcionar como **lápida**: la sincronización no r
 | `state` | enum(`in_progress`,`completed`,`failed`) | No | **Funcional** | `in_progress` **es** la marca de FR-092a; `failed` es el estado «fallido visible» de FR-095a |
 | `attempts` | smallint | No | **Operativo** | Reintento acotado con backoff (FR-095a) |
 | `verified_at` | timestamptz | Sí | **Funcional** | Constancia de la verificación de FR-095. `NULL` ⟹ supresión **no completada** |
+| `event_id` | UUID | Sí | **Identidad del evento** | **UNIQUE**. Evento de baja cuya recepción originó la fila: la clave con que `api-general` cruza el checkpoint con su outbox (FR-095b, RD-115). Identifica al evento, no al usuario (FR-095). `NULL` solo en constancias anteriores a la migración `0006` |
+| `received_at` | timestamptz | Sí | **Funcional** | Marca de recepción de FR-095b: fin del cronómetro de entrega. Otra baja del mismo `user_id` conserva el `event_id` y el `received_at` de la primera. `NULL` en los mismos casos que `event_id` |
 
 **Índices**: PK — el worker consulta la marca por `user_id` inmediatamente antes de escribir
 (FR-092a), y la ingesta la consulta como lápida · `idx_suppressions_open (requested_at) WHERE state <>
@@ -979,9 +981,10 @@ la constancia de FR-095— y funcionar como **lápida**: la sincronización no r
 transitoria, y el período de gracia lo pone el `for: 30m` de la alerta `SuppressionsUnverified`, no la
 métrica.
 
-**Integridad**: `CHECK ((state = 'completed') = (verified_at IS NOT NULL))`. La fila **no se borra**:
-es la constancia, y solo contiene el identificador y marcas temporales, que es exactamente lo que
-FR-095 permite retener.
+**Integridad**: `CHECK ((state = 'completed') = (verified_at IS NOT NULL))` · `CHECK ((event_id IS NULL) =
+(received_at IS NULL))` · `UNIQUE (event_id)`. La fila **no se borra**: es la constancia, y solo contiene el
+identificador del usuario, el del evento y marcas temporales, que es exactamente lo que FR-095 permite
+retener (RD-115).
 
 ### 2.16 `item_promotions` — promoción definitiva del conjunto emergente al general
 
@@ -1536,6 +1539,8 @@ erDiagram
         enum state "in_progress|completed|failed"
         smallint attempts "NOT NULL"
         timestamptz verified_at "NULL si no completada (FR-095)"
+        UUID event_id UK "checkpoint de recepción (FR-095b)"
+        timestamptz received_at "fin del cronómetro de entrega"
     }
     item_popularity {
         UUID item_id PK "FK, CASCADE"
@@ -2226,12 +2231,17 @@ Procedimiento obligatorio ante una baja de cuenta. **Disparo** (RD-101): la noti
 importa**: Redis primero, porque una clave reconstruida después del borrado relacional volvería a
 materializar datos ya suprimidos.
 
+0. **Registrar la recepción** (FR-095b, RD-115): apenas el evento pasa la validación del schema, en una
+   transacción propia y con el lock por usuario tomado, insertar la fila `user_suppressions` con `event_id`,
+   `received_at` y `state = 'in_progress'`, de modo que la marca del paso 2 queda escrita desde acá. Si la fila
+   ya existe, se conserva. No contradice FR-080c: no borra ni reemplaza datos. Un evento inválido no llega a
+   este paso.
 1. **Invalidar las cuatro claves de alcance de usuario** en Redis, para **toda** `config_version` y
    módulo —no solo los activos—: `filters:{user_id}`, `reco:v{cfg}:{user_id}:{module}`,
    `reco:stale:v{cfg}:{user_id}:{module}`, `recompute:lock:{user_id}:{module}` —y las **entradas
    pendientes del usuario en `recompute:requests`**, recorrido acotado por `MAXLEN` (RD-100)—.
 2. **Marcar al usuario como en supresión** (FR-092a): fila `user_suppressions` con `state = 'in_progress'`
-   (§2.15). El worker consulta esa marca **inmediatamente
+   (§2.15), escrita en el paso 0; una supresión retomada la vuelve a dejar en `in_progress`. El worker consulta esa marca **inmediatamente
    antes de escribir** y aborta la corrida si está presente, descartando el cómputo ya realizado.
    > **Corrección 2026-09-22 (CHK045, RD-82).** Este paso decía «suprimir el bloqueo de recálculo».
    > **Borrar el lock no detiene al worker que ya lo tomó**: solo habilita a un segundo worker a
@@ -2262,6 +2272,7 @@ materializar datos ya suprimidos.
 | Métrica | Umbral | Acción | Responsable |
 |---|---|---|---|
 | `user_deletion_residual_keys_total` = claves con `user_id` suprimido halladas en la verificación del paso 4 | **> 0** | **Alerta.** Una supresión incompleta es peor que ninguna: existe constancia de haberla ejecutado. Denominador acotado a la supresión en curso, no al histórico | Guardia de plataforma |
+| `user_deletion_receipt_lag_seconds` = histograma sin etiquetas de `received_at − requested_at`, una observación por recepción nueva; negativo ⟹ 0 (FR-095b, RD-115) | **> 900 s** en alguna recepción | **Alerta `DeletionReceiptLate`**: una baja llegó pasado el límite propuesto a `api-general`. Escala a ese equipo y a `notificaciones` | Guardia de plataforma |
 
 ### 7.12 Exclusiones y sincronización: consumidores declarados
 
@@ -4892,6 +4903,33 @@ el evento `usuario.eliminado`.
 
 **Pendiente externo**: que `notificaciones` confirme el exchange, su tipo y los bindings antes de habilitar la
 publicación en un entorno compartido.
+
+---
+
+### RD-115 — La recepción del evento de baja se registra como checkpoint de entrega
+
+**Fecha**: 2026-10-05 · **Origen**: propuesta `docs/contracts/checkpoint-baja.md`; `api-general` implementó su
+lado (`DeletionReceiptCheckpointPoller`, apagado por defecto) en el commit `9137825` de su repositorio y propone
+el 2026-10-30 para staging · **Tipo**: requisito nuevo (FR-095b) y precisión de FR-080c
+
+**Decisiones**:
+1. **FR-095b**: la recepción de una baja válida se registra en `user_suppressions` con `event_id` y `received_at`
+   (migración `0006`), en una transacción propia y antes de la supresión (§7.11, paso 0). Esa fila es a la vez el
+   checkpoint y la marca de FR-092a. Otra baja del mismo usuario conserva la primera recepción.
+2. **FR-095** admite el identificador del evento en la constancia: identifica al evento, no al usuario.
+3. **FR-080c** rige las operaciones que borran o reemplazan datos en ambos almacenes. Escribir la recepción
+   antes de invalidar Redis no es una de ellas: solo adelanta la marca.
+4. **Medición**: `user_deletion_receipt_lag_seconds` y la alerta `DeletionReceiptLate` (> 900 s, sin `for`).
+   Las constancias anteriores a la migración quedan con `event_id` y `received_at` nulos: inventarles un evento
+   haría pasar por recibido algo que nadie consultó.
+5. **Queda abierto el endpoint de consulta** `GET /internal/v1/deletion-receipts/{event_id}` que usa el job de
+   `api-general`. Leería Postgres desde la API para responder, y el Principio III solo admite «Redis y nada más»
+   salvo la excepción de escritura de v1.1.0, que no se extiende por analogía. Requiere una decisión de gobernanza:
+   enmienda, servirlo desde otro proceso o una copia en Redis. Tampoco está acordada la credencial: `api-general`
+   usa una clave propia (`RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`) y la API acepta una sola por entorno.
+
+**Corrección**: la expresión de la alerta de la propuesta restaba series con labels distintos (`_count` sin `le`,
+`_bucket` con `le`) y nunca disparaba; se usa `sum()` a cada lado, verificado con promtool.
 
 ---
 
