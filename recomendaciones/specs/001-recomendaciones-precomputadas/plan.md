@@ -93,7 +93,7 @@ frontends (FR-008).
 |---|---|---|
 | **I. Frontera de datos y ownership** (NN) | Catálogo, usuarios y actividad son proyección; se materializan, no se editan. La actividad entra **solo** por sincronización o por el evento `recomendacion.actualizar` (RD-95: se retiró el endpoint propio de feedback). Única excepción de autoría local: `user_declared_tags` (§2.14) | La excepción **debe seguir siendo una**: RD-75 fija que un segundo dato de autoría local exige componente propio |
 | **II. Contratos como verdad externa** (NN) | CR-1…CR-19 en `data-model.md` §10 —CR-19 es el evento de baja de cuenta, con schema propio (T049) y contract test (T043)—; contratos propios **definidos primero** y publicados en `api-general` antes de implementar (T049); contract testing como gate de deploy | `api-general` incompleta: los contratos se están **definiendo**, no consumiendo. La señalización de recálculo propia (FR-035) usa un Stream de Redis interno (RD-100), que **no** es contrato entre repositorios. El evento de baja de cuenta (CR-19, DEP-12) **sí** lo es y debe definirse primero en `api-general` |
-| **III. Cómputo pesado fuera del request path** (NN) | Top-N materializado; popularidad materializada (FR-033a4); el camino normal de lectura solo lee Redis, con Postgres únicamente como respaldo degradado ante miss (RD-96); el endpoint de escritura tiene **prohibición explícita** de calcular (FR-089b) | **Tensión resuelta por enmienda** (constitución **v1.1.0**, RD-98): el Principio III declara ahora la escritura de declaración como su **única excepción**, con los límites de FR-089b. Enmienda **aprobada** en el PR #77 (Governance; RD-112) |
+| **III. Cómputo pesado fuera del request path** (NN) | Top-N materializado; popularidad materializada (FR-033a4); el camino normal de lectura solo lee Redis, con Postgres únicamente como respaldo degradado ante miss (RD-96); el endpoint de escritura tiene **prohibición explícita** de calcular (FR-089b) | **Tensión resuelta por enmienda** (constitución **v1.1.0**, RD-98): el Principio III declara ahora la escritura de declaración como su **única excepción**, con los límites de FR-089b. Enmienda **aprobada** en el PR #77 (Governance; RD-112). **Segunda excepción, de lectura** (v1.2.0, RD-117): la consulta de la recepción de una baja por `event_id` (FR-095c), una fila por clave y sin Redis. **Pendiente de aprobación por PR** |
 | **IV. Pipeline unidireccional** | Data Transformer solo lee de `api-general`; sin escritura de vuelta | — |
 | **V. Gobernanza del motor híbrido** | Configuración versionada, una sola versión activa por entorno, sin A/B en MVP | — |
 | **VI. Testing obligatorio y contract testing** (NN) | pytest + testcontainers; contract tests bloquean el deploy | — |
@@ -305,13 +305,14 @@ compartido (FR-085) y persiste. **Prohibido calcular** (FR-089b).
 
 ### 3.3 Eventos consumidos
 
-`recomendacion.actualizar` desde RabbitMQ. Dos niveles de idempotencia: **de evento** por `event_id`
+`recomendacion.actualizar.v3` desde RabbitMQ, en su exchange propio (RD-116). Dos niveles de idempotencia: **de evento** por `event_id`
 (`processed_events`, FR-011) y **de señal** por `origin_interaction_id` (`NOT NULL UNIQUE`, DEP-8,
 FR-011a), que por eso es campo obligatorio del evento (FR-061).
 
-**Baja de cuenta** (CR-19, DEP-12; nombre propuesto `usuario.eliminado`): dispara la supresión (FR-091a),
-con idempotencia por `event_id`. **Su contrato no existe todavía**: debe definirse primero en
-`api-general` (Principio II, RD-101).
+**Baja de cuenta** (CR-19, DEP-12; `usuario.eliminado` 1.0.0, publicado por `api-general` en su spec 004): dispara
+la supresión (FR-091a), con idempotencia por `event_id`. Su recepción se registra como checkpoint de entrega
+(FR-095b, RD-115) y `api-general` la consulta en `GET /internal/v1/deletion-receipts/{event_id}` (FR-095c, RD-117).
+*(Decía que el contrato «no existe todavía»; lo publicó `api-general` el 2026-09-29.)*
 
 ### 3.4 Política de errores
 

@@ -4875,6 +4875,37 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
+### RD-117 — La consulta de la recepción vive en la API, como excepción de lectura del Principio III
+
+**Fecha**: 2026-10-05 · **Origen**: decisión del autor sobre la opción abierta en RD-115 · **Tipo**: gobernanza y
+requisito nuevo (FR-095c)
+
+**Contexto**: el job de `api-general` consulta la recepción de cada baja por `event_id`. Responder exige leer
+`user_suppressions` en Postgres desde un proceso que `api-general` alcance. Las opciones eran tres: enmendar la
+constitución para que la API la sirva, servirla desde el worker o leer una copia en Redis.
+
+**Decisiones**:
+1. **La API la sirve** (`GET /internal/v1/deletion-receipts/{event_id}`, T077), como **segunda excepción del Principio
+   III**, ahora de lectura: una fila por clave por el índice único de `event_id`, sin cómputo, sin Redis y sin datos
+   del usuario. Requiere la **enmienda v1.2.0** de la constitución, aprobada por PR (Governance). Hasta entonces el
+   endpoint se desarrolla y prueba, pero **no se fusiona**.
+2. **Credencial**: la API key interna normal del entorno. `api-general` configura su
+   `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY` con el mismo valor que usa para llamar a esta API; no hay una segunda
+   clave de este lado.
+3. **Respuestas**: `200` con `event_id`, `received_at` y `suppression_state`; `404 receipt_not_found` sin recepción;
+   `503 receipts_unavailable` reintentable si la base no responde, nunca un `404`, que se leería como «no llegó».
+4. **Contrato primero** (Principio II): `recomendaciones-api.openapi.yaml` pasa a 1.1.0, cambio compatible, y tiene que
+   publicarse en `api-general` antes de fusionar.
+
+**Alternativas descartadas**: servirla desde el worker exponía un proceso más a `api-general`, con su propia
+validación de clave y otra política de red. Una copia en Redis cumplía la letra del principio, pero si se pierde
+Redis responde `404`, y del lado de `api-general` eso dispara falsas alarmas de recepción vencida.
+
+**Límite conocido**: una segunda baja del mismo usuario no genera recepción propia (FR-095b conserva la primera), así
+que su consulta responde `404`. `api-general` hace idempotente la baja lógica, por lo que no debería emitirse.
+
+---
+
 ### RD-116 — Se consume `recomendacion.actualizar.v3`, en su propio exchange y con headers obligatorios
 
 **Fecha**: 2026-10-05 · **Origen**: propuesta `docs/contracts/migracion-v3.md`, aplicada por `api-general` en
@@ -4922,11 +4953,8 @@ el 2026-10-30 para staging · **Tipo**: requisito nuevo (FR-095b) y precisión d
 4. **Medición**: `user_deletion_receipt_lag_seconds` y la alerta `DeletionReceiptLate` (> 900 s, sin `for`).
    Las constancias anteriores a la migración quedan con `event_id` y `received_at` nulos: inventarles un evento
    haría pasar por recibido algo que nadie consultó.
-5. **Queda abierto el endpoint de consulta** `GET /internal/v1/deletion-receipts/{event_id}` que usa el job de
-   `api-general`. Leería Postgres desde la API para responder, y el Principio III solo admite «Redis y nada más»
-   salvo la excepción de escritura de v1.1.0, que no se extiende por analogía. Requiere una decisión de gobernanza:
-   enmienda, servirlo desde otro proceso o una copia en Redis. Tampoco está acordada la credencial: `api-general`
-   usa una clave propia (`RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`) y la API acepta una sola por entorno.
+5. **El endpoint de consulta** `GET /internal/v1/deletion-receipts/{event_id}` que usa el job de `api-general`
+   quedó abierto en esta decisión y lo resuelve **RD-117**.
 
 **Corrección**: la expresión de la alerta de la propuesta restaba series con labels distintos (`_count` sin `le`,
 `_bucket` con `le`) y nunca disparaba; se usa `sum()` a cada lado, verificado con promtool.
