@@ -2,8 +2,8 @@
 
 **Fecha**: 2026-09-29 · **Rama**: `001-recomendaciones-precomputadas`
 
-Recorrido de los **167** requisitos funcionales de `spec.md` contra `tasks.md`, que cierra el ítem de la DoD
-«Ningún FR carece de tarea, o su ausencia está declarada con motivo». Resultado: **167 de 167 con tarea**.
+Recorrido de los **168** requisitos funcionales de `spec.md` contra `tasks.md`, que cierra el ítem de la DoD
+«Ningún FR carece de tarea, o su ausencia está declarada con motivo». Resultado: **168 de 168 con tarea**. *(Eran 167 hasta FR-095b, agregado el 2026-10-05 por RD-115.)*
 Ninguno queda sin tarea; FR-079a es una expectativa externa y su tarea en este repositorio es T047, que la
 registra y verifica solo su efecto.
 
@@ -11,7 +11,7 @@ registra y verifica solo su efecto.
 cada tarea citada exista en `tasks.md` y que cada evidencia exista. Que una tarea cite un FR no prueba que lo
 cumpla; eso lo sostienen los tests de la tarea y la matriz `docs/validation/traceability-matrix.md`.
 
-## 1. Requisitos que alguna tarea cita por identificador (133)
+## 1. Requisitos que alguna tarea cita por identificador (134)
 
 Tareas cuya sección en `tasks.md` nombra el requisito. Generado por búsqueda literal del identificador.
 
@@ -149,6 +149,7 @@ Tareas cuya sección en `tasks.md` nombra el requisito. Generado por búsqueda l
 | FR-094 | T059 |
 | FR-095 | T059 |
 | FR-095a | T039, T042, T059 |
+| FR-095b | T074, T075, T077 |
 | FR-096 | T061 |
 
 ## 2. Requisitos cubiertos por contenido, sin cita por identificador (34)

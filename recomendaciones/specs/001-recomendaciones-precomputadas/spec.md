@@ -232,6 +232,24 @@ funcional: cambia por cuál evento y exchange llega lo que FR-009 y FR-061 ya pe
 - **FR-012**: un mensaje sin los headers AMQP `event_type` y `event_version` que el contrato declara
   obligatorios, o con otro valor, es inválido y va a dead-letter con su causa.
 
+### Session 2026-10-05 — checkpoint de recepción del evento de baja
+
+Propuesta de este repositorio (`docs/contracts/checkpoint-baja.md`). `api-general` implementó su lado, un
+job que consulta la recepción por `event_id` y está apagado por defecto, y propone el 2026-10-30 para la
+primera habilitación en staging. En su registro la propuesta espera las conformidades escritas.
+Registrada en RD-115. **Agrega alcance**: el checkpoint no existía.
+
+- **FR-095b** (nuevo): la recepción del evento de baja se registra con su identificador y su marca de
+  recepción antes de empezar la supresión; el intervalo desde la baja en el origen se mide y alerta
+  pasados 15 minutos.
+- **FR-095**: la constancia admite también el identificador del evento de baja, que no es un dato del
+  usuario.
+- **FR-080c**: «Redis primero» rige las operaciones que **borran o reemplazan** datos en ambos
+  almacenes; registrar la recepción no es una de ellas.
+- **DEP-12**: suma el límite de entrega propuesto.
+- **Sin decidir**: el endpoint de consulta de la recepción que usa `api-general`. Leería Postgres desde
+  la API, fuera de los casos que admite el Principio III (RD-115).
+
 ## Dependencias Externas Bloqueantes
 
 > Estas dependencias son responsabilidad de `api-general`. Mientras no estén confirmadas, la feature
@@ -251,7 +269,7 @@ funcional: cambia por cuál evento y exchange llega lo que FR-009 y FR-061 ya pe
 | DEP-6 | Acuerdo sobre el conjunto de estados de respuesta | FR-006, FR-056, FR-057, **FR-088** | El contrato de lectura no puede cerrarse. **El acuerdo debe constatar que la ausencia de declaración NO amplía el conjunto**: es precondición incumplida y se rechaza antes de la precedencia de FR-056, de modo que los estados siguen siendo cinco (CHK039) |
 | DEP-11 | **Backfill de `region` en los usuarios preexistentes**, completado por `api-general` **antes** del despliegue | FR-079, FR-079a, CR-1, CR-5 | El día del despliegue, **todo usuario preexistente deja de recibir recomendaciones simultáneamente**: sin `region` el registro se rechaza en la ingesta (§7.5) y el usuario queda fuera del universo recomendable. Es el comportamiento **correcto** según FR-079 y es **catastrófico** al mismo tiempo; merece estar escrito antes de ocurrir, no después. No se mitiga con valor por defecto ni centinela: FR-079 lo prohíbe y `data-model.md` §4.3 lo prohíbe por nombre —«nada de inferencia por IP, por idioma ni por ningún otro medio»—, porque inferirla la convertiría en dato propio y violaría el Principio I (RD-85, CHK053) |
 | DEP-10 | **Vocabulario de tags normalizado del catálogo**, del que se ofrecen las opciones de declaración —exigencia *sobre el conjunto*, no por ítem: es el universo elegible, y no se satisface porque cada ítem traiga tags (CHK067)—, con **al menos `declared_tags_min` (5) tags elegibles por módulo** *(antes un supuesto aparte; integrado el 2026-09-27, CHK065, RD-110)* | FR-082, FR-083, RD-68 | **Sin él no hay de dónde elegir**: la declaración no puede presentarse y, por FR-088, ningún usuario nuevo puede recibir recomendaciones. Los tags se originan en APIs externas (Steam y equivalentes) y llegan normalizados vía `api-general`: la normalización **no ocurre acá**, y una variación en su criterio cambia el conjunto elegible sin aviso. Es dependencia de **disponibilidad y estabilidad**, no de construcción — el catálogo ya existe poblado. **Con menos de 5 tags elegibles en un módulo**, FR-083 impide completar la declaración y FR-088 rechaza a todos: el módulo queda **no disponible** —ninguna de las dos reglas cede— y lo delata la métrica `declarable_tags_total{module}` con alerta bajo `declared_tags_min`. **No se reutiliza DEP-3**, vacante |
-| DEP-12 | **Notificación de baja de cuenta** como evento propio (nombre propuesto `usuario.eliminado`), con identificador único de evento, identificador del usuario y marca temporal; contrato definido en `api-general` (CR-19) | FR-091a, FR-091…FR-095a | **La supresión no tiene disparo**: por sincronización la baja se ve como ausencia, que se trata como proyección rancia y no como supresión. Este repositorio retendría los datos de quien pidió ser eliminado (RD-101) |
+| DEP-12 | **Notificación de baja de cuenta** como evento propio (nombre propuesto `usuario.eliminado`), con identificador único de evento, identificador del usuario y marca temporal; contrato definido en `api-general` (CR-19). **Entrega en 15 minutos como máximo** desde la baja hasta el checkpoint de recepción, según la propuesta (FR-095b, RD-115) | FR-091a, FR-091…FR-095b | **La supresión no tiene disparo**: por sincronización la baja se ve como ausencia, que se trata como proyección rancia y no como supresión. Este repositorio retendría los datos de quien pidió ser eliminado (RD-101) |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -846,7 +864,8 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   de caché de ámbito de usuario— y MUST dejar constancia del resultado, incluido el caso negativo.
   Una supresión cuya verificación no se haya registrado MUST tratarse como **no completada** y MUST
   reintentarse. La constancia MUST NOT contener datos del usuario suprimido más allá de su
-  identificador y la marca temporal.
+  identificador y las marcas temporales; MAY contener además el identificador del evento de baja que
+  la originó, que identifica al evento y no al usuario (FR-095b, RD-115).
 - **FR-095a**: La verificación de FR-095 MUST tener **observador declarado**: una métrica de supresiones
   sin constancia registrada (`suppressions_unverified_total`: toda supresión no completada, en curso o
   fallida; la alerta admite un período de gracia para las que están en curso, RD-112), con **valor
@@ -858,6 +877,17 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   > FR-094 ya manda tratar la supresión parcial como fallo, pero **un fallo que nadie observa no es un
   > fallo**: el requisito decía «fallo» sin decir a quién le falla. Agregado el 2026-09-22 (RD-83,
   > CHK046).
+- **FR-095b**: Al recibir una notificación de baja **válida** contra su schema, el sistema MUST registrar
+  su **recepción** —identificador del evento y marca de recepción— en una escritura duradera propia,
+  **antes** de iniciar la supresión. Ese registro es a la vez el checkpoint de entrega que consulta
+  `api-general` (DEP-12) y la marca «en supresión» de FR-092a. Una notificación inválida MUST NOT
+  registrarse como recibida. Si llega otra notificación para un usuario ya registrado, MUST conservarse
+  la recepción de la primera. El sistema MUST medir por evento el intervalo entre la marca temporal de
+  la baja en el origen y la recepción, y MUST alertar cuando supere el límite propuesto de **15
+  minutos**. Un intervalo negativo, por diferencia de relojes, se registra como 0.
+  > Agregado el 2026-10-05 (RD-115). El límite incluye el outbox de `api-general` y el broker, que este
+  > servicio no controla: lo que garantiza es medirlo y avisar. El acuse del broker al publicador no sirve
+  > de checkpoint, porque solo prueba que el broker aceptó el mensaje.
 - **FR-029e**: Las señales MUST almacenarse **en este repositorio** como hechos inmutables. Una
   transición de estado MUST registrarse como un hecho nuevo y MUST NOT modificar ni reemplazar el
   registro anterior. La obligación recae sobre este servicio: el origen MAY almacenar estado, y la
@@ -1298,9 +1328,12 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   de Redis se **recomputa** (§3.3), no se restaura. En consecuencia, FR-080 **no coordina dos almacenes**
   —la escritura del resultado *es* la escritura de la clave— y la única coordinación real es con
   `reco:stale:v{cfg}:{user_id}:{module}`, que reside en el mismo Redis y admite atomicidad nativa.
-- **FR-080c**: Toda operación que afecte a la vez a Redis y a Postgres MUST ejecutar **Redis primero**.
+- **FR-080c**: Toda operación que **borre o reemplace** datos a la vez en Redis y en Postgres MUST
+  ejecutar **Redis primero**.
   La regla es única y vale tanto para la actualización (FR-080) como para la supresión (FR-092), de modo
-  que ambas dejan de ser reglas de orden distintas. Fundamento por modo de falla: un fallo tras el
+  que ambas dejan de ser reglas de orden distintas. Registrar la recepción de una baja (FR-095b) no
+  borra ni reemplaza ningún dato, por lo que puede preceder a la invalidación de Redis; hacerlo
+  adelanta la marca de FR-092a (precisado el 2026-10-05, RD-115). Fundamento por modo de falla: un fallo tras el
   borrado en Redis deja la caché vacía y el origen viejo, y la siguiente lectura es un **miss** que
   dispara recálculo —caro pero correcto—; el orden inverso deja la caché sirviendo un resultado obsoleto
   durante `TTL_FRESH` (24 h), que es exactamente la vía que FR-080 prohíbe.

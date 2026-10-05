@@ -15,7 +15,7 @@ producción**)
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
   RD-1→RD-112 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
-- [spec.md](./spec.md) — **167 requisitos definidos** (FR-001→FR-096, con sufijos y huecos
+- [spec.md](./spec.md) — **168 requisitos definidos** *(167 hasta FR-095b, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
   registros de saneamiento (2026-09-27), de remediación del análisis (2026-09-28) y de cierre del segundo análisis (2026-09-29) · **12** dependencias declaradas (DEP-1→DEP-12: **10 vigentes**,
   DEP-3 vacante a propósito y DEP-4 resuelta)
@@ -3043,3 +3043,100 @@ Exenta de TDD: es documentación.
 - [X] Los dos diagramas Mermaid siguen parseando
 
 **Tests**: verificación del parseo de los diagramas Mermaid del documento.
+
+---
+
+## Phase 6: Convergence
+
+> *Agregada el 2026-10-05, con el formato de `/speckit-converge`, después de incorporar FR-095b (RD-115) y el
+> consumo de v3 (RD-116) a `spec.md` y `data-model.md`. Solo se **agrega**. T074–T076 se implementaron en este
+> mismo pase con commit rojo antes del verde; T077 queda bloqueada por una decisión de gobernanza.*
+
+- [X] T074 [TDD] Registrar la recepción del evento de baja con `event_id` y `received_at` antes de la supresión, en `src/recomendaciones/worker/suppression.py` per FR-095b, FR-080c (missing)
+- [X] T075 [TDD] Medir el lag de recepción y alertar pasados 15 minutos, en `ops/alerts.yaml` per FR-095b (missing)
+- [X] T076 [TDD] Consumir `recomendacion.actualizar.v3` desde su exchange propio y exigir sus headers AMQP, en `src/recomendaciones/worker/topology.py` per FR-009, FR-012, RD-116 (contradicts)
+- [ ] T077 [TDD] Exponer `GET /internal/v1/deletion-receipts/{event_id}` para el job de `api-general` per FR-095b, RD-115 (missing) — **bloqueada**: decisión de gobernanza (Principio III) y contrato
+
+### T074 [TDD] — Recepción del evento de baja como checkpoint de entrega
+
+**Requisitos**: FR-095b, FR-095, FR-080c, FR-092a
+
+**Archivos**: `migrations/versions/0006_suppressions_receipt.py`, `src/recomendaciones/storage/db/models.py`,
+`src/recomendaciones/worker/suppression.py`
+
+**Dep.**: T058, T059
+
+**Criterios de aceptación**:
+- [X] Una baja válida deja en `user_suppressions` su `event_id` y `received_at`, con `state = 'in_progress'`,
+      en una transacción propia y antes del procedimiento de §7.11
+- [X] Si la supresión cae a mitad de camino, la recepción ya está registrada
+- [X] Otra baja del mismo usuario conserva la primera recepción; una reentrega no se registra dos veces
+- [X] `user_deletion_receipt_lag_seconds` observa `received_at − requested_at` una vez por recepción nueva, y
+      un lag negativo cuenta como 0
+- [X] Las constancias anteriores a la migración quedan con `event_id` y `received_at` nulos, y un `CHECK` exige
+      que estén las dos o ninguna
+
+**🔴 Paso 1 — Rojo**: `tests/integration/test_recepcion_baja.py` (commit `d9ef3fc`).
+**🟢 Paso 2 — Verde**: commit `421f6af`.
+
+---
+
+### T075 [TDD] — Alerta `DeletionReceiptLate`
+
+**Requisitos**: FR-095b
+
+**Archivos**: `ops/alerts.yaml`, `docs/runbook.md`
+
+**Dep.**: T074, T042
+
+**Criterios de aceptación**:
+- [X] Dispara, sin `for`, cuando una recepción observada supera 900 s, y se apaga al normalizarse (promtool)
+- [X] Umbral justificado, dueño y entrada en el runbook con su primer paso de diagnóstico
+
+**🔴 Paso 1 — Rojo**: escenario en `tests/integration/test_alerts.py` (commit `d9ef3fc`). La expresión de la
+propuesta restaba series con labels distintos y nunca disparaba; el verde usa `sum()` a cada lado.
+**🟢 Paso 2 — Verde**: commit `421f6af`. La revisión humana del umbral (B7) sigue pendiente para esta alerta.
+
+---
+
+### T076 [TDD] — Consumo de `recomendacion.actualizar.v3`
+
+**Requisitos**: FR-009, FR-012, FR-061, RD-116
+
+**Archivos**: `src/recomendaciones/worker/topology.py`, `src/recomendaciones/worker/consumer.py`,
+`src/recomendaciones/worker/schemas.py`, `contracts/recomendacion-actualizar-v3.schema.json`
+
+**Dep.**: T023, T049
+
+**Criterios de aceptación**:
+- [X] La copia derivada es literal del contrato de `api-general` (commit `9137825`) y lleva el nombre del evento
+- [X] El worker se liga al exchange `recomendacion.actualizar.v3` y un v2 publicado en `recomendacion.actualizar`
+      nunca llega a su cola
+- [X] Un mensaje sin los headers `event_type` y `event_version` que el contrato exige, o con otro valor, va a la
+      DLQ con una causa que nombra el header; los valores esperados salen de la copia del contrato
+- [X] El gate de contratos falla si el exchange o los headers del contrato divergen de la topología
+
+**🔴 Paso 1 — Rojo**: commit `a907296`. **🟢 Paso 2 — Verde**: commit `f527b02`.
+
+---
+
+### T077 [TDD] — Consulta de la recepción para `api-general` *(bloqueada)*
+
+**Requisitos**: FR-095b, Principio III
+
+**Descripción**: el job `DeletionReceiptCheckpointPoller` de `api-general` consulta
+`GET /internal/v1/deletion-receipts/{event_id}` y espera `200` con `event_id` y `received_at`, o `404` si todavía
+no hay recepción. Responder exige leer `user_suppressions` en Postgres desde un proceso alcanzable por
+`api-general`.
+
+**Bloqueo**: el Principio III limita la API a «Redis y nada más» y su única excepción no se extiende por analogía.
+Hace falta elegir entre enmendar la constitución, servir la consulta desde otro proceso o leer una copia en Redis
+(RD-115). Además hay que acordar la credencial: `api-general` usa una clave propia y la API acepta una sola por
+entorno. Después, el endpoint entra primero al contrato `recomendaciones-api.openapi.yaml` en `api-general`
+(Principio II).
+
+**Criterios de aceptación** *(a fijar con la decisión)*:
+- [ ] `200` con `event_id` y `received_at` (y opcionalmente el estado de la supresión), sin ningún dato del usuario
+- [ ] `404` mientras no haya recepción registrada para ese `event_id`
+- [ ] Autenticación acordada con `api-general`
+- [ ] Contrato publicado en `api-general` antes de implementarlo
