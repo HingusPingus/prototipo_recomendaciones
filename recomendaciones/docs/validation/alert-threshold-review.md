@@ -4,7 +4,7 @@ Revisión humana de las 28 alertas de `ops/alerts.yaml`. Los tests prueban que c
 apaga con su condición. Lo que falta decidir es si **el valor es razonable**, y eso no se puede
 automatizar.
 
-**Fecha**: 2026-09-29 · **Revisión**: 2026-10-01 y 2026-10-05, por HingusPingus — 28 revisadas: 27 aprobadas y 1 ajustada (CatalogUnrated)
+**Fecha**: 2026-09-29 · **Revisión**: 2026-10-01 y 2026-10-05, por HingusPingus — 28 revisadas: 25 aprobadas y 3 ajustadas (CatalogUnrated, CatalogSyncStale y VectorRecomputeLag)
 
 ## Cómo usarla
 
@@ -27,11 +27,11 @@ automatizar.
 ## 1. Para revisar (15)
 
 - [x] **CatalogSyncStale** · crítica · dueño `guardia-de-plataforma`
-  - **Condición**: `time() - catalog_sync_last_success_timestamp > 93600` durante `10m`
-  - **Qué avisa**: El catálogo no se sincroniza con éxito hace más de 26 horas
-  - **Justificación actual**: §7.7 fija > 26 h: la sincronización es diaria, y 2 h de margen absorben una corrida demorada sin tolerar una perdida. Pasado ese punto altas y retiros no se reflejan y un ítem retirado se sigue recomendando.
+  - **Condición**: `time() - catalog_sync_last_success_timestamp > 3600` durante `10m`
+  - **Qué avisa**: El catálogo no se sincroniza con éxito hace más de una hora
+  - **Justificación actual**: > 1 h desde el 2026-10-05: la sincronización corre cada 15 minutos, así que una hora son unas cuatro corridas perdidas, con margen para una demorada.
   - **A tener en cuenta**: El `for: 10m` cubre el valor 0 que exporta el worker al reiniciarse, antes de su primer refresco. Si la sincronización nunca tuvo éxito, el valor se queda en 0 y la alerta dispara a los 10 minutos, que es lo correcto.
-  - **Decisión**: ☑ aprobada (2026-10-01)
+  - **Decisión**: ✎ **ajustada (2026-10-05)**: `> 1 h` en lugar de `> 26 h`, por la sincronización cada 15 minutos
 
 - [x] **ExclusionResolveLag** · crítica · dueño `guardia-de-plataforma`
   - **Condición**: `exclusion_resolve_lag_seconds > 3600` durante `5m`
@@ -208,10 +208,10 @@ automatizar.
   - **Decisión**: ☑ aprobada (2026-10-01)
 
 - [x] **VectorRecomputeLag** · warning · dueño `guardia-de-plataforma` *(redefinida, T070)*
-  - **Condición**: `vector_recompute_lag_seconds > 93600` durante `10m`
-  - **Qué avisa**: Hay ítems vigentes sin vector bajo la versión activa hace más de 26 horas
-  - **Justificación actual**: §7.9 fija > 26 h: la sincronización es diaria y el job de vocabulario vectoriza en la misma corrida, así que un ítem sin vector pasado ese plazo es una reconciliación que falla. Se mide desde lo último entre la primera sincronización del ítem y la activación de la versión (T070); con un catálogo estable vale 0. Degrada calidad, no corrección.
-  - **Decisión**: ☑ aprobada (2026-10-01)
+  - **Condición**: `vector_recompute_lag_seconds > 3600` durante `10m`
+  - **Qué avisa**: Hay ítems vigentes sin vector bajo la versión activa hace más de una hora
+  - **Justificación actual**: > 1 h desde el 2026-10-05: la sincronización corre cada 15 minutos y el job de vocabulario vectoriza en la misma corrida.
+  - **Decisión**: ✎ **ajustada (2026-10-05)**: `> 1 h` en lugar de `> 26 h`, por la sincronización cada 15 minutos
 
 - [x] **DeletionReceiptLate** · warning · dueño `guardia-de-plataforma` *(nueva, T075)*
   - **Condición**: `sum(increase(user_deletion_receipt_lag_seconds_count[15m])) - sum(increase(user_deletion_receipt_lag_seconds_bucket{le="900"}[15m])) > 0` (sin `for`)

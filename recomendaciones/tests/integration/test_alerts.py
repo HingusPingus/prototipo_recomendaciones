@@ -82,10 +82,8 @@ def test_orphaned_exclusions_have_no_alert() -> None:
 @pytest.mark.parametrize(
     ("alert", "needle"),
     [
-        ("CatalogSyncStale", "93600"),  # > 26 h (§7.7)
         ("AgeRefreshStale", "93600"),  # > 26 h (§7.5.1)
         ("PopularityStale", "93600"),
-        ("VectorRecomputeLag", "93600"),
         ("CatalogUnvectorized", "0.1"),  # > 10 % (§7.9)
         ("RetiredSetLarge", "10000"),  # > 10 000 (§4.4)
         ("SyncVolumeDrop", "0.9"),  # < 0,9 (§7.12)
@@ -96,6 +94,19 @@ def test_orphaned_exclusions_have_no_alert() -> None:
 )
 def test_thresholds_come_from_the_data_model(alert: str, needle: str) -> None:
     assert needle in _rule(alert)["expr"]
+
+
+@pytest.mark.parametrize(
+    ("alert", "expr"),
+    [
+        ("CatalogSyncStale", "time() - catalog_sync_last_success_timestamp > 3600"),
+        ("VectorRecomputeLag", "vector_recompute_lag_seconds > 3600"),
+    ],
+)
+def test_sync_derived_alerts_follow_the_15_minute_sync(alert: str, expr: str) -> None:
+    """Sincronización cada 15 minutos (2026-10-05): una hora son unas cuatro corridas perdidas. Con el umbral
+    anterior, pensado para una sincronización diaria, hacían falta unas cien antes de avisar."""
+    assert _rule(alert)["expr"] == expr
 
 
 def test_catalog_unrated_fires_on_a_single_unrated_item() -> None:
@@ -109,7 +120,7 @@ def test_catalog_unrated_fires_on_a_single_unrated_item() -> None:
 # Por alerta: series inducidas (valores por minuto), minuto en que debe estar disparando, minuto en que
 # debe haberse apagado, y etiquetas propias de la serie que la alerta conserva.
 SCENARIOS: dict[str, dict] = {
-    "CatalogSyncStale": {"series": {"catalog_sync_last_success_timestamp": "-100000x40 2400x40"}, "fire": "30m", "clear": "60m"},
+    "CatalogSyncStale": {"series": {"catalog_sync_last_success_timestamp": "-6000x40 2400x40"}, "fire": "30m", "clear": "60m"},  # 2 h sin éxito
     "DeadLetterGrowth": {"series": {'reco_dlq_messages_total{reason="invalid_payload"}': "0+1x60 60x120"}, "fire": "50m", "clear": "150m"},
     "QueueDepthGrowth": {"series": {'reco_queue_depth{queue="q"}': "5000x40 0x40"}, "fire": "30m", "clear": "60m", "labels": {"queue": "q"}},
     "RedisUnavailable503": {"series": {'reco_unavailable_responses_total{error="cache_unavailable"}': "0+60x30 1800x40"}, "fire": "20m", "clear": "60m"},
@@ -139,7 +150,7 @@ SCENARIOS: dict[str, dict] = {
     "PopularityStale": {"series": {"catalog_popularity_last_success_timestamp": "-100000x40 2400x40"}, "fire": "30m", "clear": "60m"},
     "CatalogUnrated": {"series": {"catalog_unrated_ratio": "0.01x100 0x30"}, "fire": "80m", "clear": "120m"},  # 1 %: un ítem en cien
     "TagProjectionAnomalies": {"series": {'projection_field_anomalies_total{field="tag_name",reason="empty"}': "0x5 4x100"}, "fire": "10m", "clear": "90m"},
-    "VectorRecomputeLag": {"series": {"vector_recompute_lag_seconds": "200000x40 0x40"}, "fire": "30m", "clear": "60m"},
+    "VectorRecomputeLag": {"series": {"vector_recompute_lag_seconds": "7200x40 0x40"}, "fire": "30m", "clear": "60m"},  # 2 h sin vector
     "VocabTransitionStalled": {"series": {"vocab_transition_progress": "0.5x200 1x30"}, "fire": "180m", "clear": "220m"},
     "CatalogUnvectorized": {"series": {"catalog_unvectorized_ratio": "0.5x100 0x30"}, "fire": "80m", "clear": "120m"},
     "SignalIngestLag": {
