@@ -2075,7 +2075,7 @@ cuesta credibilidad y puede tener consecuencias contractuales del lado del catá
 |---|---|---|---|
 | `catalog_sync_last_success_timestamp` | **> 26 h** | **Alerta.** Catálogo congelado: altas y retiros no se reflejan. Ejecutar sync, investigar | Guardia de plataforma |
 | `catalog_popularity_last_success_timestamp` | **> 26 h** | **Alerta.** El respaldo sirve un ranking congelado (RD-11). Degradación silenciosa de la calidad del `fallback` | Guardia de plataforma |
-| `catalog_unrated_ratio` = `age_rating_source='unknown_defaulted'` / total vigentes | **> 5 %** | **Alerta.** Esa fracción del catálogo es **inalcanzable para todo usuario** por el fail-closed etario. Escalar al proveedor del catálogo para que declare las clasificaciones faltantes (RD-9) | Dueño de producto |
+| `catalog_unrated_ratio` = `age_rating_source='unknown_defaulted'` / total vigentes | **> 0** *(era > 5 % hasta la revisión B7 del 2026-10-05: la clasificación es obligatoria por CR-15)* | **Alerta.** Esa fracción del catálogo es **inalcanzable para todo usuario** por el fail-closed etario. Escalar al proveedor del catálogo para que declare las clasificaciones faltantes (RD-9) | Dueño de producto |
 | `catalog_retired_total` | Sin umbral | **Ninguna.** Panel: dimensiona el catálogo vigente vs. histórico | — |
 | `projection_field_anomalies_total{field="tag_name", reason="collision"\|"empty"}` | **> 0** | **Alerta.** El origen emite tags que colisionan o valores fuera de dominio. Escalar al proveedor (RD-16) | Guardia de plataforma |
 
