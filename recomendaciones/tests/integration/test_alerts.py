@@ -56,6 +56,7 @@ REQUIRED = {
     "PopularityStale", "CatalogUnrated", "TagProjectionAnomalies", "VectorRecomputeLag", "VocabTransitionStalled",
     "CatalogUnvectorized", "SignalIngestLag", "SignalsPurgeDeferred", "UserDeletionResidualKeys",
     "ExclusionResolveLag", "SyncVolumeDrop", "DeclarableTagsBelowMinimum", "DeletionEventsDeadLettered",
+    "DeletionReceiptLate",
 }
 
 
@@ -150,6 +151,15 @@ SCENARIOS: dict[str, dict] = {
     "UserDeletionResidualKeys": {"series": {"user_deletion_residual_keys_total": "0x5 2x100"}, "fire": "10m", "clear": "90m"},
     "DeclaredMinimumViolations": {"series": {"declared_minimum_violations_total": "0x5 1x40 0x40"}, "fire": "20m", "clear": "70m"},  # T069
     "DeletionEventsDeadLettered": {"series": {'reco_dead_letter_depth{queue="recomendaciones.usuario-eliminado.dlq"}': "0x5 1x40 0x40"}, "fire": "30m", "clear": "70m"},
+    # T075: una recepción observada pasado el límite de 15 minutos (cubeta le=900 sin incrementar) dispara sin `for`.
+    "DeletionReceiptLate": {
+        "series": {
+            "user_deletion_receipt_lag_seconds_count": "0x10 1x60",
+            'user_deletion_receipt_lag_seconds_bucket{le="900"}': "0x70",
+        },
+        "fire": "15m",
+        "clear": "40m",
+    },
     "ExclusionResolveLag": {"series": {"exclusion_resolve_lag_seconds": "7200x30 0x30"}, "fire": "20m", "clear": "50m"},
     "SyncVolumeDrop": {"series": {'sync_volume_delta_ratio{entity="items"}': "0.5x20 1x20"}, "fire": "10m", "clear": "30m", "labels": {"entity": "items"}},
     "DeclarableTagsBelowMinimum": {"series": {'declarable_tags_total{module="peliculas"}': "3x40 8x40"}, "fire": "30m", "clear": "60m", "labels": {"module": "peliculas"}},
