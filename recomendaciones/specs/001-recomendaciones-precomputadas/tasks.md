@@ -13,7 +13,7 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
-  RD-1→RD-112 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-116 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **168 requisitos definidos** *(167 hasta FR-095b, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
@@ -1780,7 +1780,8 @@ antes de T023, T033, T053 y T062, que ahora dependen de ella. Este repositorio *
 propuesta —tiene prioridad de definición (RD-47)—, pero el contrato vigente es el publicado allá.
 
 **Archivos**: `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
-(lectura **y** declaración), `contracts/recomendacion-actualizar.schema.json`,
+(lectura **y** declaración), `contracts/recomendacion-actualizar.schema.json` *(renombrado
+`recomendacion-actualizar-v3.schema.json` el 2026-10-05, RD-116)*,
 `contracts/usuario-eliminado.schema.json` *(agregado el 2026-09-29, RD-112: lo exigía el criterio de
 abajo)*, `contracts/README.md`
 
@@ -2717,7 +2718,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] Constantes del motor y mapeo de `age_rating` externalizados a configuración (T004, T013)
 
 ## Operación
-- [X] **Las veintidós métricas de observabilidad emitiéndose** (T039). La cifra anterior ("diez")
+- [X] **Las veintitrés métricas de observabilidad emitiéndose** (T039, T075). La cifra anterior ("diez")
       quedó obsoleta: el recuento sobre `data-model.md` da dieciséis nombres de métrica
       (`age_stale_config_users_total`, `age_threshold_crossings_total`, `catalog_retired_total`,
       `catalog_unrated_ratio`, `catalog_unvectorized_ratio`, `contract_violations_total`,
@@ -2729,7 +2730,8 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
       diez sobre dieciséis se da por satisfecho con seis métricas faltando. *(Recontado el 2026-09-28:
       a las dieciséis se suman `declarable_tags_total`, `diversity_cap_relaxed_total`,
       `fallback_new_item_share`, `recompute_requests_pending`, `recompute_requests_dropped_total` y
-      `suppressions_unverified_total`, nombradas por RD-108, RD-110, RD-102 y RD-111.)*
+      `suppressions_unverified_total`, nombradas por RD-108, RD-110, RD-102 y RD-111. El 2026-10-05 se suma
+      `user_deletion_receipt_lag_seconds`, de FR-095b y RD-115: son veintitrés.)*
 - [X] `contract_violations_total` se emite con contadores **separados** para `birth_date` y `region`
 - [X] `exclusions_orphaned_permanent_total` se emite **sin alerta asociada** (FR-068d1): su ausencia
       de umbral es un requisito, no un olvido de configuración
