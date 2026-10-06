@@ -20,6 +20,10 @@ endpoints que escriben los datos de esos ítems y el verificador de preparación
 > elegibles o tiene una clasificación fuera de `ATP`, `+13`, `+18`. Hasta completar el pedido 2, el
 > Transformer no puede sincronizar el catálogo real. El resto del documento describe la situación al momento
 > de la propuesta.
+>
+> **Al 2026-10-06 (`3f4ceab`):** los retirados ya no bloquean (RD-118). Sigue el `503` a todo el catálogo con
+> menos de cinco tags elegibles en un módulo. Como la corrida de este repositorio es todo o nada, eso no deja sin
+> servicio solo a ese módulo, como dice el punto 1: detiene la sincronización entera (RD-119).
 
 ## En corto
 

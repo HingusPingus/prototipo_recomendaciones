@@ -134,7 +134,9 @@ inventario de endpoints no encontramos la ruta de alta, solo `PUT /api/v1/users/
 - dónde se crea la cuenta y que ahí sean **obligatorias** las dos;
 - que `PUT /users/me/profile` no permita vaciarlas.
 
-Sin la fecha o la región, nuestro servicio rechaza al usuario en la ingesta y nunca recibe recomendaciones.
+Sin la fecha o la región, nuestro servicio rechaza al usuario en la ingesta y nunca recibe recomendaciones. Hoy el
+efecto es peor: con un solo usuario sin perfil verificado, la sincronización de usuarios de `api-general` responde
+`503` para todos y ningún usuario se sincroniza (RD-119). Pedimos que omita a ese usuario en lugar de fallar.
 
 ## Un punto de nuestro lado: la demora del alta
 

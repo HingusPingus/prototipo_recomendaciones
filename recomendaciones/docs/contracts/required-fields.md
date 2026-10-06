@@ -23,6 +23,12 @@ con `declarable_tags_total{module}` y la alerta `DeclarableTagsBelowMinimum`.
 **cohorte**: los usuarios preexistentes sin `region` quedan sin recomendaciones en todos los módulos (ver
 abajo), hasta que se completa el backfill. DEP-10 corta un **módulo**; DEP-11, una cohorte.
 
+> **Hoy, con la sincronización actual de `api-general`, las dos cortan todo** (RD-119). Con menos de 5 tags
+> elegibles en cualquier módulo, `api-general` responde `503` a todo el catálogo. Con un solo usuario sin perfil
+> verificado, responde `503` a todo el listado de usuarios. La corrida de este repositorio es todo o nada, así
+> que no entra nada: ni usuarios, ni actividad, ni ítems de ningún módulo. Se le pide que saque el chequeo de
+> tags de la sincronización y que omita a esos usuarios en lugar de responder `503`.
+
 ## Por canal
 
 ### Sincronización REST (Data Transformer) — contrato propuesto `api-general-sync.openapi.yaml`
@@ -44,6 +50,11 @@ distingue un listado completo de uno truncado y **un listado parcial retiraría 
 | Interacción | `user_id`, `item_id` | sí | — | La interacción no es procesable |
 | Interacción | `signal_type` (`like` \| `dislike` \| `consumo`) | sí | DEP-1, FR-062 | El perfil no puede construirse |
 | Interacción | `occurred_at` | sí | DEP-2, CR-12, FR-029d | No se resuelve el conflicto entre señales contradictorias |
+
+El rechazo de un usuario en la ingesta es la defensa de este lado. Hoy ese usuario no llega: `api-general`
+responde `503` a todo el listado (RD-119). La actividad se pide sin `since` en la primera corrida, como permite
+el contrato. Hoy `api-general` responde `500` a ese pedido, y la sincronización no puede arrancar hasta que lo
+corrija (RD-119).
 
 **Los ítems retirados no bloquean la sincronización** (RD-118). Un retirado nunca se recomienda, así que su
 clasificación no alcanza a nadie, y este repositorio no exige coherencia entre el módulo del ítem y sus tags.

@@ -1,6 +1,6 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, 2026-10-06) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4874,6 +4874,54 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-119 — La sincronización de `api-general` falla por listado entero, y eso amplía DEP-10 y DEP-11
+
+**Fecha**: 2026-10-06 · **Origen**: revisión del código de `api-general` en `3f4ceab` y ejecución de su test de
+integración `RecommendationReadinessVerificationTest` contra Postgres (19 tests, 2 fallas; las dos ya fallaban en
+`e20d400`) · **Tipo**: riesgo de integración y pedidos a `api-general`
+
+**Contexto**: la corrida del Data Transformer es todo o nada (T029): lee usuarios, catálogo y actividad, y un error en
+cualquiera de los tres aborta la corrida entera sin escribir nada. Del lado de `api-general`, cada listado responde
+`503` completo ante un solo dato que no cumple. La combinación produce efectos que RD-118 no describía.
+
+**Hallazgos**:
+1. **La primera corrida nunca termina.** Sin marca de agua, este repositorio no manda `since`, y el contrato lo
+   permite (`required: false`). `api-general` lo recibe nulo, y su consulta `(:since is null or f.occurredAt >=
+   :since)` falla en Postgres porque no puede inferir el tipo del parámetro: responde `500`. Como esa corrida no deja
+   marca de agua, todas las siguientes repiten el mismo pedido y fallan igual. Su test
+   `activitySyncReturnsFactWithExplicitSourceProvenanceAndMatchingEvent` lo reproduce.
+2. **DEP-10 corta toda la sincronización, no un módulo.** Con menos de cinco tags elegibles en *cualquier* módulo,
+   `api-general` responde `503` a todo el catálogo, y este repositorio aborta la corrida: no entran usuarios, ni
+   actividad, ni ítems de ninguno de los dos módulos. Además, `declarable_tags_total{module}` conserva su último valor,
+   porque no llega el catálogo que lo bajaría, así que `DeclarableTagsBelowMinimum` no dispara y el único aviso es
+   `CatalogSyncStale`, una hora después.
+3. **Un solo usuario incompleto detiene a todos.** `api-general` responde `503` a todo el listado de usuarios si un
+   usuario final no tiene el perfil verificado o tiene `birth_date` o `region` inválidas. `sync_profile_verified`
+   arranca en falso y solo se marca al guardar el perfil, y `api-general` no crea cuentas. Una sola alta sin perfil
+   completo frena la sincronización de todos, incluida la corrección de `birth_date` de la que depende CR-4 desde RD-118.
+
+**Decisiones**:
+1. **La corrida sigue siendo todo o nada.** Una corrida parcial, con usuarios y actividad pero sin catálogo,
+   descartaría la actividad de los ítems que todavía no se materializaron (T029 la saltea) y, al avanzar la marca
+   de agua, la perdería. El problema está en la granularidad del `503` del origen, no en que este repositorio aborte.
+2. **Se le pide a `api-general`**:
+   - corregir la consulta con `since` nulo, sin que este repositorio invente un `since` artificial;
+   - sacar de la sincronización el chequeo de cinco tags por módulo y dejarlo en su verificador de preparación,
+     porque el mínimo por módulo lo vigila este repositorio (DEP-10, RD-110);
+   - omitir del listado a los usuarios sin perfil verificado en lugar de responder `503`. La ausencia no es una baja
+     (FR-091a), y para este repositorio el efecto es el mismo que el rechazo en la ingesta: el usuario no se
+     materializa. Su costo: `contract_violations_total{field="birth_date"|"region"}` deja de verlos, y la
+     cobertura pasa a medirla su verificador (su FR-008).
+3. **Hasta que lo resuelvan**, DEP-10 y DEP-11 se documentan con su efecto real: los dos detienen la sincronización
+   entera.
+
+**Contrato 1.1.0 (seguimiento de RD-118)**: `3f4ceab` agregó a su contrato el `422`, el `503`, el cuerpo del `404`,
+los dos códigos y `/health`. Normativamente queda igual a la copia de este repositorio: las suites de los dos
+lados pasan con el archivo de `api-general` tal cual. Lo rotulan «corrección local no publicada», aunque está en su
+`main`. La copia literal se hace cuando confirmen la publicación.
+
+---
 
 ### RD-118 — Respuesta a las observaciones de `api-general` sobre los campos requeridos y el contrato 1.1.0
 
