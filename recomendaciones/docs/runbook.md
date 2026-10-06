@@ -338,8 +338,8 @@ Los perfiles de usuario se reconstruyen bajo la versión nueva en su próximo re
 reproceso es **seguro** de repetir: el worker deduplica por `event_id` y la señal por
 `origin_interaction_id`.
 
-Colas (prefijo según entorno): `recomendaciones.recomendacion-actualizar.dlq` y
-`recomendaciones.usuario-eliminado.dlq`.
+Colas: `recomendaciones.recomendacion-actualizar.dlq` y `recomendaciones.usuario-eliminado.dlq`. No llevan prefijo:
+cada entorno tiene su vhost (RD-120).
 
 1. **Clasificar** por el encabezado `x-dlq-reason` (consola de RabbitMQ → la cola DLQ → *Get messages* con
    *Ack mode: Nack message requeue true*, que no los consume). Los que no lo tienen los mandó el **broker** y
@@ -369,9 +369,10 @@ una cola quorum no se pueden cambiar en caliente**: si cambia alguno de esos dos
 arrancar con `PRECONDITION_FAILED`. Para aplicarlo: detener los workers, esperar que la cola principal quede en
 0, borrarla (`rabbitmqctl delete_queue recomendaciones.recomendacion-actualizar`, y lo mismo con
 `recomendaciones.usuario-eliminado`) y arrancar con el valor nuevo;
-la DLQ no se toca. Mientras tanto `api-general` puede seguir publicando: el exchange sin cola descarta, y la
-sincronización trae esas interacciones en su próxima corrida (los eventos de baja no: hacerlo fuera de horario y con el
-productor de bajas avisado).
+la DLQ no se toca. Mientras tanto `api-general` puede seguir publicando: publica con confirmación y `mandatory`,
+así que lo que no tiene cola vuelve y lo reintenta, sin perderse (RD-120). Las bajas se demoran lo que dure el
+cambio, y si pasa de 15 minutos dispara [DeletionReceiptLate](#deletionreceiptlate): hacerlo fuera de horario y con
+`api-general` avisado.
 
 **Cuánto esperar**: los eventos tienen valor mientras la señal es útil; más allá de
 `RECO_EVENT_REDELIVERY_WINDOW_HOURS` la sincronización ya trajo la misma interacción desde

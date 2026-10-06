@@ -1,6 +1,6 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, 2026-10-06) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120, 2026-10-06) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4874,6 +4874,44 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-120 — Topología y permisos del broker, acordados con `notificaciones`
+
+**Fecha**: 2026-10-06 · **Origen**: respuesta escrita de `notificaciones` del 2026-10-06, que aprobó la topología y
+dejó a este repositorio las decisiones sobre quién crea los exchanges y los permisos · **Tipo**: operación y
+acuerdo con terceros
+
+**Contexto**: `api-general` no declara exchanges ni colas de eventos. Hacía falta decidir quién crea los exchanges,
+con qué vhost y con qué permisos, y quién opera el broker.
+
+**Decisiones**:
+1. **El broker lo opera `notificaciones`** hasta que el sistema se despliegue en Dokploy. Más adelante podría
+   desplegarse por separado.
+2. **El worker declara y liga** al arrancar `recomendacion.actualizar.v3` y `usuario.eliminado` (fanout, durables)
+   y sus colas, como ya hacía. El exchange v2 `recomendacion.actualizar` no es de este repositorio y no se declara.
+3. **El worker arranca antes** de que `api-general` active la publicación. Es buena práctica, no una condición
+   dura: `api-general` publica con confirmación y `mandatory`, así que si falta el exchange o la cola el mensaje se
+   reintenta y no se pierde. Lo que el orden no cubre es un exchange mal nombrado, así que **antes de activar la
+   publicación se corre la prueba de humo** de `migracion-v3.md` («Cómo lo verificamos»).
+4. **Un vhost por entorno, sin prefijo** en los nombres. Los parámetros `prefix` de `worker/topology.py` quedan
+   sin usar.
+5. **Permisos**:
+
+   | Usuario | configure | write | read |
+   |---|---|---|---|
+   | Worker de `recomendaciones` | `^(recomendacion\.actualizar\.v3\|usuario\.eliminado\|recomendaciones\..*)$` | `^(recomendaciones\..*\|amq\.default)$` | igual que configure |
+   | `api-general` | `^reporte\.(generar\|listo)$` | `^(recomendacion\.actualizar\|recomendacion\.actualizar\.v3\|usuario\.eliminado\|amq\.default)$` | `^reporte\.(generar\|listo)$` |
+
+   El worker necesita `amq.default` porque manda los reintentos y la DLQ por el exchange por defecto. Los permisos
+   de `reporte.*` de `api-general` los señaló `notificaciones`: declara y consume esas colas y publica
+   `reporte.generar` por el exchange por defecto. No dependen de este repositorio.
+6. **`event_version` exactamente `3.0.0`**: el worker compara el valor fijo del schema, no la versión mayor.
+   `migracion-v3.md` decía «versión mayor 3» y se corrige; `api-general` publica `3.0.0`.
+
+**Queda en `api-general`**: el v2 no tiene consumidor. Con `mandatory`, aunque alguien creara el exchange, cada v2
+sin cola ligada vuelve y se reintenta sin fin. Se le pidió resolverlo antes de activar la publicación.
+
+---
 
 ### RD-119 — La sincronización de `api-general` falla por listado entero, y eso amplía DEP-10 y DEP-11
 
