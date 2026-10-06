@@ -57,7 +57,7 @@ class ApiGeneralClient:
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             raise UpstreamUnavailable(f"api-general no respondió: {exc.__class__.__name__}") from None
         if response.status_code in (502, 503, 504):
-            raise UpstreamUnavailable(f"api-general respondió {response.status_code}")
+            raise UpstreamUnavailable(f"api-general respondió {response.status_code} en {path}")
         if response.status_code >= 400:
             raise UpstreamError(f"api-general respondió {response.status_code} en {path}")
         try:
