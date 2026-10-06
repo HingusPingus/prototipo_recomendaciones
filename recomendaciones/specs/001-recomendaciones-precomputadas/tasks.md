@@ -13,7 +13,7 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
-  RD-1→RD-120 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-121 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **169 requisitos definidos** *(167 hasta FR-095b y FR-095c, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
@@ -3153,6 +3153,8 @@ no hay recepción. Responder exige leer `user_suppressions` en Postgres desde un
       > T056, abierta hasta que haya entornos.
       > *Al 2026-10-06 (RD-119)*: `3f4ceab` agregó todo lo pedido y su contrato quedó normativamente igual al
       > nuestro, pero lo rotulan «corrección local no publicada». Falta que confirmen la publicación.
+      > *Al 2026-10-06 (RD-121)*: **contrato publicado**. `0a2a1b6` lo marca `publicado-en-main` y la copia de este
+      > repositorio es literal. Falta solo la clave, que espera entornos (su T056).
 
 **🔴 Paso 1 — Rojo**: `tests/contract/test_deletion_receipt.py`, el gate y la conformidad (commit `31e406b`).
 **🟢 Paso 2 — Verde**: commit `c7eec50`.

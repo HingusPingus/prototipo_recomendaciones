@@ -344,9 +344,8 @@ máx. 5 → DLQ.
 > *(Precisado el 2026-10-05, RD-118: decía que era la única cuyo incumplimiento deja al sistema «sin ningún
 > usuario atendible». DEP-11 también deja a muchos usuarios sin servicio a la vez, pero a una cohorte —los
 > preexistentes sin `region`— y no a un módulo.)*
-> *(Al 2026-10-06, RD-119: con la sincronización actual de `api-general`, las dos detienen la sincronización
-> entera, porque `api-general` responde `503` al listado completo y la corrida es todo o nada. Se le pide
-> cambiarlo.)*
+> *(RD-119 y RD-121: hasta el 2026-10-06 las dos detenían la sincronización entera, porque `api-general`
+> respondía `503` al listado completo. Lo corrigió en `0a2a1b6`.)*
 
 ---
 

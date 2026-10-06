@@ -1,6 +1,6 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120, 2026-10-06) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4874,6 +4874,42 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-121 — `api-general` corrige su sincronización y publica los contratos (`0a2a1b6`)
+
+**Fecha**: 2026-10-06 · **Origen**: revisión de `api-general` en `0a2a1b6`, con sus tests corridos contra Postgres y
+RabbitMQ · **Tipo**: seguimiento de RD-119 y RD-120, y sincronización de contratos
+
+**Lo que corrigió `api-general`** (verificado en el código y con sus tests: `RecommendationReadinessVerificationTest`
+pasa 21 de 21, y antes fallaban 2 de 19):
+1. La actividad sin `since` usa una consulta propia: la primera corrida ya no responde `500`.
+2. El mínimo de cinco tags por módulo salió de la sincronización y quedó en su verificador. El catálogo sigue
+   respondiendo `503` entero por un ítem **activo** inválido, y ahora también por un tag elegible de nombre vacío.
+   Con eso, DEP-10 vuelve a cortar un módulo (RD-118) y `DeclarableTagsBelowMinimum` puede disparar.
+3. Los usuarios sin perfil verificado se omiten del listado. Para este repositorio el efecto es el de un rechazo en
+   la ingesta, pero `contract_violations_total{field="birth_date"|"region"}` deja de verlos: la cobertura de DEP-11 la
+   mide su verificador (su FR-008).
+4. El v2 quedó apagado por defecto (`RECOMMENDATIONS_OUTBOX_V2_ENABLED=false`) y sus eventos pendientes se retiran sin
+   publicarse. Queda resuelto lo que RD-120 dejaba en `api-general`.
+5. El chequeo de colisiones por formato de los nombres de tag (CR-11) también salió de la sincronización y quedó en
+   su verificador. Este repositorio no normaliza (RD-16), así que una colisión que el verificador no detecte llega
+   como dos tags distintos.
+
+**Contratos**: `0a2a1b6` marca `recomendaciones-api` 1.1.0 como `publicado-en-main`, con la publicación confirmada el
+2026-10-06. Las cuatro copias de `contracts/` pasan a ser **literales** de ese commit; las suites pasan sin cambios
+de código. `usuario.eliminado` declara desde ahora headers AMQP obligatorios. El worker no los exige para ese
+evento, a propósito: rechazar una baja por un header retendría datos de quien pidió ser eliminado.
+
+**Historial de `api-general`**: `0a2a1b6` llegó por un *force-push* sobre `main`. Los commits de reportes y anuncios
+siguen en su rama `notis`. Los de `Recome-Recos-Auto` (`RecommendationsGateway`) no están en ninguna rama remota,
+así que el consumidor nuevo de nuestra API señalado en la revisión anterior **no existe hoy en `main`**. Los permisos
+`reporte.*` de RD-120 describen código que hoy vive en `notis`: no cambian nada mientras no se fusione.
+
+**Test de `api-general` con falla previa**: `OutboxRabbitMqIntegrationTest.eachEventTypeUsesItsOwnConfiguredDestination`
+falla igual en `3f4ceab`. El header llega con el valor correcto, pero el test lo compara como `String` y RabbitMQ
+lo entrega como `LongString`. Es un defecto del test, no de la publicación.
+
+---
 
 ### RD-120 — Topología y permisos del broker, acordados con `notificaciones`
 

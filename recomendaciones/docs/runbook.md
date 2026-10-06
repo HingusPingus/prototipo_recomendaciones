@@ -23,17 +23,15 @@ interrumpió.
 **Acción**: `api-general no disponible` → verificar su salud y reintentar (`reco-transformer`); `listado
 no confirmado completo` o `volumen anómalo` → ver [SyncVolumeDrop](#syncvolumedrop); violaciones de
 contrato → ver [ContractViolationRegion](#contractviolationregion).
-`failure_reason` nombra el listado que falló. Con la salud de `api-general` en orden, las causas conocidas son
-validaciones suyas que rechazan el listado entero por un solo dato (RD-119). Como la corrida es todo o nada,
-cualquiera de ellas detiene también los otros dos listados:
-- **503 en `/internal/v1/sync/catalog/items`**: un ítem **activo** sin tags elegibles del módulo correcto o con
-  una clasificación fuera de `ATP`, `+13`, `+18`, o **menos de 5 tags elegibles en algún módulo**. En este último
-  caso `DeclarableTagsBelowMinimum` no dispara, porque el catálogo nuevo nunca llega. Los retirados ya no
-  bloquean (RD-118).
-- **503 en `/internal/v1/sync/users`**: un usuario final sin perfil verificado, o con `birth_date` o `region`
-  inválidas.
-- **500 en `/internal/v1/sync/activity` en la primera corrida**: `api-general` falla cuando no se le manda
-  `since`, y sin marca de agua no se manda. Mientras no lo corrija, la sincronización no puede arrancar.
+`failure_reason` nombra el listado que falló. Con la salud de `api-general` en orden, la causa conocida es una
+validación suya que rechaza el catálogo entero por un solo dato. Como la corrida es todo o nada, detiene también
+los otros dos listados:
+- **503 en `/internal/v1/sync/catalog/items`**: un ítem **activo** sin tags elegibles del módulo correcto, con un
+  tag elegible de nombre vacío o con una clasificación fuera de `ATP`, `+13`, `+18`. Los retirados no bloquean
+  (RD-118). El mínimo de 5 tags por módulo ya no la bloquea (RD-121): lo avisa `DeclarableTagsBelowMinimum`.
+
+Desde `0a2a1b6` (RD-121) los usuarios sin perfil verificado se omiten en vez de bloquear el listado, y la
+actividad sin `since` responde bien.
 
 Nada de esto se arregla de este lado: escalar a `api-general` con la hora de la corrida y el `failure_reason`,
 para que corrija el dato y corra su verificador de preparación.
