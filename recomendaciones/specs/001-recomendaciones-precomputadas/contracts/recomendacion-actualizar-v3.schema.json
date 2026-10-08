@@ -2,22 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.recome.internal/events/recomendacion.actualizar.v3/3.0.0",
   "title": "recomendacion.actualizar.v3",
-  "description": "Propuesta no publicada de evento de hecho de interacción. Cambio BREAKING frente a recomendacion.actualizar 2.0.0: nuevo nombre/schema y campos obligatorios para identidad del hecho, señal y hora de origen. El consumidor reportó aprobación general el 2026-09-28, pero la respuesta primaria y los términos de coexistencia, migración y deprecación no constan. El 2026-10-01 solicitó un exchange fanout propio para v3; api-general y plataforma aún no lo aprobaron. V2 no se retira sin migración y aprobación expresa.",
+  "description": "Contrato de evento de hecho de interacción, todavía no publicado como paquete formal. Cambio BREAKING frente a recomendacion.actualizar 2.0.0: nuevo nombre/schema y campos obligatorios para identidad del hecho, señal y hora de origen. Recomendaciones reportó la migración a v3 y el retiro de v2 por su único consumidor conocido en PR #95 y decisión RD-120 del PR #96. Notificaciones reportó aprobación de la topología el 2026-10-06; faltan adjuntar su respuesta primaria, firmante y canal. V2 queda apagado por defecto; cualquier otro consumidor debe confirmar binding antes de habilitarlo.",
   "x-change-classification": "breaking",
   "x-change-reason": "Incorporar un hecho inmutable con identidad estable, signal_type y occurred_at verificables sin sobrescribir el evento v2 vigente.",
   "x-event-type": "recomendacion.actualizar.v3",
   "x-event-version": "3.0.0",
   "x-contract-origin": {
-    "status": "propuesta-no-publicada",
+    "status": "aprobacion-reportada-no-publicada",
     "drafted": "2026-09-28",
     "schema_version": "3.0.0",
-    "coexists_with": "recomendacion.actualizar 2.0.0"
+    "coexists_with": "recomendacion.actualizar 2.0.0 solo con consumidor confirmado y RECOMMENDATIONS_OUTBOX_V2_ENABLED=true"
   },
   "x-amqp-transport": {
     "exchange": {
       "name": "recomendacion.actualizar.v3",
       "type": "fanout",
-      "status": "propuesta-pendiente-de-aprobacion"
+      "durable": true,
+      "status": "aprobacion-reportada",
+      "approval_reported_date": "2026-10-06"
     },
     "messageId": {"required": true, "source": "event_id"},
     "headers": {

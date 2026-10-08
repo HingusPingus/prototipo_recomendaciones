@@ -13,9 +13,9 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
-  RD-1→RD-116 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-121 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
-- [spec.md](./spec.md) — **168 requisitos definidos** *(167 hasta FR-095b, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
+- [spec.md](./spec.md) — **169 requisitos definidos** *(167 hasta FR-095b y FR-095c, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
   registros de saneamiento (2026-09-27), de remediación del análisis (2026-09-28) y de cierre del segundo análisis (2026-09-29) · **12** dependencias declaradas (DEP-1→DEP-12: **10 vigentes**,
   DEP-3 vacante a propósito y DEP-4 resuelta)
@@ -24,7 +24,7 @@ producción**)
 - [checklists/requirements-contracts.md](./checklists/requirements-contracts.md) — 30/30 resueltos
 - [checklists/requirements-clarify-2026-09-14.md](./checklists/requirements-clarify-2026-09-14.md) —
   **46/46 tildados — cerrado** (los 10 🔴 se cerraron el 2026-09-22)
-- [constitution v1.1.1](../../.specify/memory/constitution.md) — enmendada el 2026-09-27 (RD-98) y
+- [constitution v1.2.0](../../.specify/memory/constitution.md) — **v1.2.0 propuesta el 2026-10-05 (RD-117), pendiente de aprobación por PR**: excepción de lectura del Principio III para T077. Antes, v1.1.1: enmendada el 2026-09-27 (RD-98) y
   aclarada el 2026-09-28 (RD-111); **aprobada** en el PR #77 (revisión APPROVED de HingusPingus del
   2026-09-28, registrada después del merge; RD-112)
 
@@ -134,7 +134,7 @@ Estos cuatro se verifican en **toda** tarea, no solo donde se mencionan:
 
 | Inv | Regla | Cómo falla la revisión |
 |---|---|---|
-| **INV-1** | Cero cómputo pesado en el request path (FR-003, Principio III) | La API importa `engine/`, o lee Postgres en el **camino normal** (acierto de caché). Admitido: repoblado acotado de `filters:` y `retired:` ante **miss de esa clave** —respaldo degradado sobre datos materializados que el Principio III permite— y la escritura de declaración (T053). *(Precisado 2026-09-27: la regla anterior, «abre conexión a Postgres fuera de health», volvía imposibles T053 y el repoblado de `data-model.md` §3.1.1)* |
+| **INV-1** | Cero cómputo pesado en el request path (FR-003, Principio III) | La API importa `engine/`, o lee Postgres en el **camino normal** (acierto de caché). Admitido: repoblado acotado de `filters:` y `retired:` ante **miss de esa clave** —respaldo degradado sobre datos materializados que el Principio III permite— y la escritura de declaración (T053); desde la enmienda v1.2.0, la consulta de la recepción de una baja por `event_id` (T077, RD-117). *(Precisado 2026-09-27: la regla anterior, «abre conexión a Postgres fuera de health», volvía imposibles T053 y el repoblado de `data-model.md` §3.1.1)* |
 | **INV-2** | Redis nunca es fuente de verdad (FR-065) | Existe un dato solo recuperable desde Redis |
 | **INV-3** | Edad y exclusión no admiten bypass (FR-049→FR-055) | Existe una ruta de datos hacia la respuesta que no atraviesa ambos filtros |
 | **INV-4** | Sin acceso a DB de otros repos (Principio I) | Cualquier credencial o driver apuntando fuera de DB Recomendaciones |
@@ -1954,6 +1954,8 @@ repo necesita.
       cumple la aplicación web y aquí solo se verifica su efecto (rechazo en la ingesta, SC-028)
 - [X] Señala cuál es la dependencia de mayor severidad y por qué: **DEP-10** es la única cuyo
       incumplimiento deja al sistema **sin ningún usuario atendible**, por encadenamiento con FR-088
+      *(Precisado el 2026-10-05, RD-118: la severidad es por alcance —un módulo entero—, no por
+      exclusividad. DEP-11 deja sin servicio a una cohorte, y el documento ahora lo dice)*
 - [X] Declara explícitamente que la fuente de verdad del contrato es `api-general`
 - [X] Está enlazado desde el README y desde los contract tests
 
@@ -2752,7 +2754,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] **Matriz de trazabilidad ítem → evidencia completa** en `docs/validation/traceability-matrix.md`;
       ningún ítem marcado sin evidencia concreta (T048)
 - [X] `test_traceability.py` en verde: toda evidencia referenciada existe (T048)
-- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111)
+- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111) — *la v1.2.0 (RD-117) está pendiente de aprobación y bloquea el merge de T077*
 - [X] Valores cargados: `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
       `diversity_max_cluster_share` = 0,4, `recompute_requests_maxlen` = 100 000 (RD-108), y
       `event_redelivery_window_hours` copiado del broker real (RD-110)
@@ -3057,7 +3059,7 @@ Exenta de TDD: es documentación.
 - [X] T074 [TDD] Registrar la recepción del evento de baja con `event_id` y `received_at` antes de la supresión, en `src/recomendaciones/worker/suppression.py` per FR-095b, FR-080c (missing)
 - [X] T075 [TDD] Medir el lag de recepción y alertar pasados 15 minutos, en `ops/alerts.yaml` per FR-095b (missing)
 - [X] T076 [TDD] Consumir `recomendacion.actualizar.v3` desde su exchange propio y exigir sus headers AMQP, en `src/recomendaciones/worker/topology.py` per FR-009, FR-012, RD-116 (contradicts)
-- [ ] T077 [TDD] Exponer `GET /internal/v1/deletion-receipts/{event_id}` para el job de `api-general` per FR-095b, RD-115 (missing) — **bloqueada**: decisión de gobernanza (Principio III) y contrato
+- [ ] T077 [TDD] Exponer `GET /internal/v1/deletion-receipts/{event_id}` para el job de `api-general` per FR-095c, RD-117 (missing) — **implementada; no se fusiona** hasta aprobar la enmienda v1.2.0 y publicar el contrato en `api-general`
 
 ### T074 [TDD] — Recepción del evento de baja como checkpoint de entrega
 
@@ -3122,23 +3124,37 @@ propuesta restaba series con labels distintos y nunca disparaba; el verde usa `s
 
 ---
 
-### T077 [TDD] — Consulta de la recepción para `api-general` *(bloqueada)*
+### T077 [TDD] — Consulta de la recepción para `api-general` *(implementada, sin fusionar)*
 
-**Requisitos**: FR-095b, Principio III
+**Requisitos**: FR-095c, FR-095b, Principio III (enmienda v1.2.0), RD-117
+
+**Archivos**: `src/recomendaciones/api/routes/recepciones.py`, `src/recomendaciones/api/services/recepcion.py`,
+`src/recomendaciones/storage/db/receipts.py`, `contracts/recomendaciones-api.openapi.yaml` (1.1.0)
 
 **Descripción**: el job `DeletionReceiptCheckpointPoller` de `api-general` consulta
 `GET /internal/v1/deletion-receipts/{event_id}` y espera `200` con `event_id` y `received_at`, o `404` si todavía
 no hay recepción. Responder exige leer `user_suppressions` en Postgres desde un proceso alcanzable por
 `api-general`.
 
-**Bloqueo**: el Principio III limita la API a «Redis y nada más» y su única excepción no se extiende por analogía.
-Hace falta elegir entre enmendar la constitución, servir la consulta desde otro proceso o leer una copia en Redis
-(RD-115). Además hay que acordar la credencial: `api-general` usa una clave propia y la API acepta una sola por
-entorno. Después, el endpoint entra primero al contrato `recomendaciones-api.openapi.yaml` en `api-general`
-(Principio II).
+**Decisión** (RD-117): la API la sirve, como excepción de lectura del Principio III, con la API key interna normal.
 
-**Criterios de aceptación** *(a fijar con la decisión)*:
-- [ ] `200` con `event_id` y `received_at` (y opcionalmente el estado de la supresión), sin ningún dato del usuario
-- [ ] `404` mientras no haya recepción registrada para ese `event_id`
-- [ ] Autenticación acordada con `api-general`
-- [ ] Contrato publicado en `api-general` antes de implementarlo
+**Criterios de aceptación**:
+- [X] `200` con `event_id`, `received_at` y `suppression_state`, sin ningún dato del usuario
+- [X] `404 receipt_not_found` mientras no haya recepción registrada para ese `event_id`
+- [X] `503 receipts_unavailable` reintentable con la base caída, nunca `404`
+- [X] API key interna normal; `401` sin ella y `422` si `event_id` no es UUID
+- [X] Una fila por clave y sin Redis; la API solo llega a Postgres por `storage.db.receipts` (INV-1)
+- [ ] **Enmienda v1.2.0 de la constitución aprobada por PR** (excepción de lectura del Principio III)
+- [ ] Contrato 1.1.0 publicado en `api-general` (Principio II) y su `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`
+      configurada con la clave interna del entorno
+      > *Estado al 2026-10-05 (RD-118)*: publicada en `api-general` (commit `83e6b59`), pero sin `422`, `503`, el
+      > cuerpo del `404`, `receipt_not_found`, `receipts_unavailable` ni `/health`; se le pidió que los sume. La
+      > clave está documentada en su spec (FR-028) con el mismo valor que `RECO_INTERNAL_API_KEY`; cargarla es su
+      > T056, abierta hasta que haya entornos.
+      > *Al 2026-10-06 (RD-119)*: `3f4ceab` agregó todo lo pedido y su contrato quedó normativamente igual al
+      > nuestro, pero lo rotulan «corrección local no publicada». Falta que confirmen la publicación.
+      > *Al 2026-10-06 (RD-121)*: **contrato publicado**. `0a2a1b6` lo marca `publicado-en-main` y la copia de este
+      > repositorio es literal. Falta solo la clave, que espera entornos (su T056).
+
+**🔴 Paso 1 — Rojo**: `tests/contract/test_deletion_receipt.py`, el gate y la conformidad (commit `31e406b`).
+**🟢 Paso 2 — Verde**: commit `c7eec50`.

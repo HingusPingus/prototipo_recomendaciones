@@ -247,8 +247,9 @@ Registrada en RD-115. **Agrega alcance**: el checkpoint no existía.
 - **FR-080c**: «Redis primero» rige las operaciones que **borran o reemplazan** datos en ambos
   almacenes; registrar la recepción no es una de ellas.
 - **DEP-12**: suma el límite de entrega propuesto.
-- **Sin decidir**: el endpoint de consulta de la recepción que usa `api-general`. Leería Postgres desde
-  la API, fuera de los casos que admite el Principio III (RD-115).
+- **FR-095c** (nuevo, RD-117): la API expone a `api-general` la consulta de la recepción por identificador
+  de evento. Exige leer Postgres desde la API, así que queda **sujeto a la enmienda v1.2.0** de la
+  constitución (excepción de lectura del Principio III). Usa la API key interna normal.
 
 ## Dependencias Externas Bloqueantes
 
@@ -890,6 +891,17 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   > Agregado el 2026-10-05 (RD-115). El límite incluye el outbox de `api-general` y el broker, que este
   > servicio no controla: lo que garantiza es medirlo y avisar. El acuse del broker al publicador no sirve
   > de checkpoint, porque solo prueba que el broker aceptó el mensaje.
+- **FR-095c**: La API MUST exponer a `api-general`, con la API key interna del entorno (FR-007), la consulta
+  de la recepción de FR-095b por identificador de evento. Con recepción registrada, MUST responder el
+  identificador, la marca de recepción y el estado de la supresión, y MUST NOT devolver ningún dato del
+  usuario (FR-095). Sin recepción registrada, MUST responder «no encontrada». Si las constancias no se pueden
+  leer, MUST responder un error reintentable y MUST NOT responder «no encontrada», porque quien consulta lo
+  leería como un evento que no llegó. La consulta MUST leer como máximo una fila por clave y MUST NOT
+  depender de Redis.
+  > Agregado el 2026-10-05 (RD-117). Es la excepción de lectura del Principio III que propone la enmienda
+  > v1.2.0 de la constitución: **sujeto a su aprobación**. Hasta entonces se desarrolla y prueba, pero no se
+  > fusiona. Si llegara una segunda baja del mismo usuario, la consulta por su `event_id` respondería «no
+  > encontrada», porque FR-095b conserva la primera recepción.
 - **FR-029e**: Las señales MUST almacenarse **en este repositorio** como hechos inmutables. Una
   transición de estado MUST registrarse como un hecho nuevo y MUST NOT modificar ni reemplazar el
   registro anterior. La obligación recae sobre este servicio: el origen MAY almacenar estado, y la

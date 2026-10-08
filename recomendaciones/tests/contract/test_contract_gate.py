@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import sqlalchemy as sa
 import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
@@ -184,6 +185,7 @@ def _response_validator(spec: dict[str, Any], path: str, method: str, status: in
 
 READ = "/internal/v1/recommendations/{user_id}"
 DECLARE = "/internal/v1/declarations/{user_id}"
+RECEIPT = "/internal/v1/deletion-receipts/{event_id}"  # T077
 
 
 def _declared(db_factory, modules=("peliculas", "juegos"), ordinal: int = 2) -> uuid.UUID:
@@ -279,12 +281,33 @@ def test_every_declaration_response_validates_against_the_published_openapi(api,
         _response_validator(spec, DECLARE, "post", status).validate(response.json())
 
 
+def test_every_receipt_response_validates_against_the_published_openapi(api, db_factory) -> None:
+    client, _ = api
+    spec = _yaml("recomendaciones-api.openapi.yaml")
+    event = uuid.uuid4()
+    with db_factory.begin() as s:
+        s.execute(
+            sa.text(
+                "INSERT INTO user_suppressions (user_id, requested_at, state, attempts, event_id, received_at) "
+                "VALUES (:u, now(), 'in_progress', 0, :e, now())"
+            ),
+            {"u": uuid.uuid4(), "e": event},
+        )
+    cases = [
+        (client.get(f"/internal/v1/deletion-receipts/{event}", headers=HEADERS), 200),
+        (client.get(f"/internal/v1/deletion-receipts/{uuid.uuid4()}", headers=HEADERS), 404),
+    ]
+    for response, status in cases:
+        assert response.status_code == status, (status, response.text)
+        _response_validator(spec, RECEIPT, "get", status).validate(response.json())
+
+
 def test_every_exposed_operation_is_exercised_by_this_gate() -> None:
     """SC-013: el 100 % de los endpoints expuestos pasa la validación; ninguno queda fuera de la suite."""
     spec = _yaml("recomendaciones-api.openapi.yaml")
     exposed = {(path, method) for path, ops in spec["paths"].items() for method in ops if method in ("get", "post", "put", "delete", "patch")}
     health = {(p, m) for p, m in exposed if p.startswith("/health")}
-    assert exposed - health == {(READ, "get"), (DECLARE, "post")}  # salud la cubre T041 contra el mismo schema
+    assert exposed - health == {(READ, "get"), (DECLARE, "post"), (RECEIPT, "get")}  # salud la cubre T041 contra el mismo schema
 
 
 # --- Dependencias externas vigentes ---------------------------------------------------------------------------

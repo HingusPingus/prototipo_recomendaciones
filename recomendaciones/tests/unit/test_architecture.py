@@ -18,11 +18,13 @@ import recomendaciones
 SRC_ROOT = Path(recomendaciones.__file__).parent
 PKG = "recomendaciones"
 
-# INV-1: la API solo toca Postgres por tres caminos admitidos (repoblado de `filters:` y de
-# `retired:` ante miss de esa clave, y escritura de la declaración, T053). Estos son sus módulos.
+# INV-1: la API solo toca Postgres por los caminos admitidos (repoblado de `filters:` y de `retired:` ante miss
+# de esa clave, escritura de la declaración, T053, y consulta de la recepción de una baja, T077, excepción de
+# lectura de la constitución v1.2.0). Estos son sus módulos.
 API_ALLOWED_DB_MODULES = {
     f"{PKG}.storage.db.filters_source",  # repoblado de filters: y retired: ante miss
     f"{PKG}.storage.db.declarations",  # escritura de la declaración (T053)
+    f"{PKG}.storage.db.receipts",  # consulta de la recepción de una baja (T077, Principio III v1.2.0)
     f"{PKG}.storage.db.session",
     f"{PKG}.storage.db.models",
 }

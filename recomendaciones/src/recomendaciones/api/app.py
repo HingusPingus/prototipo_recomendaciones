@@ -16,6 +16,7 @@ from recomendaciones.api.deps import require_api_key
 from recomendaciones.api.errors import install_error_handlers
 from recomendaciones.api.services.declaracion import DeclarationService
 from recomendaciones.api.services.read_service import ReadService
+from recomendaciones.api.services.recepcion import ReceiptService
 from recomendaciones.config.loader import (
     EngineConfig,
     age_compatible_versions,
@@ -34,6 +35,7 @@ from recomendaciones.storage.cache.repository import RecommendationRepository
 from recomendaciones.storage.cache.ttl import CacheTTLs
 from recomendaciones.storage.db.declarations import DeclarationRepository
 from recomendaciones.storage.db.filters_source import DbFiltersSource
+from recomendaciones.storage.db.receipts import ReceiptRepository
 from recomendaciones.storage.db.session import SessionFactory, create_db_engine, session_factory
 
 
@@ -53,6 +55,7 @@ class ApiServices:
     readable_versions: tuple[str, ...]
     metrics: Metrics = field(default_factory=Metrics)
     extras: dict[str, object] = field(default_factory=dict)
+    receipt_service: ReceiptService | None = None  # T077, excepción de lectura del Principio III
 
 
 def build_services(
@@ -106,11 +109,12 @@ def build_services(
         declaration_service,
         readable,
         metrics,
+        receipt_service=ReceiptService(factory, ReceiptRepository()),
     )
 
 
 def create_app(settings: Settings, services: ApiServices | None = None) -> FastAPI:
-    from recomendaciones.api.routes import declaraciones, health, recommendations
+    from recomendaciones.api.routes import declaraciones, health, recepciones, recommendations
 
     services = services or build_services(settings)
     app = FastAPI(
@@ -138,4 +142,5 @@ def create_app(settings: Settings, services: ApiServices | None = None) -> FastA
     app.include_router(health.router)  # única superficie pública (FR-060)
     app.include_router(recommendations.router, dependencies=[Depends(require_api_key)])
     app.include_router(declaraciones.router, dependencies=[Depends(require_api_key)])
+    app.include_router(recepciones.router, dependencies=[Depends(require_api_key)])
     return app
