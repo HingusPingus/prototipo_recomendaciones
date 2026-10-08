@@ -4944,6 +4944,15 @@ con qué vhost y con qué permisos, y quién opera el broker.
 6. **`event_version` exactamente `3.0.0`**: el worker compara el valor fijo del schema, no la versión mayor.
    `migracion-v3.md` decía «versión mayor 3» y se corrige; `api-general` publica `3.0.0`.
 
+**Ratificación del 2026-10-08**, firmada por dos integrantes con nombre y verificada contra `api-general` `3d1a3ba`:
+- **v2**: queda apagado (`RECOMMENDATIONS_OUTBOX_V2_ENABLED=false`) y **nadie crea** `recomendacion.actualizar`. Para
+  activar la publicación alcanza con `RECOMMENDATIONS_OUTBOX_ENABLED=true`, en orden: worker, prueba de humo y recién
+  después la publicación. La observación previa, que exigía el v2, se basaba en la rama `notis`.
+- **Permisos de `api-general` en su `main` actual**: solo `write` sobre
+  `^(recomendacion\.actualizar\.v3|usuario\.eliminado)$`. Su `main` solo publica (`OutboxPublisher`): no declara ni
+  consume nada. Los permisos de `reporte.*` y `amq.default` de la tabla corresponden a la rama `notis`, y se aplican
+  cuando se fusione. Si al fusionarla se pierde la versión de `main` de `OutboxProperties`, vuelve a exigirse el v2.
+
 **Queda en `api-general`**: el v2 no tiene consumidor. Con `mandatory`, aunque alguien creara el exchange, cada v2
 sin cola ligada vuelve y se reintenta sin fin. Se le pidió resolverlo antes de activar la publicación.
 
