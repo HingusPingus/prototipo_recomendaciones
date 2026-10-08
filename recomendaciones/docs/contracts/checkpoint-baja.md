@@ -113,7 +113,15 @@ X-Internal-API-Key: <entorno>.<secreto>
 
 200 {"event_id": "…", "received_at": "2026-…Z", "suppression_state": "in_progress|completed|failed"}
 404 recepción no registrada
+422 event_id no es un UUID
+503 receipts_unavailable, con Retry-After: la base no responde; reintentar
 ```
+
+**`Retry-After` del `503` (compromiso, 2026-10-08)**: entero en segundos (*delta-seconds*), nunca una fecha
+HTTP, **entre 1 y 60**. Hoy vale siempre 5. Un valor fuera de ese rango es un defecto de este lado, y lo
+detecta `tests/contract/test_deletion_receipt.py`. `api-general` acota lo recibido a 300 segundos
+(`RECOMMENDATIONS_DELETION_RECEIPT_RETRY_AFTER_MAX_SECONDS`), así que un valor anómalo no demora la
+consulta más allá del límite de 15 minutos.
 
 No devuelve `user_id` ni ningún otro dato del usuario. Del lado de `api-general`, un job periódico
 recorre los eventos `usuario.eliminado` en estado `PUBLICADO` que todavía no tienen recepción confirmada:

@@ -72,7 +72,9 @@ def test_database_unavailable_is_a_retryable_503(api, monkeypatch) -> None:  # n
     response = client.get(f"/internal/v1/deletion-receipts/{uuid.uuid4()}", headers=HEADERS)
     assert response.status_code == 503
     assert response.json()["error"] == "receipts_unavailable"
-    assert response.headers.get("Retry-After")
+    # Compromiso con `api-general` (checkpoint-baja.md, 2026-10-08): delta-seconds entero, entre 1 y 60.
+    retry_after = response.headers.get("Retry-After", "")
+    assert retry_after.isdigit() and 1 <= int(retry_after) <= 60, retry_after
 
 
 def test_does_not_touch_redis(api, db_factory, monkeypatch) -> None:  # noqa: ANN001
