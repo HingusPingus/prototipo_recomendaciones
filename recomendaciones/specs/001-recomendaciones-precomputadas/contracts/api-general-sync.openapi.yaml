@@ -25,6 +25,11 @@ paths:
     get:
       operationId: listSyncUsers
       summary: Proyección paginada de usuarios
+      description: |
+        Incluye solo usuarios con perfil de sincronización explícitamente verificado y con fecha de
+        nacimiento/región válidas. Los perfiles no verificados o incompletos se omiten, no producen
+        503 para el resto del listado, y su ausencia no significa baja; las bajas se comunican con
+        `usuario.eliminado`.
       parameters:
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageToken'
@@ -54,7 +59,8 @@ paths:
         Todas las páginas de una pasada comparten snapshot_id y total. Una lectura solo es completa
         si se obtuvieron todas las páginas del mismo snapshot, la última tiene next_page_token nulo
         y la cantidad acumulada coincide con total. Un recorrido truncado o inconsistente no permite
-        marcar ausencias como retiros.
+        marcar ausencias como retiros. El mínimo operativo de cinco tags elegibles por módulo se
+        controla con el verificador/alerta de readiness y no bloquea este endpoint por sí solo.
       parameters:
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageToken'
@@ -93,6 +99,7 @@ paths:
           in: query
           required: false
           schema: { type: string, format: date-time }
+          description: Si se omite, incluye todos los hechos con procedencia verificable; si se indica, el límite es inclusivo.
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/PageToken'
       responses:
@@ -158,6 +165,7 @@ components:
       type: object
       additionalProperties: false
       required: [id, birth_date, region]
+      description: Perfil explícitamente verificado; los perfiles incompletos se omiten del snapshot y la ausencia no representa una baja.
       properties:
         id: { type: string, format: uuid }
         birth_date:

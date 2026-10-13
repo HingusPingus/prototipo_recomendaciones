@@ -2,15 +2,45 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.recome.internal/events/usuario.eliminado/1.0.0",
   "title": "usuario.eliminado",
-  "description": "Propuesta derivada (T049, CR-19, DEP-12). Nombre propuesto; el nombre y el schema definitivos los fija api-general PRIMERO (Principio II, RD-101). Dispara la supresión a pedido (FR-091a). Debe publicarse en api-general antes de implementar T058 (RD-111).",
-  "x-contract-origin": {"status": "propuesta-no-publicada", "drafted": "2026-09-28", "source": "specs/001-recomendaciones-precomputadas (T049)"},
+  "description": "Contrato local no publicado formalmente de nuevo evento de baja lógica (aditivo; no reemplaza otro evento vigente identificado). Notificaciones reportó aprobación de su exchange fanout durable y del schema 1.0.0 el 2026-10-06; faltan adjuntar la respuesta primaria, firmante y canal. La fecha de publicación y el límite/checkpoint de entrega son acuerdos operativos aún no registrados.",
+  "x-change-classification": "compatible-additive-new-event",
+  "x-change-reason": "Comunicar explícitamente la baja lógica para que el consumidor suprima datos, sin inferirla a partir de ausencias en sincronizaciones.",
+  "x-event-type": "usuario.eliminado",
+  "x-event-version": "1.0.0",
+  "x-contract-origin": {
+    "status": "aprobacion-reportada-no-publicada",
+    "drafted": "2026-09-28",
+    "schema_version": "1.0.0"
+  },
+  "x-amqp-transport": {
+    "exchange": {
+      "name": "usuario.eliminado",
+      "type": "fanout",
+      "durable": true,
+      "status": "aprobacion-reportada",
+      "approval_reported_date": "2026-10-06"
+    },
+    "messageId": {"required": true, "source": "event_id"},
+    "headers": {
+      "event_type": {"required": true, "value": "usuario.eliminado"},
+      "event_version": {"required": true, "value": "1.0.0"}
+    }
+  },
   "type": "object",
+  "additionalProperties": true,
   "required": ["event_id", "user_id", "occurred_at"],
   "properties": {
-    "event_id": {"type": "string", "format": "uuid", "description": "Identificador único del evento: idempotencia (FR-091a)"},
-    "user_id": {"type": "string", "format": "uuid"},
-    "occurred_at": {"type": "string", "format": "date-time", "description": "Marca temporal de la baja según el origen (user_suppressions.requested_at)"},
-    "correlation_id": {"type": "string"}
-  },
-  "additionalProperties": true
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identidad de evento, persistida y estable durante todos los reintentos."
+    },
+    "user_id": { "type": "string", "format": "uuid" },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Instante de confirmación de la baja lógica, con zona horaria."
+    },
+    "correlation_id": { "type": "string" }
+  }
 }

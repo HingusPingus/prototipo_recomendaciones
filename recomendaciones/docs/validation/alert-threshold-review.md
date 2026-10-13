@@ -75,11 +75,11 @@ automatizar.
   - **Decisión**: ☑ aprobada (2026-10-01)
 
 - [x] **RedisUnavailable503** · crítica · dueño `guardia-de-plataforma`
-  - **Condición**: `sum(rate(reco_unavailable_responses_total[5m])) > 0.1` durante `5m`
+  - **Condición**: `sum(rate(reco_unavailable_responses_total{error=~"cache_unavailable|filters_unavailable"}[5m])) > 0.1` durante `5m`
   - **Qué avisa**: La API responde 503 por caché o filtros no disponibles
   - **Justificación actual**: Redis caído no es un modo degradado: la API responde 503 y no sirve nada (FR-065). Más de 6 respuestas 503 por minuto durante 5 minutos excluye un reinicio breve de Redis y significa que api-general no está recibiendo recomendaciones.
   - **A tener en cuenta**: 0,1 respuestas 503 por segundo durante 5 minutos son unas 30 respuestas fallidas.
-  - **Decisión**: ☑ aprobada (2026-10-01)
+  - **Decisión**: ☑ aprobada (2026-10-01). *Acotada el 2026-10-06 sin cambiar el umbral: solo cuenta `cache_unavailable` y `filters_unavailable`. El `503 receipts_unavailable` de la consulta de recepciones (T077) es Postgres, no Redis.*
 
 - [x] **HitRateDrop** · warning · dueño `guardia-de-plataforma`
   - **Condición**: `sum(rate(reco_cache_hits_total{result_type="personalized"}[15m])) / sum(rate(reco_cache_hits_total[15m])) < 0.5` durante `30m`

@@ -98,7 +98,11 @@ def test_results_are_written_per_config_version_and_computed_at_per_row(db_facto
     with db_factory.begin() as s:
         item = seed.item(s, "juegos", ["rpg"])
         s.execute(sa.text("INSERT INTO engine_config_versions VALUES ('sha256:vieja', '{}', now(), now())"))
-        s.execute(sa.text("INSERT INTO item_popularity VALUES (:i, 'sha256:vieja', 1, 2, 0.1, now() - interval '9 days')"), {"i": item})
+        # Relativa al reloj del job (NOW), no al de la base: con `now()` el test caducaba a los 9 días de NOW.
+        s.execute(
+            sa.text("INSERT INTO item_popularity VALUES (:i, 'sha256:vieja', 1, 2, 0.1, :viejo)"),
+            {"i": item, "viejo": NOW - timedelta(days=9)},
+        )
     _job(db_factory).run()
     with db_factory() as s:
         rows = dict(s.execute(sa.text("SELECT config_version, computed_at FROM item_popularity WHERE item_id = :i"), {"i": item}).all())

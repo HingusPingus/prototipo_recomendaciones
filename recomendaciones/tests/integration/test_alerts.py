@@ -231,6 +231,31 @@ def test_promtool_validates_the_rule_file(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+def test_redis_unavailable_counts_only_cache_and_filters() -> None:
+    """La consulta de recepciones (T077) también responde 503, pero por Postgres: contarla haría que una caída de
+    la base disparara una alerta que dice «Redis caído» y mandara a la guardia a mirar el componente equivocado."""
+    assert _rule("RedisUnavailable503")["expr"] == (
+        'sum(rate(reco_unavailable_responses_total{error=~"cache_unavailable|filters_unavailable"}[5m])) > 0.1'
+    )
+
+
+def test_promtool_receipts_unavailable_does_not_fire_redis_alert(tmp_path: Path) -> None:
+    (tmp_path / "alerts.yaml").write_text(ALERTS.read_text(encoding="utf-8"), encoding="utf-8")
+    series = [{"series": 'reco_unavailable_responses_total{error="receipts_unavailable"}', "values": "0+60x40"}]
+    test = {"interval": "1m", "input_series": series, "alert_rule_test": [{"eval_time": "30m", "alertname": "RedisUnavailable503", "exp_alerts": []}]}
+    path = tmp_path / "alerts.test.yaml"
+    path.write_text(yaml.safe_dump({"rule_files": ["alerts.yaml"], "evaluation_interval": "1m", "tests": [test]}), encoding="utf-8")
+    _readable(tmp_path)
+    proc = subprocess.run(
+        ["docker", "run", "--rm", "--entrypoint", "promtool", "-v", f"{tmp_path}:/t", PROMETHEUS, "test", "rules", "/t/alerts.test.yaml"],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,  # se inspecciona returncode para mostrar la salida de promtool
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
 # --- Nivel 2: cadena viva -------------------------------------------------------------------------
 
 

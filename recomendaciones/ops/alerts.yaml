@@ -100,7 +100,7 @@ groups:
   - name: recomendaciones.api
     rules:
       - alert: RedisUnavailable503
-        expr: sum(rate(reco_unavailable_responses_total[5m])) > 0.1
+        expr: sum(rate(reco_unavailable_responses_total{error=~"cache_unavailable|filters_unavailable"}[5m])) > 0.1
         for: 5m
         labels: {severity: critical, owner: guardia-de-plataforma}
         annotations:

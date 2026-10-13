@@ -40,7 +40,7 @@ def _rows() -> dict[str, list[str]]:
 
 def test_every_requirement_of_the_spec_has_a_row_with_a_task() -> None:
     requirements, rows = _spec_requirements(), _rows()
-    assert len(requirements) == 168, f"se esperaban 168 FR en spec.md, hay {len(requirements)}"  # FR-095b (RD-115)
+    assert len(requirements) == 169, f"se esperaban 169 FR en spec.md, hay {len(requirements)}"  # FR-095b y FR-095c
     assert not sorted(requirements - set(rows)), f"FR sin fila: {sorted(requirements - set(rows))}"
     assert not sorted(set(rows) - requirements), f"filas de FR inexistentes: {sorted(set(rows) - requirements)}"
     assert all(re.search(r"T\d{3}", cells[1]) for cells in rows.values()), "fila sin tarea"

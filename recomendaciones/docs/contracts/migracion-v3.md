@@ -87,10 +87,12 @@ Siguiendo TDD: primero los tests, en un commit propio, y después la implementac
 3. **Schema.** Reemplazar nuestra copia por la publicada, `recomendacion-actualizar-v3.schema.json`
    (3.0.0), idéntica en `specs/001-recomendaciones-precomputadas/contracts/` y en `worker/contracts/`. El
    test de copias idénticas ya lo verifica.
-4. **Chequeo de headers.** Si llega `event_type` y no es `recomendacion.actualizar.v3`, o `event_version`
-   no es de la versión mayor 3, el mensaje va a la DLQ con una causa explícita (`evento de otra versión`).
-   Si el header no viene, se valida solo por el schema, porque hoy el contrato no lo exige. Con la opción A
-   esto no debería ocurrir nunca: es la red para un error de configuración.
+4. **Chequeo de headers.** Si `event_type` no es exactamente `recomendacion.actualizar.v3`, o `event_version`
+   no es exactamente `3.0.0`, el mensaje va a la DLQ con la causa `invalid_payload` y el detalle del header
+   (`event_version: se esperaba '3.0.0' y llegó …`). Si el header falta, también va a la DLQ: el contrato v3 lo
+   exige (`x-amqp-transport`). Con la opción A esto no debería ocurrir nunca: es la red para un error de
+   configuración. *(Corregido el 2026-10-06, RD-120: decía «versión mayor 3», causa «evento de otra versión», y
+   que sin header se validaba solo por el schema. Nunca fue así en el código.)*
 5. **Tests.** Se ajustan los del consumidor, la topología y el gate de contratos. Se agregan dos:
    - un mensaje v2 publicado en `recomendacion.actualizar` **no llega** a nuestra cola;
    - un mensaje con `event_type` de v2 que llegue a nuestra cola va a la DLQ con la causa de versión.
@@ -122,3 +124,5 @@ En staging, con la cola del worker ligada al exchange nuevo:
    coordinamos la cola con `notificaciones`.
 
 El retiro de v2 no nos afecta: como no lo consumimos, puede deprecarse cuando lo decidan sus consumidores.
+*(Al 2026-10-06, RD-120: no se conoce ningún consumidor de v2, y `api-general` lo reintentaría sin fin si activa la
+publicación. Se le pidió resolverlo.)*

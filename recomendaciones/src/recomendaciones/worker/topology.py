@@ -1,7 +1,7 @@
 """Topología RabbitMQ del consumidor: un exchange/cola por tipo de evento (constitución, Restricciones).
 
-El broker lo opera `notificaciones`; los nombres definitivos se acuerdan con ese repo y con
-`api-general`. Las declaraciones son idempotentes y durables.
+El broker lo opera `notificaciones`; los nombres, los permisos y el vhost por entorno, sin prefijo, están
+acordados con ese repo y con `api-general` (RD-120). Las declaraciones son idempotentes y durables.
 
 Convención del broker (RD-110): colas **quorum** —requisito de RabbitMQ para `x-delivery-limit`— con
 `x-message-ttl` y dead-letter. La cola principal la sigue:

@@ -58,6 +58,25 @@ def test_http_errors_become_typed_errors(status: int, error: type) -> None:
         client.list_users()
 
 
+@pytest.mark.parametrize("status", [500, 503])
+def test_http_error_names_the_listing_that_failed(status: int) -> None:
+    """`api-general` responde 503 a un listado entero por un solo dato (RD-119): la guardia lee `failure_reason`
+    en `sync_runs` y necesita saber si fue usuarios, catálogo o actividad."""
+    transport = httpx.MockTransport(lambda request: httpx.Response(status, json={}))
+    client = ApiGeneralClient("http://x", KEY, timeout_seconds=1, transport=transport)
+    with pytest.raises(UpstreamError) as caught:
+        client.list_catalog()
+    assert "/internal/v1/sync/catalog/items" in caught.value.message
+
+
+def test_first_run_omits_since_instead_of_sending_it_empty_or_invented() -> None:
+    """El contrato declara `since` opcional: sin marca de agua no se manda, ni vacío ni con una fecha inventada
+    para esquivar el `500` de `api-general` con `since` nulo (RD-119)."""
+    double = ApiGeneralDouble(api_key=KEY)
+    _client(double).list_activity(None)
+    assert "since" not in double.requests[0].url.params
+
+
 def test_connection_failure_is_upstream_unavailable() -> None:
     double = ApiGeneralDouble(api_key=KEY, down=True)
     with pytest.raises(UpstreamUnavailable):

@@ -23,10 +23,18 @@ interrumpió.
 **Acción**: `api-general no disponible` → verificar su salud y reintentar (`reco-transformer`); `listado
 no confirmado completo` o `volumen anómalo` → ver [SyncVolumeDrop](#syncvolumedrop); violaciones de
 contrato → ver [ContractViolationRegion](#contractviolationregion).
-Si `api-general` responde **503 en `/internal/v1/sync/catalog/items`** con su salud en orden, la causa más
-probable es su propia validación: rechaza el catálogo entero si un ítem incluido no tiene tags elegibles o tiene
-una clasificación fuera de `ATP`, `+13`, `+18`. No se arregla de este lado: escalar a `api-general` con la hora
-de la corrida, para que corrija el ítem y corra su verificador de preparación.
+`failure_reason` nombra el listado que falló. Con la salud de `api-general` en orden, la causa conocida es una
+validación suya que rechaza el catálogo entero por un solo dato. Como la corrida es todo o nada, detiene también
+los otros dos listados:
+- **503 en `/internal/v1/sync/catalog/items`**: un ítem **activo** sin tags elegibles del módulo correcto, con un
+  tag elegible de nombre vacío o con una clasificación fuera de `ATP`, `+13`, `+18`. Los retirados no bloquean
+  (RD-118). El mínimo de 5 tags por módulo ya no la bloquea (RD-121): lo avisa `DeclarableTagsBelowMinimum`.
+
+Desde `0a2a1b6` (RD-121) los usuarios sin perfil verificado se omiten en vez de bloquear el listado, y la
+actividad sin `since` responde bien.
+
+Nada de esto se arregla de este lado: escalar a `api-general` con la hora de la corrida y el `failure_reason`,
+para que corrija el dato y corra su verificador de preparación.
 
 ### PopularityStale
 **Qué significa**: la popularidad no se recalcula hace más de 26 h; el respaldo sirve un ranking congelado.
@@ -328,8 +336,8 @@ Los perfiles de usuario se reconstruyen bajo la versión nueva en su próximo re
 reproceso es **seguro** de repetir: el worker deduplica por `event_id` y la señal por
 `origin_interaction_id`.
 
-Colas (prefijo según entorno): `recomendaciones.recomendacion-actualizar.dlq` y
-`recomendaciones.usuario-eliminado.dlq`.
+Colas: `recomendaciones.recomendacion-actualizar.dlq` y `recomendaciones.usuario-eliminado.dlq`. No llevan prefijo:
+cada entorno tiene su vhost (RD-120).
 
 1. **Clasificar** por el encabezado `x-dlq-reason` (consola de RabbitMQ → la cola DLQ → *Get messages* con
    *Ack mode: Nack message requeue true*, que no los consume). Los que no lo tienen los mandó el **broker** y
@@ -359,9 +367,10 @@ una cola quorum no se pueden cambiar en caliente**: si cambia alguno de esos dos
 arrancar con `PRECONDITION_FAILED`. Para aplicarlo: detener los workers, esperar que la cola principal quede en
 0, borrarla (`rabbitmqctl delete_queue recomendaciones.recomendacion-actualizar`, y lo mismo con
 `recomendaciones.usuario-eliminado`) y arrancar con el valor nuevo;
-la DLQ no se toca. Mientras tanto `api-general` puede seguir publicando: el exchange sin cola descarta, y la
-sincronización trae esas interacciones en su próxima corrida (los eventos de baja no: hacerlo fuera de horario y con el
-productor de bajas avisado).
+la DLQ no se toca. Mientras tanto `api-general` puede seguir publicando: publica con confirmación y `mandatory`,
+así que lo que no tiene cola vuelve y lo reintenta, sin perderse (RD-120). Las bajas se demoran lo que dure el
+cambio, y si pasa de 15 minutos dispara [DeletionReceiptLate](#deletionreceiptlate): hacerlo fuera de horario y con
+`api-general` avisado.
 
 **Cuánto esperar**: los eventos tienen valor mientras la señal es útil; más allá de
 `RECO_EVENT_REDELIVERY_WINDOW_HOURS` la sincronización ya trajo la misma interacción desde

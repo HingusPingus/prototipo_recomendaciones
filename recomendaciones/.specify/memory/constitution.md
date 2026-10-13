@@ -1,6 +1,22 @@
 <!--
 Sync Impact Report
-- Version change: 1.1.0 → 1.1.1 (PATCH: aclaración de redacción, sin cambio de obligaciones).
+- Version change: 1.1.1 → 1.2.0 (MINOR: excepción acotada de lectura en el Principio III y nombre del
+  evento consumido; ningún principio se elimina ni se redefine de forma incompatible).
+- Modified principles:
+  - III. Cómputo Pesado Fuera del Request Path — se agrega la única excepción de lectura fuera de
+    Redis: la consulta de la constancia de recepción de una baja por su identificador de evento
+    (FR-095c de la feature 001), una fila por clave y sin datos del usuario. La de escritura no cambia.
+  - Alcance, I, II, III y VI: el evento consumido se nombra `recomendacion.actualizar.v3`, el contrato
+    que publica api-general (RD-116 de la feature 001). Sin cambio de obligaciones: es el mismo evento
+    de actualización, en su versión vigente.
+- Added sections: ninguna. Removed sections: ninguna.
+- Templates: plan-template.md, spec-template.md y tasks-template.md no citan estos principios por
+  texto; sin cambios necesarios.
+- Follow-up TODOs: ninguno.
+- Motivo: api-general implementó el checkpoint de entrega del evento de baja (su commit 9137825), que
+  consulta la recepción en este repositorio; responder exige leer Postgres desde la API (RD-115, RD-117).
+
+Historial previo — 1.1.0 → 1.1.1 (PATCH: aclaración de redacción, sin cambio de obligaciones).
 - Modified principles:
   - III. Cómputo Pesado Fuera del Request Path — «todo recálculo ocurre exclusivamente en el worker
     asíncrono disparado por `recomendacion.actualizar`» se leía como si ese evento fuera el único
@@ -36,7 +52,7 @@ Historial previo — 1.0.0 → 1.1.0 (MINOR: excepción acotada al Principio III
 Repositorio: `recomendaciones` (GitHub: `prototipo_recomendaciones`).
 Alcance: API Recomendaciones (Python/FastAPI), DB Recomendaciones (PostgreSQL + pgvector),
 caché Redis, Data Transformer (Python/pandas) y worker asíncrono consumidor de
-`recomendacion.actualizar`. Este documento gobierna solo este repo y queda siempre subordinado
+`recomendacion.actualizar.v3`. Este documento gobierna solo este repo y queda siempre subordinado
 a las reglas cross-repo del sistema RecoMe.
 
 ## Core Principles
@@ -49,7 +65,7 @@ en escritura, bajo ninguna justificación de performance, urgencia o simplicidad
 que otro repo necesite de acá se expone únicamente vía REST documentado o vía eventos de
 RabbitMQ. Simétricamente, `recomendaciones` NUNCA abre conexión directa a la DB General
 (PostgreSQL) ni a la DB Logs (Cassandra) de api-general: todo acceso a datos ajenos ocurre por
-REST contra api-general o por el evento `recomendacion.actualizar`. Las migraciones y el
+REST contra api-general o por el evento `recomendacion.actualizar.v3`. Las migraciones y el
 esquema de la DB Recomendaciones son responsabilidad exclusiva de este repo y pueden evolucionar
 libremente mientras no rompan los contratos publicados; ningún repo externo puede asumir esa
 estructura interna. Este repo tampoco es accesible directamente desde Frontend Usuario ni
@@ -58,7 +74,7 @@ de red debe hacer cumplir esa restricción.
 
 ### II. Contratos Compartidos como Fuente Externa de Verdad (NO NEGOCIABLE)
 
-El JSON Schema del evento `recomendacion.actualizar` y el OpenAPI de todo endpoint que este
+El JSON Schema del evento `recomendacion.actualizar.v3` y el OpenAPI de todo endpoint que este
 repo expone hacia api-general o consume de él viven documentados en api-general, que es la
 fuente única de verdad. Este repo mantiene copias solo como artefactos derivados de
 verificación, nunca como definición autoritativa. Cambiar el nombre, la forma, la semántica o
@@ -73,13 +89,13 @@ eventos y de API son del sistema, no del repo.
 
 ### III. Cómputo Pesado Fuera del Request Path (NO NEGOCIABLE)
 
-La API de Recomendaciones es estrictamente de solo lectura sobre resultados precomputados —con la
-única excepción de escritura que cierra este principio—: en
+La API de Recomendaciones es estrictamente de solo lectura sobre resultados precomputados —con las
+dos excepciones acotadas que cierran este principio, una de escritura y una de lectura—: en
 tiempo de request lee el top-N por usuario y por módulo (películas/juegos) desde Redis y nada
 más. Ningún endpoint puede disparar —ni sincrónicamente, ni "en background del request"— cálculo
 de scoring híbrido, TF-IDF, similitud coseno, vecinos colaborativos, cross-module boost ni
 diversificación MMR. Todo recálculo ocurre exclusivamente en el worker asíncrono —disparado por
-`recomendacion.actualizar` o por las solicitudes internas de recálculo que admiten las Restricciones
+`recomendacion.actualizar.v3` o por las solicitudes internas de recálculo que admiten las Restricciones
 Técnicas—, que deja el resultado ya post-procesado en Redis. Un miss de caché
 se responde de forma degradada y determinística (fallback documentado sobre datos ya
 materializados, respuesta vacía o error controlado) y, si corresponde, señaliza el recálculo por
@@ -93,6 +109,14 @@ resolver lo que se hereda entre módulos y persistirla, con confirmación síncr
 el motor ni ningún cómputo proporcional al catálogo, y MUST delegar el recálculo a la vía
 asíncrona. La excepción no se extiende por analogía: cualquier otra escritura, o un segundo dato de
 autoría local, exige un componente propio o una nueva enmienda.
+
+**Única excepción de lectura fuera de Redis (desde v1.2.0)**: la API expone una consulta de la
+constancia de recepción de un evento de baja de cuenta, por el identificador de ese evento, para que
+api-general verifique que la baja llegó a este repositorio (checkpoint de entrega acordado entre
+repos). Esa consulta MUST leer como máximo una fila por clave de las constancias de supresión, sin
+cómputo ni lectura proporcional a ningún volumen; MUST NOT devolver datos del usuario; y no depende
+de Redis. Como la de escritura, esta excepción no se extiende por analogía: cualquier otra lectura
+fuera de Redis exige una nueva enmienda.
 
 ### IV. Pipeline de Sincronización Unidireccional
 
@@ -129,14 +153,14 @@ Mínimos exigidos para mergear:
   post-procesamiento (edad, exclusión, MMR), incluyendo casos borde: perfil vacío, cold start,
   cold start cruzado, empates de score y catálogo sin candidatos válidos. Deterministas, sin
   red ni dependencias externas.
-- **Integración del worker**: consumo real de `recomendacion.actualizar` contra un broker de
+- **Integración del worker**: consumo real de `recomendacion.actualizar.v3` contra un broker de
   prueba, verificando idempotencia ante duplicados, manejo de mensajes inválidos,
   reintentos/dead-letter y escritura correcta del top-N precomputado en Redis.
 - **Integración del Data Transformer**: sincronización contra un doble de api-general,
   verificando autenticación por API key interna, idempotencia y ausencia total de escrituras
   hacia recursos ajenos.
 - **Contract testing**: validación automatizada de los payloads consumidos/publicados contra el
-  JSON Schema de `recomendacion.actualizar`, y de requests/responses contra los OpenAPI
+  JSON Schema de `recomendacion.actualizar.v3`, y de requests/responses contra los OpenAPI
   documentados en api-general. Corre en CI y su falla bloquea el deploy: una ruptura de
   compatibilidad debe detectarse acá, nunca en producción.
 - **API**: tests que verifiquen que ningún endpoint ejecuta cómputo pesado ni accede a fuentes
@@ -221,4 +245,4 @@ Las violaciones detectadas en producción se tratan como incidentes y requieren 
 priorizada. La guía operativa del día a día vive en el README del repo y en la documentación de
 contratos de api-general.
 
-**Version**: 1.1.1 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-28
+**Version**: 1.2.0 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-10-05
