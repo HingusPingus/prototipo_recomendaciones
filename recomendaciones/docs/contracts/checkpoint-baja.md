@@ -11,8 +11,8 @@ evento de baja» de `contracts/approval.md`.
 > habilitación de `usuario.eliminado` en staging. En su registro la propuesta sigue «sin acuerdo» hasta las
 > conformidades escritas. De nuestro lado, el registro de la recepción, su métrica y su alerta están implementados
 > (RD-115, T074, T075). El endpoint de consulta está implementado con la API key interna normal (RD-117, T077),
-> pero no se fusiona hasta aprobar la enmienda v1.2.0 de la constitución y publicar el contrato 1.1.0 en
-> `api-general`. Para usarlo, `api-general` configura `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY` con la misma clave
+> y sus dos condiciones de merge están cumplidas: la enmienda v1.2.0 de la constitución se aprobó el 2026-10-06 y el
+> contrato 1.1.0 está publicado en `api-general`. Para usarlo, `api-general` configura `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY` con la misma clave
 > interna que usa para llamar a esta API.
 
 ## En corto

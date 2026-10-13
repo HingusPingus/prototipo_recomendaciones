@@ -24,7 +24,7 @@ producción**)
 - [checklists/requirements-contracts.md](./checklists/requirements-contracts.md) — 30/30 resueltos
 - [checklists/requirements-clarify-2026-09-14.md](./checklists/requirements-clarify-2026-09-14.md) —
   **46/46 tildados — cerrado** (los 10 🔴 se cerraron el 2026-09-22)
-- [constitution v1.2.0](../../.specify/memory/constitution.md) — **v1.2.0 propuesta el 2026-10-05 (RD-117), pendiente de aprobación por PR**: excepción de lectura del Principio III para T077. Antes, v1.1.1: enmendada el 2026-09-27 (RD-98) y
+- [constitution v1.2.0](../../.specify/memory/constitution.md) — **v1.2.0 propuesta el 2026-10-05 (RD-117) y aprobada por PR el 2026-10-06** ([revisión](https://github.com/HingusPingus/prototipo_recomendaciones/pull/96#pullrequestreview-5429101769)): excepción de lectura del Principio III para T077. Antes, v1.1.1: enmendada el 2026-09-27 (RD-98) y
   aclarada el 2026-09-28 (RD-111); **aprobada** en el PR #77 (revisión APPROVED de HingusPingus del
   2026-09-28, registrada después del merge; RD-112)
 
@@ -2754,7 +2754,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] **Matriz de trazabilidad ítem → evidencia completa** en `docs/validation/traceability-matrix.md`;
       ningún ítem marcado sin evidencia concreta (T048)
 - [X] `test_traceability.py` en verde: toda evidencia referenciada existe (T048)
-- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111) — *la v1.2.0 (RD-117) está pendiente de aprobación y bloquea el merge de T077*
+- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111) — *la v1.2.0 (RD-117) quedó aprobada el 2026-10-06 en el PR #96 ([revisión](https://github.com/HingusPingus/prototipo_recomendaciones/pull/96#pullrequestreview-5429101769))*
 - [X] Valores cargados: `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
       `diversity_max_cluster_share` = 0,4, `recompute_requests_maxlen` = 100 000 (RD-108), y
       `event_redelivery_window_hours` copiado del broker real (RD-110)
@@ -3059,7 +3059,7 @@ Exenta de TDD: es documentación.
 - [X] T074 [TDD] Registrar la recepción del evento de baja con `event_id` y `received_at` antes de la supresión, en `src/recomendaciones/worker/suppression.py` per FR-095b, FR-080c (missing)
 - [X] T075 [TDD] Medir el lag de recepción y alertar pasados 15 minutos, en `ops/alerts.yaml` per FR-095b (missing)
 - [X] T076 [TDD] Consumir `recomendacion.actualizar.v3` desde su exchange propio y exigir sus headers AMQP, en `src/recomendaciones/worker/topology.py` per FR-009, FR-012, RD-116 (contradicts)
-- [ ] T077 [TDD] Exponer `GET /internal/v1/deletion-receipts/{event_id}` para el job de `api-general` per FR-095c, RD-117 (missing) — **implementada; no se fusiona** hasta aprobar la enmienda v1.2.0 y publicar el contrato en `api-general`
+- [X] T077 [TDD] Exponer `GET /internal/v1/deletion-receipts/{event_id}` para el job de `api-general` per FR-095c, RD-117 (missing) — **implementada y lista para fusionar**: enmienda v1.2.0 aprobada (2026-10-06) y contrato 1.1.0 publicado en `api-general` (RD-121)
 
 ### T074 [TDD] — Recepción del evento de baja como checkpoint de entrega
 
@@ -3124,7 +3124,7 @@ propuesta restaba series con labels distintos y nunca disparaba; el verde usa `s
 
 ---
 
-### T077 [TDD] — Consulta de la recepción para `api-general` *(implementada, sin fusionar)*
+### T077 [TDD] — Consulta de la recepción para `api-general` *(implementada; condiciones de merge cumplidas)*
 
 **Requisitos**: FR-095c, FR-095b, Principio III (enmienda v1.2.0), RD-117
 
@@ -3144,9 +3144,13 @@ no hay recepción. Responder exige leer `user_suppressions` en Postgres desde un
 - [X] `503 receipts_unavailable` reintentable con la base caída, nunca `404`
 - [X] API key interna normal; `401` sin ella y `422` si `event_id` no es UUID
 - [X] Una fila por clave y sin Redis; la API solo llega a Postgres por `storage.db.receipts` (INV-1)
-- [ ] **Enmienda v1.2.0 de la constitución aprobada por PR** (excepción de lectura del Principio III)
-- [ ] Contrato 1.1.0 publicado en `api-general` (Principio II) y su `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`
-      configurada con la clave interna del entorno
+- [X] **Enmienda v1.2.0 de la constitución aprobada por PR** (excepción de lectura del Principio III) — aprobada
+      por `albanofazzito` el 2026-10-06 sobre `2dd17fe` ([revisión](https://github.com/HingusPingus/prototipo_recomendaciones/pull/96#pullrequestreview-5429101769)); la constitución no cambió después
+- [X] Contrato 1.1.0 publicado en `api-general` (Principio II)
+      > *Despliegue, no merge (2026-10-13)*: el criterio incluía además la `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`
+      > configurada en `api-general`. Esa clave no la carga este repositorio y no existe ningún entorno donde cargarla:
+      > es el T056 de `api-general`, condición para **activar su poller**, no para fusionar. El título de la tarea ya
+      > ponía como condiciones de merge solo la enmienda y el contrato.
       > *Estado al 2026-10-05 (RD-118)*: publicada en `api-general` (commit `83e6b59`), pero sin `422`, `503`, el
       > cuerpo del `404`, `receipt_not_found`, `receipts_unavailable` ni `/health`; se le pidió que los sume. La
       > clave está documentada en su spec (FR-028) con el mismo valor que `RECO_INTERNAL_API_KEY`; cargarla es su

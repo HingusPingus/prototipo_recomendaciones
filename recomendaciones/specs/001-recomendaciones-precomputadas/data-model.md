@@ -4,7 +4,7 @@
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
-[constitution v1.2.0](../../.specify/memory/constitution.md) (enmendada el 2026-09-27, RD-98; aclarada el 2026-09-28, RD-111; v1.2.0 propuesta el 2026-10-05, RD-117, pendiente de aprobación).
+[constitution v1.2.0](../../.specify/memory/constitution.md) (enmendada el 2026-09-27, RD-98; aclarada el 2026-09-28, RD-111; v1.2.0 propuesta el 2026-10-05, RD-117, y aprobada por PR el 2026-10-06).
 
 **Regla de lectura**: este documento especifica **qué datos existen y por qué**, no con qué ORM se
 acceden. Los tipos son lógicos; su mapeo concreto es decisión de T003.
@@ -5067,7 +5067,8 @@ constitución para que la API la sirva, servirla desde el worker o leer una copi
 1. **La API la sirve** (`GET /internal/v1/deletion-receipts/{event_id}`, T077), como **segunda excepción del Principio
    III**, ahora de lectura: una fila por clave por el índice único de `event_id`, sin cómputo, sin Redis y sin datos
    del usuario. Requiere la **enmienda v1.2.0** de la constitución, aprobada por PR (Governance). Hasta entonces el
-   endpoint se desarrolla y prueba, pero **no se fusiona**.
+   endpoint se desarrolla y prueba, pero **no se fusiona**. *Aprobada el 2026-10-06 en el PR #96
+   ([revisión](https://github.com/HingusPingus/prototipo_recomendaciones/pull/96#pullrequestreview-5429101769))*.
 2. **Credencial**: la API key interna normal del entorno. `api-general` configura su
    `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY` con el mismo valor que usa para llamar a esta API; no hay una segunda
    clave de este lado.
