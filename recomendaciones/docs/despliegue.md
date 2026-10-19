@@ -120,6 +120,17 @@ ssh -L 18000:127.0.0.1:18000 -L 18080:127.0.0.1:18080 -L 15672:127.0.0.1:15672 <
 - `http://localhost:15672`: la consola de RabbitMQ, usuario `reco` y la `RABBITMQ_PASSWORD` del entorno.
 - En Dokploy, pestaña **Schedules**: cada job tiene su última corrida exitosa.
 
+## Riesgos aceptados
+
+Dos cosas que este servidor **no** tiene, aceptadas mientras corra con el `api-general` simulado (RD-123):
+
+- **Backups de Postgres.** Perder el volumen pierde las declaraciones, las exclusiones, el historial de señales y
+  las constancias de baja, sin forma de recuperarlos. Hoy son datos de la demo.
+- **Alertas evaluadas.** `ops/alerts.yaml` no lo evalúa nadie. Una falla se descubre entrando a mirar: el estado de
+  las Schedules en Dokploy, los logs y `/health/ready`.
+
+Las dos se revisan **antes de conectar el `api-general` real** con usuarios de verdad.
+
 ## Volver a una versión anterior
 
 Cada imagen queda publicada con el tag del commit (`sha-<commit completo>`). En Dokploy, poner
@@ -139,3 +150,6 @@ Cuando el api-general real tenga datos (ver [demo.md → «Cuando esté el `api-
 sacar de este compose `api-general-simulada` y `semilla-declaraciones`, apuntar `RECO_API_GENERAL_BASE_URL` a su
 servicio en Dokploy (los dos stacks en una misma red de Docker) y bajar `RECO_INTERACTION_RECALC_THRESHOLD` a
 `10`, el valor de producción. Es un PR más: el flujo lo despliega.
+
+**Antes de ese PR**, resolver los dos riesgos aceptados (RD-123): un backup diario de Postgres a un destino externo
+y alguien que reciba las alertas críticas. Con usuarios reales, los datos dejan de ser regenerables.

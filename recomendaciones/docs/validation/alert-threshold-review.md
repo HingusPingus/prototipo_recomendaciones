@@ -183,7 +183,7 @@ automatizar.
 - [x] **PopularityStale** · warning · dueño `guardia-de-plataforma`
   - **Condición**: `time() - catalog_popularity_last_success_timestamp > 93600` durante `10m`
   - **Qué avisa**: La popularidad no se recalcula hace más de 26 horas
-  - **Justificación actual**: §7.7 fija > 26 h con el mismo criterio que la sincronización: el batch es diario y su falla congela en silencio el ranking del respaldo (RD-11); no afecta a la seguridad, por eso es warning.
+  - **Justificación actual**: §7.7 fija > 26 h para un batch diario: un día y dos horas de margen absorben una corrida demorada sin tolerar una perdida, y el batch es diario y su falla congela en silencio el ranking del respaldo (RD-11); no afecta a la seguridad, por eso es warning.
   - **A tener en cuenta**: El worker expone el último timestamp de éxito que el job dejó en `process_runs`, aunque el job deje de correr: por eso la alerta ahora puede dispararse.
   - **Decisión**: ☑ aprobada (2026-10-01)
 
