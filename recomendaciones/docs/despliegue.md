@@ -120,6 +120,17 @@ ssh -L 18000:127.0.0.1:18000 -L 18080:127.0.0.1:18080 -L 15672:127.0.0.1:15672 <
 - `http://localhost:15672`: la consola de RabbitMQ, usuario `reco` y la `RABBITMQ_PASSWORD` del entorno.
 - En Dokploy, pestaña **Schedules**: cada job tiene su última corrida exitosa.
 
+## Riesgos aceptados
+
+Dos cosas que este servidor **no** tiene, aceptadas mientras corra con el `api-general` simulado (RD-123):
+
+- **Backups de Postgres.** Perder el volumen pierde las declaraciones, las exclusiones, el historial de señales y
+  las constancias de baja, sin forma de recuperarlos. Hoy son datos de la demo.
+- **Alertas evaluadas.** `ops/alerts.yaml` no lo evalúa nadie. Una falla se descubre entrando a mirar: el estado de
+  las Schedules en Dokploy, los logs y `/health/ready`.
+
+Las dos se revisan **antes de conectar el `api-general` real** con usuarios de verdad.
+
 ## Volver a una versión anterior
 
 Cada imagen queda publicada con el tag del commit (`sha-<commit completo>`). En Dokploy, poner
@@ -135,7 +146,32 @@ una imagen anterior a una migración.
 
 ## Pasar al api-general real
 
-Cuando el api-general real tenga datos (ver [demo.md → «Cuando esté el `api-general` real»](demo.md#cuando-esté-el-api-general-real)):
-sacar de este compose `api-general-simulada` y `semilla-declaraciones`, apuntar `RECO_API_GENERAL_BASE_URL` a su
-servicio en Dokploy (los dos stacks en una misma red de Docker) y bajar `RECO_INTERACTION_RECALC_THRESHOLD` a
-`10`, el valor de producción. Es un PR más: el flujo lo despliega.
+Cuando el api-general real tenga datos (ver [demo.md → «Cuando esté el `api-general` real»](demo.md#cuando-esté-el-api-general-real)),
+el servidor deja de usar el simulado **y también su propio RabbitMQ**. Hoy el compose trae un RabbitMQ porque el
+simulado publica ahí, pero el broker oficial lo opera `notificaciones` (RD-120), y el api-general real publica en
+**ese** broker. Si nuestro worker siguiera escuchando el RabbitMQ propio, no le llegaría ningún evento: ni las
+interacciones ni las bajas.
+
+El orden importa:
+
+1. **Resolver los dos riesgos aceptados** (RD-123): un backup diario de Postgres a un destino externo y alguien que
+   reciba las alertas críticas. Con usuarios reales, los datos dejan de ser regenerables.
+2. **Coordinar con `notificaciones`**: el vhost del entorno, un usuario para el worker con los permisos de RD-120, y
+   que el servidor pueda llegar a su broker (host y puerto 5672).
+3. **Vaciar el RabbitMQ propio** antes de sacarlo: la cola principal y las DLQ en cero (consola de RabbitMQ, por
+   túnel). Lo que quede ahí se pierde con su volumen. La DLQ de `usuario.eliminado` **nunca** se descarta: se
+   reprocesa primero (runbook, «Reproceso desde DLQ»).
+4. **Un PR que cambie el compose del servidor**:
+   - sacar `api-general-simulada`, `semilla-declaraciones` y `rabbitmq` (con su volumen y sus `depends_on`);
+   - `RECO_AMQP_URL` pasa a venir completa del entorno de Dokploy (`${RECO_AMQP_URL:?…}`), con el host, el usuario
+     y el vhost del broker de `notificaciones`, en lugar de armarse con `RABBITMQ_PASSWORD`;
+   - apuntar `RECO_API_GENERAL_BASE_URL` a su servicio, con `/api/v1` (los dos stacks en una misma red de Docker);
+   - bajar `RECO_INTERACTION_RECALC_THRESHOLD` a `10`, el valor de producción;
+   - actualizar `tests/unit/test_deploy.py`, que hoy fija el stack con el simulado y el RabbitMQ propio.
+5. **Desplegar**. El worker arranca y declara en el broker de `notificaciones` los exchanges
+   `recomendacion.actualizar.v3` y `usuario.eliminado` y sus colas.
+6. **Correr la prueba de humo** de [`migracion-v3.md`](contracts/migracion-v3.md) («Cómo lo verificamos») junto con
+   `notificaciones` y `api-general`. Recién entonces `api-general` activa `RECOMMENDATIONS_OUTBOX_ENABLED=true`,
+   con el v2 apagado.
+
+La demo local (`docker-compose.yml`) sigue usando su propio RabbitMQ: este cambio es solo para el servidor.

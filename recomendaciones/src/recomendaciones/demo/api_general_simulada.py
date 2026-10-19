@@ -6,7 +6,7 @@ Cumple los dos papeles que `api-general` tiene frente a este servicio:
    `contracts/api-general-sync.openapi.yaml`. Lo consume el Data Transformer real, sin cambios.
 2. **Puerta de entrada**: los endpoints `/demo/...` hacen lo que haría `api-general`: reenvían la declaración
    de gustos y la lectura a la API de recomendaciones con la API key interna, agregan títulos a los
-   `item_id` y, al registrar una interacción, publican `recomendacion.actualizar` en RabbitMQ.
+   `item_id` y, al registrar una interacción, publican `recomendacion.actualizar.v3` en RabbitMQ.
 
 Tiene Swagger en `/docs` para recorrer el flujo sin escribir comandos. La API de recomendaciones sigue sin
 Swagger (FR-060).
@@ -311,7 +311,7 @@ class Interaccion(BaseModel):
 
 @router.post("/demo/usuarios/{usuario}/interacciones", tags=[_FLUJO])
 async def interactuar(usuario: str, body: Interaccion, request: Request) -> dict:
-    """Registra la interacción (queda en la actividad de sync) y publica `recomendacion.actualizar` en RabbitMQ."""
+    """Registra la interacción (queda en la actividad de sync) y publica `recomendacion.actualizar.v3` en RabbitMQ."""
     estado = _estado(request)
     user = _usuario(estado, usuario)
     item = _item(estado, body.item)

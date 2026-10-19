@@ -13,7 +13,7 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
-  RD-1→RD-122 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-123 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **169 requisitos definidos** *(167 hasta FR-095b y FR-095c, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
@@ -3064,7 +3064,7 @@ Exenta de TDD: es documentación.
 - [X] T074 [TDD] Registrar la recepción del evento de baja con `event_id` y `received_at` antes de la supresión, en `src/recomendaciones/worker/suppression.py` per FR-095b, FR-080c (missing)
 - [X] T075 [TDD] Medir el lag de recepción y alertar pasados 15 minutos, en `ops/alerts.yaml` per FR-095b (missing)
 - [X] T076 [TDD] Consumir `recomendacion.actualizar.v3` desde su exchange propio y exigir sus headers AMQP, en `src/recomendaciones/worker/topology.py` per FR-009, FR-012, RD-116 (contradicts)
-- [X] T077 [TDD] Exponer `GET /internal/v1/deletion-receipts/{event_id}` para el job de `api-general` per FR-095c, RD-117 (missing) — **implementada y lista para fusionar**: enmienda v1.2.0 aprobada (2026-10-06) y contrato 1.1.0 publicado en `api-general` (RD-121)
+- [X] T077 [TDD] Exponer `GET /internal/v1/deletion-receipts/{event_id}` para el job de `api-general` per FR-095c, RD-117 (missing) — **fusionada en el PR #96**: enmienda v1.2.0 aprobada (2026-10-06) y contrato 1.1.0 publicado en `api-general` (RD-121)
 
 ### T074 [TDD] — Recepción del evento de baja como checkpoint de entrega
 
@@ -3104,7 +3104,7 @@ Exenta de TDD: es documentación.
 
 **🔴 Paso 1 — Rojo**: escenario en `tests/integration/test_alerts.py` (commit `d9ef3fc`). La expresión de la
 propuesta restaba series con labels distintos y nunca disparaba; el verde usa `sum()` a cada lado.
-**🟢 Paso 2 — Verde**: commit `421f6af`. La revisión humana del umbral (B7) sigue pendiente para esta alerta.
+**🟢 Paso 2 — Verde**: commit `421f6af`. La revisión humana del umbral (B7) la aprobó el 2026-10-05.
 
 ---
 
@@ -3129,7 +3129,7 @@ propuesta restaba series con labels distintos y nunca disparaba; el verde usa `s
 
 ---
 
-### T077 [TDD] — Consulta de la recepción para `api-general` *(implementada; condiciones de merge cumplidas)*
+### T077 [TDD] — Consulta de la recepción para `api-general` *(fusionada en el PR #96)*
 
 **Requisitos**: FR-095c, FR-095b, Principio III (enmienda v1.2.0), RD-117
 

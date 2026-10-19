@@ -69,7 +69,7 @@ Todo desde http://localhost:8080/docs, con **Try it out**. En `usuario` se puede
    ```json
    {"item": "El conjuro", "signal_type": "dislike"}
    ```
-   Esto publica `recomendacion.actualizar` en RabbitMQ. Al repetir el `GET`, el ítem ya no aparece. Un `like`
+   Esto publica `recomendacion.actualizar.v3` en RabbitMQ. Al repetir el `GET`, el ítem ya no aparece. Un `like`
    también lo saca (ya interactuó con él), pero además refuerza sus tags y el recálculo trae ítems parecidos
    (en la demo, cada interacción recalcula). Cómo funciona por dentro:
    [`src/recomendaciones/demo/README.md`](../src/recomendaciones/demo/README.md).

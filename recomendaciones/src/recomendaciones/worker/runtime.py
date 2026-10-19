@@ -1,4 +1,4 @@
-"""Proceso worker: consume `recomendacion.actualizar`, `usuario.eliminado` y `recompute:requests` (T023, T027, T058)."""
+"""Proceso worker: consume `recomendacion.actualizar.v3`, `usuario.eliminado` y `recompute:requests` (T023, T027, T058)."""
 
 from __future__ import annotations
 

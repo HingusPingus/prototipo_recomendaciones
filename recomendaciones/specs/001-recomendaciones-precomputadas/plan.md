@@ -336,7 +336,7 @@ máx. 5 → DLQ.
 | DEP-9 | Notificación de cada transición de estado como emisión propia, con identificador | Vigente |
 | DEP-10 | **Vocabulario de tags normalizado del catálogo** | Vigente |
 | DEP-11 | **Backfill de `region` en usuarios preexistentes**, por `api-general`, antes del despliegue | Vigente |
-| DEP-12 | **Notificación de baja de cuenta** como evento propio (CR-19) | Vigente — **sin contrato aún** (RD-101) |
+| DEP-12 | **Notificación de baja de cuenta** como evento propio (CR-19) | Vigente — contrato `usuario.eliminado` 1.0.0 acordado (RD-113); falta que `api-general` lo publique *(decía «sin contrato aún», RD-101)* |
 
 > **DEP-10 es la más severa del inventario, por su alcance**: corta un módulo entero. Sin vocabulario no hay
 > declaración posible, y FR-088 rechaza a todo usuario que todavía no declaró en ese módulo, sin mitigación
@@ -460,7 +460,7 @@ responde `503` con `Retry-After` y **nunca** sirve desde Postgres (FR-065, T021)
 | DEP-10 incumplida | Sin vocabulario no hay usuarios atendibles. **No hay mitigación técnica**: es acuerdo previo |
 | La cuota de novedades nunca se llena | Métrica de FR-033a8 distingue cuota chica de umbral restrictivo |
 | `v1` no observa la línea de base sin segmentación regional | Aceptado en RD-79: medir exige poner `region_weight_factor = 0` deliberadamente |
-| Pérdida de Postgres | Tres entidades no regenerables (RD-71). Respaldo operativo, fuera del diseño |
+| Pérdida de Postgres | Tres entidades no regenerables (RD-71). Respaldo operativo, fuera del diseño; en el servidor, riesgo aceptado mientras corra con el `api-general` simulado (RD-123) |
 | Erosión del Principio III por excepciones sucesivas | Cada excepción lleva condición de revisión; RD-75 fija que la segunda exige componente propio |
 
 ### Retirados por clarificación

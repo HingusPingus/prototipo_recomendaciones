@@ -27,7 +27,7 @@ groups:
         labels: {severity: warning, owner: guardia-de-plataforma}
         annotations:
           summary: La popularidad no se recalcula hace más de 26 horas
-          justification: "§7.7 fija > 26 h con el mismo criterio que la sincronización: el batch es diario y su falla congela en silencio el ranking del respaldo (RD-11); no afecta a la seguridad, por eso es warning."
+          justification: "§7.7 fija > 26 h para un batch diario: un día y dos horas de margen absorben una corrida demorada sin tolerar una perdida, y el batch es diario y su falla congela en silencio el ranking del respaldo (RD-11); no afecta a la seguridad, por eso es warning."
           runbook: docs/runbook.md#popularitystale
       - alert: AgeRefreshStale
         expr: time() - age_refresh_last_success_timestamp > 93600
