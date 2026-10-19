@@ -146,10 +146,29 @@ el escenario de DEP-11 (backfill no hecho).
 **Acción**: escalar a `api-general`: la transición se perdió y debe reemitirse con identificador nuevo.
 
 ### SyncVolumeDrop
-**Qué significa**: el volumen sincronizado cayó más del 10 %; la corrida abortó sin marcar retiros.
-**Primer paso**: comparar `entity_counts` de las dos últimas corridas en `sync_runs`.
-**Acción**: confirmar con `api-general` si fue una respuesta parcial; si fue una baja legítima masiva, el
-ratio no es la guarda adecuada (ver RD-53).
+**Qué significa**: el catálogo recibido tiene menos del 90 % de los ítems de la **última corrida exitosa**; la
+corrida abortó sin marcar retiros. La referencia no se mueve mientras se aborta, así que **todas las corridas
+siguientes abortan igual** hasta que alguien actúe: `CatalogSyncStale` dispara una hora después.
+**Primer paso**: comparar el conteo de ítems de la última corrida exitosa con el de la abortada:
+`SELECT id, status, entity_counts->>'items' AS items, failure_reason, started_at FROM sync_runs ORDER BY id DESC LIMIT 5;`
+El `failure_reason` dice `volumen anómalo del catálogo: ratio <r> < 0.9`.
+**Acción**: preguntar a `api-general` si la caída es real, y no aplicar nada hasta tener la respuesta.
+- **Si fue una respuesta parcial o un error suyo**: no tocar nada. Cuando lo corrijan, la próxima corrida vuelve a
+  pasar la guarda sola.
+- **Si fue una baja masiva legítima** (por ejemplo, la purga por retención de su importación de TMDB, que borra
+  los tags de las películas y las saca del listado; RD-122): procesarla una sola vez con la guarda relajada.
+  1. Pedirle a `api-general` cuántos ítems dio de baja y verificar que cierra con la caída observada.
+  2. Correr **una** sincronización con un ratio apenas por debajo del observado, sin cambiar la configuración del
+     entorno: `RECO_SYNC_VOLUME_DELTA_RATIO=<r - 0.05> reco-transformer`. Con `docker compose`:
+     `docker compose run --rm -e RECO_SYNC_VOLUME_DELTA_RATIO=<valor> preparacion reco-transformer`.
+     La comprobación de listado completo (CR-9) sigue activa: un listado truncado aborta igual.
+  3. Verificar que la corrida quedó `success`. Su conteo pasa a ser la nueva referencia, así que las corridas
+     normales vuelven a pasar con 0,9.
+  4. Los ítems que no llegaron quedan retirados (CR-8) y el vocabulario se recalcula en la misma corrida. Si la
+     baja vació un módulo, `DeclarableTagsBelowMinimum` dispara: ver esa sección.
+
+  **Nunca** dejar el ratio bajo en la configuración del entorno: la guarda es la única protección contra un
+  listado que se presenta como completo y no lo es.
 
 ### TagProjectionAnomalies
 **Qué significa**: el origen emite tags vacíos o mal formados.
