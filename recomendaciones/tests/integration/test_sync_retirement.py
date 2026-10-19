@@ -17,11 +17,11 @@ CFG = load_engine_config("v1.yaml")
 KEY = "test.s3cr3t-0123456789abcdef"
 
 
-def _sync(db_factory, redis_client, double: ApiGeneralDouble):
+def _sync(db_factory, redis_client, double: ApiGeneralDouble, ratio: float = 0.9):
     cache = CacheClient(redis_client)
     client = ApiGeneralClient("http://api-general.internal", KEY, timeout_seconds=5, transport=double.transport())
     filters = FiltersCache(cache, DbFiltersSource(db_factory), 3600)
-    return SyncPipeline(db_factory, client, filters, cache, CFG, Metrics(), volume_delta_ratio=0.9, redelivery_window_hours=48).run()
+    return SyncPipeline(db_factory, client, filters, cache, CFG, Metrics(), volume_delta_ratio=ratio, redelivery_window_hours=48).run()
 
 
 def _catalog(n: int = 10) -> tuple[ApiGeneralDouble, list]:
@@ -67,3 +67,18 @@ def test_complete_listing_with_anomalous_volume_drop_aborts_and_retires_nothing(
     report = _sync(db_factory, redis_client, double)
     assert report.status == "failed" and "volumen" in (report.failure_reason or "")
     assert _retired(db_factory) == set()
+
+
+def test_legitimate_mass_removal_is_processed_once_with_a_relaxed_ratio(db_factory, redis_client) -> None:
+    """Procedimiento del runbook para una baja masiva legítima (SyncVolumeDrop, RD-122)."""
+    double, items = _catalog()
+    assert _sync(db_factory, redis_client, double).status == "success"
+    double.items = double.items[:5]  # baja real de la mitad, por ejemplo la purga por retención de TMDB
+    for _ in range(2):  # la referencia es la última corrida exitosa: abortan todas, no solo la primera
+        assert _sync(db_factory, redis_client, double).status == "failed"
+    assert _retired(db_factory) == set()
+
+    assert _sync(db_factory, redis_client, double, ratio=0.45).status == "success"  # una sola, apenas bajo 0,5
+    assert _retired(db_factory) == set(items[5:])
+
+    assert _sync(db_factory, redis_client, double).status == "success"  # la nueva referencia rige con 0,9

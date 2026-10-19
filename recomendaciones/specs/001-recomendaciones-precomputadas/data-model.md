@@ -1,6 +1,6 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4874,6 +4874,36 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-122 — La baja masiva legítima se procesa con un procedimiento, no cambiando la guarda
+
+**Fecha**: 2026-10-19 · **Origen**: revisión del código de la spec 005 de `api-general` (`f8a6180`) · **Tipo**:
+operación; condición de revisión de RD-53 cumplida
+
+**Contexto**: la spec 005 de `api-general` importa películas de TMDB, cuyos términos prohíben conservar sus datos más
+de 6 meses. Su purgador (`CatalogMutationService.purgeImportedProviderData`) desactiva cada película antes de que
+venza y **le borra los tags**. Un retirado sin tags no entra en el listado de sincronización, así que la película
+desaparece de él. Si las películas se importan juntas, vencen juntas: el catálogo cae de golpe más del 10 % y la
+guarda de volumen (`sync_volume_delta_ratio` = 0,9, RD-53) aborta. Como compara contra la última corrida exitosa,
+que no se actualiza mientras se aborta, **abortan todas las corridas siguientes**. El runbook no decía cómo salir.
+
+RD-53 lo había previsto: «si el catálogo tiene cargas masivas previstas, el ratio no es la guarda adecuada y
+debería reemplazarse por un tope absoluto de retiros por corrida».
+
+**Decisiones**:
+1. **Por ahora se mantiene la guarda** y se agrega al runbook (`SyncVolumeDrop`) un procedimiento para la baja
+   masiva legítima: confirmarla con `api-general` y correr **una** sincronización con
+   `RECO_SYNC_VOLUME_DELTA_RATIO` apenas por debajo del ratio observado. La corrida exitosa fija la nueva referencia
+   y las siguientes vuelven a pasar con 0,9. La comprobación de listado completo (CR-9) no se relaja.
+2. **Se le pide a `api-general` importar en tandas espaciadas**, para que nunca venza de golpe más del 10 % del
+   catálogo. No puede conservar los tags: son datos de TMDB y vencen igual que el resto.
+3. **El tope absoluto de retiros por corrida queda como alternativa**, para cuando la baja masiva ocurra de
+   verdad: es un cambio de código que hoy no tiene datos con qué calibrarse.
+
+**Lo que se acepta**: la baja masiva requiere intervención humana, con `CatalogSyncStale` como aviso una hora
+después. Es el mismo trato asimétrico de RD-53: entre congelar el catálogo y vaciarlo por error, se congela.
+
+---
 
 ### RD-121 — `api-general` corrige su sincronización y publica los contratos (`0a2a1b6`)
 
