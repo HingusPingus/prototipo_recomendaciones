@@ -277,7 +277,7 @@ pertenecer al Milestone 11)*:
 - [X] T040 [P] [US7] Logging estructurado con correlation ID en `src/recomendaciones/observability/logging.py` (TDD)
 - [X] T041 [P] [US7] Health, readiness y liveness por servicio en `src/recomendaciones/observability/health.py` (TDD)
 - [X] T042 [US7] Alertas operativas en `ops/alerts.yaml` (TDD)
-- [ ] T046 [US7] Documentación operativa mínima en `docs/runbook.md`
+- [X] T046 [US7] Documentación operativa mínima en `docs/runbook.md`
 - [X] T051 [US5] Job `age_threshold_refresh` (refresco de derivados etarios) en `src/recomendaciones/batch/age_threshold_refresh.py` (TDD)
 - [X] T052 [US3] Tests de ciclo de vida del ítem en `tests/invariants/test_item_lifecycle.py` (TDD)
 - [X] T056 Perfil vectorial derivado puro en `src/recomendaciones/engine/profile.py` (TDD)
@@ -1747,10 +1747,13 @@ ingeniero sin contexto puede seguirlo" no se declara: se **demuestra** con una e
 - [X] Procedimiento de reconstrucción tras pérdida de Redis (T022)
 - [X] Procedimiento de cambio de `config_version` y de regeneración de vocabulario
 - [X] Procedimiento de reproceso desde DLQ
-- [ ] **Ejecución de prueba realizada** del procedimiento de reconstrucción por alguien ajeno a la
-      feature, con registro de cada punto donde se trabó o tuvo que preguntar
-- [ ] **Los puntos registrados fueron corregidos** en el runbook antes de cerrar la tarea
-- [ ] El registro queda versionado en `docs/validation/runbook-dry-run.md` con fecha y ejecutor
+- [X] **Ejecución de prueba realizada** del procedimiento de reconstrucción por alguien ajeno a la
+      feature, con registro de cada punto donde se trabó o tuvo que preguntar — 2026-10-19, Albano Fazzito,
+      sobre `34b113f`. **Con dos apartamientos aceptados por el equipo**: el ejecutor revisó los PR #95–#97
+      (no es autor, pero conoce el servicio), y no hubo acompañante, así que los bloqueos son los que él informó
+- [X] **Los puntos registrados fueron corregidos** en el runbook antes de cerrar la tarea — no se informaron
+      bloqueos
+- [X] El registro queda versionado en `docs/validation/runbook-dry-run.md` con fecha y ejecutor
 
 **Tests**: entregable verificable — `docs/validation/runbook-dry-run.md` existe, está fechado, nombra
 al ejecutor y cada bloqueo registrado tiene su corrección enlazada. Se eligió el procedimiento de
@@ -2745,10 +2748,11 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] Health/readiness/liveness en los tres entrypoints (T041)
 - [X] **Cada alerta probada induciendo su condición**, y se apaga al normalizarse (T042)
 - [X] Umbral de cada alerta justificado por escrito (T042)
-- [ ] **Ejecución de prueba del runbook registrada** en `docs/validation/runbook-dry-run.md`, con sus
-      bloqueos ya corregidos (T046) — *pendiente: la hace alguien ajeno a la feature*
-- [ ] Documento de campos requeridos publicado (T047) — *pendiente: enviado a `api-general` para su
-      revisión el 2026-09-29*
+- [X] **Ejecución de prueba del runbook registrada** en `docs/validation/runbook-dry-run.md`, con sus
+      bloqueos ya corregidos (T046) — *2026-10-19, sin bloqueos informados; con los dos apartamientos que
+      registra el documento*
+- [X] Documento de campos requeridos publicado (T047) — *revisado por `api-general`, que registró en su
+      `approval.md` que RD-118 resolvió sus observaciones ([`f8a6180`, líneas 134–150](https://github.com/Instituto-Politecnico-Modelo/recome-api-general/blob/f8a6180/specs/004-contratos-recomendaciones/contracts/approval.md#L134-L150))*
 
 ## Gobernanza
 - [X] **Matriz de trazabilidad ítem → evidencia completa** en `docs/validation/traceability-matrix.md`;
@@ -2759,8 +2763,9 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
       `diversity_max_cluster_share` = 0,4, `recompute_requests_maxlen` = 100 000 (RD-108), y
       `event_redelivery_window_hours` copiado del broker real (RD-110)
 - [ ] Evento de baja de cuenta publicado por `api-general` (DEP-12, CR-19): sin él, T058 no tiene disparo —
-      *pendiente: nombre y schema acordados (RD-113); fecha y checkpoint de entrega a la espera de la
-      respuesta de `api-general` a `docs/contracts/checkpoint-baja.md`*
+      *pendiente: nombre y schema acordados (RD-113); checkpoint de entrega resuelto (RD-115, RD-117; T077
+      fusionada). Al 2026-10-19 `api-general` rotula el schema `aprobacion-reportada-no-publicada`, a la
+      espera de registrar la constancia de `notificaciones` que ya recibió. Es lo único que impide cerrar T048*
 - [X] Decisiones abiertas: **ninguna pendiente**. `plan.md` §8 declara «Ninguna bloqueante» y
       NC-1…NC-20 **todos cerrados** (`data-model.md` §12). La lista «D1, D2, D3, D5, D6, D7, D8» que
       figuraba aquí quedó obsoleta y se retira: un DoD que exige resolver decisiones ya resueltas
