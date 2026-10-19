@@ -409,6 +409,9 @@ pendientes (FR-091) y se reprocesan siempre.
 | `reco-batch suppressions` | cada hora | retoma supresiones trabadas o fallidas | [SuppressionsUnverified](#suppressionsunverified) |
 | `reco-batch audits` | diaria | audita DI-28: declaraciones bajo el mínimo (T069) | [DeclaredMinimumViolations](#declaredminimumviolations) |
 
+En el servidor los programan las Schedules de Dokploy sobre el servicio `worker`, con estas frecuencias
+([despliegue.md](despliegue.md#3-dokploy-los-jobs-periódicos)). Si un job no corre, revisar ahí su última ejecución.
+
 **Reducir `RECO_SIGNAL_RETENTION_DAYS` exige aprobación registrada** (RD-54): la purga es irreversible. Cada
 corrida registra en el log el valor vigente (`reco_signal_retention_days`), de modo que una reducción no
 aprobada sea detectable después. Aumentarlo es configuración normal.
@@ -428,6 +431,11 @@ el 2026-09-28) exige `gates` y prohíbe borrar `main` y forzar pushes. **No** ex
 con `main` (`strict` desactivado) ni revisión del PR. Recomendado: activar ambos en *Settings → Rules →
 Rulesets → main* —*Require branches to be up to date before merging* y *Require a pull request before
 merging* con al menos una aprobación—, que es lo que la constitución pide en su Flujo de Desarrollo.
+
+**Despliegue**: `.github/workflows/deploy.yml` corre después de `ci` y solo si terminó en verde sobre `main`:
+publica la imagen en ghcr.io y pide el deploy a Dokploy ([despliegue.md](despliegue.md)). Si `ci` falla, no se
+despliega nada. Si falla `deploy`, el servidor sigue con la versión anterior: revisar el job en GitHub Actions
+(imagen o llamada a Dokploy) y, si el deploy llegó a Dokploy, sus logs.
 
 Mutante sobreviviente en el job `mutation`: los tests de invariantes dejaron de detectar una rotura del
 filtro de edad o de exclusión. No se «arregla» el mutante: se escribe el test que lo mata.

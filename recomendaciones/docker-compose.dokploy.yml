@@ -1,0 +1,150 @@
+# Stack del servidor, desplegado por Dokploy (guía: docs/despliegue.md). Mismos servicios que docker-compose.yml,
+# con el api-general SIMULADO mientras el real no tenga datos (decisión del 2026-10-19).
+#
+# Diferencias con el compose local:
+# - Los procesos usan la imagen que publica el workflow `deploy` en ghcr.io; nada se construye en el servidor.
+#   `pull_policy: always` hace que cada deploy descargue el tag de nuevo. RECO_IMAGE_TAG=sha-<commit> fija una
+#   versión anterior (rollback).
+# - Ninguna credencial está escrita acá: las obligatorias se cargan en las variables de entorno del servicio en
+#   Dokploy, y el deploy falla si falta alguna (Principio IV).
+# - Postgres y RabbitMQ guardan sus datos en volúmenes: un redeploy no los borra. Redis es caché (INV-2).
+# - Los puertos se publican solo en el loopback del servidor, para entrar por túnel SSH: la API la alcanzan
+#   api-general y los componentes internos, no la red (FR-008, FR-060).
+# - Los jobs periódicos no corren acá: los programan las Schedules de Dokploy sobre el servicio `worker`.
+
+x-reco-env: &reco-env
+  RECO_ENVIRONMENT: ${RECO_ENVIRONMENT:?definir RECO_ENVIRONMENT, el prefijo de la API key}
+  RECO_INTERNAL_API_KEY: ${RECO_INTERNAL_API_KEY:?definir RECO_INTERNAL_API_KEY con la forma <entorno>.<secreto>}
+  RECO_DATABASE_URL: postgresql+psycopg://reco:${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD}@postgres:5432/recomendaciones
+  RECO_REDIS_URL: redis://redis:6379/0
+  RECO_AMQP_URL: amqp://reco:${RABBITMQ_PASSWORD:?definir RABBITMQ_PASSWORD}@rabbitmq:5672/
+  RECO_API_GENERAL_BASE_URL: http://api-general-simulada:8080
+  RECO_ENGINE_CONFIG_FILE: v1.yaml
+  RECO_TTL_FRESH_SECONDS: "86400"
+  RECO_TTL_STALE_SECONDS: "604800"
+  RECO_TTL_FILTERS_SECONDS: "3600"
+  RECO_TTL_FALLBACK_SECONDS: "21600"
+  RECO_TTL_SUPPRESS_SECONDS: "300"
+  RECO_TTL_DEDUPE_SECONDS: "86400"
+  RECO_IDEMPOTENCY_RETENTION_HOURS: "168"
+  RECO_SIGNAL_RETENTION_DAYS: "730"
+  RECO_SYNC_VOLUME_DELTA_RATIO: "0.9"
+  # Con el api-general simulado, cada interacción recalcula en el acto, como en la demo (producción: 10).
+  RECO_INTERACTION_RECALC_THRESHOLD: ${RECO_INTERACTION_RECALC_THRESHOLD:-1}
+  RECO_RECOMPUTE_REQUESTS_MAXLEN: "100000"
+  RECO_RECOMPUTE_REQUESTS_MAX_DELIVERIES: "5"
+  RECO_EVENT_REDELIVERY_WINDOW_HOURS: "24"
+  RECO_RETRY_MAX_ATTEMPTS: "5"
+  RECO_RETRY_BACKOFF_BASE_SECONDS: "1"
+  RECO_REDIS_TIMEOUT_SECONDS: "0.5"
+  RECO_API_GENERAL_TIMEOUT_SECONDS: "10"
+  RECO_WARMUP_RATE_PER_SECOND: "50"
+  RECO_DEMO_API_URL: http://api:8000
+
+x-app: &app
+  image: ghcr.io/hinguspingus/recomendaciones:${RECO_IMAGE_TAG:-main}
+  pull_policy: always
+  environment: *reco-env
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: reco
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD}
+      POSTGRES_DB: recomendaciones
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reco -d recomendaciones"]
+      interval: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    # El nombre del nodo sale del hostname: fijo, para que el volumen siga siendo suyo después de recrearlo.
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: reco
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?definir RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:${RECO_RABBITMQ_CONSOLE_PORT:-15672}:15672"  # consola web, por túnel SSH
+    healthcheck:
+      # `ping` da OK apenas arranca el nodo, antes de que el puerto AMQP acepte conexiones.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      retries: 30
+
+  migraciones:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api-general-simulada:
+    <<: *app
+    restart: unless-stopped
+    command: ["reco-demo", "api-general"]
+    ports:
+      - "127.0.0.1:${RECO_DEMO_PORT:-18080}:8080"  # Swagger de la demo, por túnel SSH
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+
+  # Una corrida del Data Transformer y los jobs del respaldo, en cada deploy: el servicio queda usable sin esperar
+  # a las Schedules. Es idempotente.
+  preparacion:
+    <<: *app
+    command: ["sh", "-c", "reco-transformer && reco-batch popularity && reco-batch fallback"]
+    depends_on:
+      migraciones: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      api-general-simulada: {condition: service_healthy}
+
+  api:
+    <<: *app
+    restart: unless-stopped
+    command: ["reco-api"]
+    ports:
+      - "127.0.0.1:${RECO_API_PORT:-18000}:8000"  # API de recomendaciones, por túnel SSH (requiere X-Internal-API-Key)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      preparacion: {condition: service_completed_successfully}
+
+  worker:
+    <<: *app
+    restart: unless-stopped
+    command: ["reco-worker"]
+    depends_on:
+      preparacion: {condition: service_completed_successfully}
+      rabbitmq: {condition: service_healthy}
+
+  # Demo: declara los gustos de los usuarios de fondo. Reejecutable: una declaración existente responde 409.
+  semilla-declaraciones:
+    <<: *app
+    command: ["reco-demo", "semilla"]
+    depends_on:
+      api: {condition: service_healthy}
+      worker: {condition: service_started}
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
