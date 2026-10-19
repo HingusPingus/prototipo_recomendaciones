@@ -37,7 +37,7 @@ Ninguna sale del contenedor `api`.
 
 ```mermaid
 flowchart LR
-    A["api-general<br/>(simulado)"] -- "publica JSON<br/>routing key vacía" --> X{{"exchange fanout<br/>recomendacion.actualizar"}}
+    A["api-general<br/>(simulado)"] -- "publica JSON<br/>routing key vacía" --> X{{"exchange fanout<br/>recomendacion.actualizar.v3"}}
     X --> Q[["cola quorum<br/>recomendaciones.recomendacion-actualizar"]]
     Q --> W["reco-worker<br/>EventConsumer"]
     W -- "payload inválido o<br/>violación de contrato" --> D[["...recomendacion-actualizar.dlq"]]
@@ -48,14 +48,15 @@ flowchart LR
 ```
 
 1. **Publicación.** El simulado arma el evento con los siete campos obligatorios del schema más
-   `correlation_id`, y lo publica en el exchange `recomendacion.actualizar`. Le pone `message_id = event_id`,
-   persistencia y los headers `event_type`/`event_version`, igual que el runtime de `api-general`. Antes guarda
+   `correlation_id`, y lo publica en el exchange `recomendacion.actualizar.v3`. Le pone `message_id = event_id`,
+   persistencia y los headers `event_type`/`event_version` que exige el contrato v3, igual que el runtime de `api-general`. Antes guarda
    **el mismo hecho** en su actividad de sync, con el mismo `origin_interaction_id` y `occurred_at`, como
    exige el contrato (CR-17, FR-061).
 2. **Ruteo.** El exchange es *fanout*: copia cada mensaje a todas las colas ligadas e ignora la routing key.
    La única cola ligada es la nuestra.
 3. **Consumo** (`EventConsumer._on_message`):
-   - Valida contra [`worker/contracts/recomendacion-actualizar.schema.json`](../worker/contracts/recomendacion-actualizar.schema.json)
+   - Verifica los headers `event_type` y `event_version`, y valida contra
+     [`worker/contracts/recomendacion-actualizar-v3.schema.json`](../worker/contracts/recomendacion-actualizar-v3.schema.json)
      **antes** de tocar el dominio. Si es inválido va a la DLQ con `x-dlq-reason: invalid_payload` y **sin
      reintento**.
    - Si es válido, ejecuta `ActualizarHandler` ([`worker/handler.py`](../worker/handler.py)) en un hilo:
@@ -85,7 +86,7 @@ declaraciones son idempotentes:
 
 | Recurso | Tipo | Argumentos |
 |---|---|---|
-| `recomendacion.actualizar` | exchange fanout, durable | — |
+| `recomendacion.actualizar.v3` | exchange fanout, durable | — |
 | `recomendaciones.recomendacion-actualizar` | cola quorum | `x-message-ttl` = 24 h, `x-delivery-limit` = 5, dead-letter a `.dlq` |
 | `recomendaciones.recomendacion-actualizar.retry` | cola quorum | dead-letter a la cola principal (vuelve al vencer) |
 | `recomendaciones.recomendacion-actualizar.dlq` | cola quorum | sin TTL: se conserva para reproceso (runbook) |

@@ -14,12 +14,12 @@ groups:
   - name: recomendaciones.frescura
     rules:
       - alert: CatalogSyncStale
-        expr: time() - catalog_sync_last_success_timestamp > 93600
+        expr: time() - catalog_sync_last_success_timestamp > 3600
         for: 10m
         labels: {severity: critical, owner: guardia-de-plataforma}
         annotations:
-          summary: El catálogo no se sincroniza con éxito hace más de 26 horas
-          justification: "§7.7 fija > 26 h: la sincronización es diaria, y 2 h de margen absorben una corrida demorada sin tolerar una perdida. Pasado ese punto altas y retiros no se reflejan y un ítem retirado se sigue recomendando."
+          summary: El catálogo no se sincroniza con éxito hace más de una hora
+          justification: "> 1 h desde el 2026-10-05: la sincronización corre cada 15 minutos, así que una hora son unas cuatro corridas perdidas, con margen para una demorada. Pasado ese punto altas y retiros no se reflejan y un ítem retirado se sigue recomendando."
           runbook: docs/runbook.md#catalogsyncstale
       - alert: PopularityStale
         expr: time() - catalog_popularity_last_success_timestamp > 93600
@@ -38,12 +38,12 @@ groups:
           justification: "§7.5.1 fija > 26 h y reemplaza a age_ordinal_staleness_seconds, que no disparaba con el job muerto. El desfasaje es siempre conservador (menos contenido, nunca más): warning, no crítica."
           runbook: docs/runbook.md#agerefreshstale
       - alert: VectorRecomputeLag
-        expr: vector_recompute_lag_seconds > 93600
+        expr: vector_recompute_lag_seconds > 3600
         for: 10m
         labels: {severity: warning, owner: guardia-de-plataforma}
         annotations:
-          summary: Hay ítems vigentes sin vector bajo la versión activa hace más de 26 horas
-          justification: "§7.9 fija > 26 h: la sincronización es diaria y el job de vocabulario vectoriza en la misma corrida, así que un ítem sin vector pasado ese plazo es una reconciliación que falla. Se mide desde lo último entre la primera sincronización del ítem y la activación de la versión (T070); con un catálogo estable vale 0. Degrada calidad, no corrección."
+          summary: Hay ítems vigentes sin vector bajo la versión activa hace más de una hora
+          justification: "> 1 h desde el 2026-10-05: la sincronización corre cada 15 minutos y el job de vocabulario vectoriza en la misma corrida, así que un ítem sin vector pasado ese plazo es una reconciliación que falla. Se mide desde lo último entre la primera sincronización del ítem y la activación de la versión (T070); con un catálogo estable vale 0. Degrada calidad, no corrección."
           runbook: docs/runbook.md#vectorrecomputelag
       - alert: VocabTransitionStalled
         expr: vocab_transition_progress < 1
@@ -100,7 +100,7 @@ groups:
   - name: recomendaciones.api
     rules:
       - alert: RedisUnavailable503
-        expr: sum(rate(reco_unavailable_responses_total[5m])) > 0.1
+        expr: sum(rate(reco_unavailable_responses_total{error=~"cache_unavailable|filters_unavailable"}[5m])) > 0.1
         for: 5m
         labels: {severity: critical, owner: guardia-de-plataforma}
         annotations:
@@ -181,12 +181,12 @@ groups:
   - name: recomendaciones.catalogo
     rules:
       - alert: CatalogUnrated
-        expr: catalog_unrated_ratio > 0.05
+        expr: catalog_unrated_ratio > 0
         for: 1h
         labels: {severity: warning, owner: dueno-de-producto}
         annotations:
-          summary: Más del 5 % del catálogo vigente no tiene clasificación etaria declarada
-          justification: "§7.7 fija > 5 %: esa fracción es inalcanzable para menores por el fail-closed etario (FR-051) y la degradación es silenciosa por naturaleza. Se escala al proveedor del catálogo."
+          summary: Hay ítems vigentes sin clasificación etaria declarada
+          justification: "Valor esperado 0 (revisión B7 del 2026-10-05): la clasificación es obligatoria en el contrato (CR-15), así que un solo ítem sin ella ya es un incumplimiento. Ese ítem queda inalcanzable para menores por el fail-closed etario (FR-051), sin ningún error visible. Hoy api-general rechaza el catálogo entero en ese caso (lo detecta CatalogSyncStale); esta alerta cubre que deje de hacerlo. Se escala al proveedor del catálogo."
           runbook: docs/runbook.md#catalogunrated
       - alert: CatalogUnvectorized
         expr: catalog_unvectorized_ratio > 0.1
@@ -238,3 +238,10 @@ groups:
           summary: Hay supresiones sin constancia de verificación
           justification: "FR-095a: valor esperado 0, con observador y responsable. El for de 30 minutos es el período de gracia de una supresión en curso (hallazgo A5 del análisis: la métrica cuenta también las que están en progreso); pasado ese tiempo, la supresión está trabada o fallida."
           runbook: docs/runbook.md#suppressionsunverified
+      - alert: DeletionReceiptLate
+        expr: sum(increase(user_deletion_receipt_lag_seconds_count[15m])) - sum(increase(user_deletion_receipt_lag_seconds_bucket{le="900"}[15m])) > 0
+        labels: {severity: warning, owner: guardia-de-plataforma}
+        annotations:
+          summary: Una baja de cuenta llegó pasados los 15 minutos acordados con api-general
+          justification: "FR-095b fija 15 minutos desde occurred_at hasta la recepción (propuesta checkpoint-baja.md, RD-115). Sin for, como las alertas de contrato: cada recepción tardía ya es un incumplimiento. Es warning porque la supresión igual se ejecuta; la demora casi siempre está antes de este servicio (outbox de api-general o broker), y escala a esos equipos."
+          runbook: docs/runbook.md#deletionreceiptlate

@@ -13,9 +13,9 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
-  RD-1→RD-112 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-122 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
-- [spec.md](./spec.md) — **167 requisitos definidos** (FR-001→FR-096, con sufijos y huecos
+- [spec.md](./spec.md) — **169 requisitos definidos** *(167 hasta FR-095b y FR-095c, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
   registros de saneamiento (2026-09-27), de remediación del análisis (2026-09-28) y de cierre del segundo análisis (2026-09-29) · **12** dependencias declaradas (DEP-1→DEP-12: **10 vigentes**,
   DEP-3 vacante a propósito y DEP-4 resuelta)
@@ -24,7 +24,7 @@ producción**)
 - [checklists/requirements-contracts.md](./checklists/requirements-contracts.md) — 30/30 resueltos
 - [checklists/requirements-clarify-2026-09-14.md](./checklists/requirements-clarify-2026-09-14.md) —
   **46/46 tildados — cerrado** (los 10 🔴 se cerraron el 2026-09-22)
-- [constitution v1.1.1](../../.specify/memory/constitution.md) — enmendada el 2026-09-27 (RD-98) y
+- [constitution v1.2.0](../../.specify/memory/constitution.md) — **v1.2.0 propuesta el 2026-10-05 (RD-117) y aprobada por PR el 2026-10-06** ([revisión](https://github.com/HingusPingus/prototipo_recomendaciones/pull/96#pullrequestreview-5429101769)): excepción de lectura del Principio III para T077. Antes, v1.1.1: enmendada el 2026-09-27 (RD-98) y
   aclarada el 2026-09-28 (RD-111); **aprobada** en el PR #77 (revisión APPROVED de HingusPingus del
   2026-09-28, registrada después del merge; RD-112)
 
@@ -134,7 +134,7 @@ Estos cuatro se verifican en **toda** tarea, no solo donde se mencionan:
 
 | Inv | Regla | Cómo falla la revisión |
 |---|---|---|
-| **INV-1** | Cero cómputo pesado en el request path (FR-003, Principio III) | La API importa `engine/`, o lee Postgres en el **camino normal** (acierto de caché). Admitido: repoblado acotado de `filters:` y `retired:` ante **miss de esa clave** —respaldo degradado sobre datos materializados que el Principio III permite— y la escritura de declaración (T053). *(Precisado 2026-09-27: la regla anterior, «abre conexión a Postgres fuera de health», volvía imposibles T053 y el repoblado de `data-model.md` §3.1.1)* |
+| **INV-1** | Cero cómputo pesado en el request path (FR-003, Principio III) | La API importa `engine/`, o lee Postgres en el **camino normal** (acierto de caché). Admitido: repoblado acotado de `filters:` y `retired:` ante **miss de esa clave** —respaldo degradado sobre datos materializados que el Principio III permite— y la escritura de declaración (T053); desde la enmienda v1.2.0, la consulta de la recepción de una baja por `event_id` (T077, RD-117). *(Precisado 2026-09-27: la regla anterior, «abre conexión a Postgres fuera de health», volvía imposibles T053 y el repoblado de `data-model.md` §3.1.1)* |
 | **INV-2** | Redis nunca es fuente de verdad (FR-065) | Existe un dato solo recuperable desde Redis |
 | **INV-3** | Edad y exclusión no admiten bypass (FR-049→FR-055) | Existe una ruta de datos hacia la respuesta que no atraviesa ambos filtros |
 | **INV-4** | Sin acceso a DB de otros repos (Principio I) | Cualquier credencial o driver apuntando fuera de DB Recomendaciones |
@@ -1780,7 +1780,8 @@ antes de T023, T033, T053 y T062, que ahora dependen de ella. Este repositorio *
 propuesta —tiene prioridad de definición (RD-47)—, pero el contrato vigente es el publicado allá.
 
 **Archivos**: `specs/001-recomendaciones-precomputadas/contracts/recomendaciones-api.openapi.yaml`
-(lectura **y** declaración), `contracts/recomendacion-actualizar.schema.json`,
+(lectura **y** declaración), `contracts/recomendacion-actualizar.schema.json` *(renombrado
+`recomendacion-actualizar-v3.schema.json` el 2026-10-05, RD-116)*,
 `contracts/usuario-eliminado.schema.json` *(agregado el 2026-09-29, RD-112: lo exigía el criterio de
 abajo)*, `contracts/README.md`
 
@@ -1953,6 +1954,8 @@ repo necesita.
       cumple la aplicación web y aquí solo se verifica su efecto (rechazo en la ingesta, SC-028)
 - [X] Señala cuál es la dependencia de mayor severidad y por qué: **DEP-10** es la única cuyo
       incumplimiento deja al sistema **sin ningún usuario atendible**, por encadenamiento con FR-088
+      *(Precisado el 2026-10-05, RD-118: la severidad es por alcance —un módulo entero—, no por
+      exclusividad. DEP-11 deja sin servicio a una cohorte, y el documento ahora lo dice)*
 - [X] Declara explícitamente que la fuente de verdad del contrato es `api-general`
 - [X] Está enlazado desde el README y desde los contract tests
 
@@ -2717,7 +2720,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] Constantes del motor y mapeo de `age_rating` externalizados a configuración (T004, T013)
 
 ## Operación
-- [X] **Las veintidós métricas de observabilidad emitiéndose** (T039). La cifra anterior ("diez")
+- [X] **Las veintitrés métricas de observabilidad emitiéndose** (T039, T075). La cifra anterior ("diez")
       quedó obsoleta: el recuento sobre `data-model.md` da dieciséis nombres de métrica
       (`age_stale_config_users_total`, `age_threshold_crossings_total`, `catalog_retired_total`,
       `catalog_unrated_ratio`, `catalog_unvectorized_ratio`, `contract_violations_total`,
@@ -2729,7 +2732,8 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
       diez sobre dieciséis se da por satisfecho con seis métricas faltando. *(Recontado el 2026-09-28:
       a las dieciséis se suman `declarable_tags_total`, `diversity_cap_relaxed_total`,
       `fallback_new_item_share`, `recompute_requests_pending`, `recompute_requests_dropped_total` y
-      `suppressions_unverified_total`, nombradas por RD-108, RD-110, RD-102 y RD-111.)*
+      `suppressions_unverified_total`, nombradas por RD-108, RD-110, RD-102 y RD-111. El 2026-10-05 se suma
+      `user_deletion_receipt_lag_seconds`, de FR-095b y RD-115: son veintitrés.)*
 - [X] `contract_violations_total` se emite con contadores **separados** para `birth_date` y `region`
 - [X] `exclusions_orphaned_permanent_total` se emite **sin alerta asociada** (FR-068d1): su ausencia
       de umbral es un requisito, no un olvido de configuración
@@ -2750,7 +2754,7 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] **Matriz de trazabilidad ítem → evidencia completa** en `docs/validation/traceability-matrix.md`;
       ningún ítem marcado sin evidencia concreta (T048)
 - [X] `test_traceability.py` en verde: toda evidencia referenciada existe (T048)
-- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111)
+- [X] Sin violaciones de la constitution v1.1.1, **aprobada** por PR (RD-98, RD-111) — *la v1.2.0 (RD-117) quedó aprobada el 2026-10-06 en el PR #96 ([revisión](https://github.com/HingusPingus/prototipo_recomendaciones/pull/96#pullrequestreview-5429101769))*
 - [X] Valores cargados: `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
       `diversity_max_cluster_share` = 0,4, `recompute_requests_maxlen` = 100 000 (RD-108), y
       `event_redelivery_window_hours` copiado del broker real (RD-110)
@@ -3043,3 +3047,118 @@ Exenta de TDD: es documentación.
 - [X] Los dos diagramas Mermaid siguen parseando
 
 **Tests**: verificación del parseo de los diagramas Mermaid del documento.
+
+---
+
+## Phase 6: Convergence
+
+> *Agregada el 2026-10-05, con el formato de `/speckit-converge`, después de incorporar FR-095b (RD-115) y el
+> consumo de v3 (RD-116) a `spec.md` y `data-model.md`. Solo se **agrega**. T074–T076 se implementaron en este
+> mismo pase con commit rojo antes del verde; T077 queda bloqueada por una decisión de gobernanza.*
+
+- [X] T074 [TDD] Registrar la recepción del evento de baja con `event_id` y `received_at` antes de la supresión, en `src/recomendaciones/worker/suppression.py` per FR-095b, FR-080c (missing)
+- [X] T075 [TDD] Medir el lag de recepción y alertar pasados 15 minutos, en `ops/alerts.yaml` per FR-095b (missing)
+- [X] T076 [TDD] Consumir `recomendacion.actualizar.v3` desde su exchange propio y exigir sus headers AMQP, en `src/recomendaciones/worker/topology.py` per FR-009, FR-012, RD-116 (contradicts)
+- [X] T077 [TDD] Exponer `GET /internal/v1/deletion-receipts/{event_id}` para el job de `api-general` per FR-095c, RD-117 (missing) — **implementada y lista para fusionar**: enmienda v1.2.0 aprobada (2026-10-06) y contrato 1.1.0 publicado en `api-general` (RD-121)
+
+### T074 [TDD] — Recepción del evento de baja como checkpoint de entrega
+
+**Requisitos**: FR-095b, FR-095, FR-080c, FR-092a
+
+**Archivos**: `migrations/versions/0006_suppressions_receipt.py`, `src/recomendaciones/storage/db/models.py`,
+`src/recomendaciones/worker/suppression.py`
+
+**Dep.**: T058, T059
+
+**Criterios de aceptación**:
+- [X] Una baja válida deja en `user_suppressions` su `event_id` y `received_at`, con `state = 'in_progress'`,
+      en una transacción propia y antes del procedimiento de §7.11
+- [X] Si la supresión cae a mitad de camino, la recepción ya está registrada
+- [X] Otra baja del mismo usuario conserva la primera recepción; una reentrega no se registra dos veces
+- [X] `user_deletion_receipt_lag_seconds` observa `received_at − requested_at` una vez por recepción nueva, y
+      un lag negativo cuenta como 0
+- [X] Las constancias anteriores a la migración quedan con `event_id` y `received_at` nulos, y un `CHECK` exige
+      que estén las dos o ninguna
+
+**🔴 Paso 1 — Rojo**: `tests/integration/test_recepcion_baja.py` (commit `d9ef3fc`).
+**🟢 Paso 2 — Verde**: commit `421f6af`.
+
+---
+
+### T075 [TDD] — Alerta `DeletionReceiptLate`
+
+**Requisitos**: FR-095b
+
+**Archivos**: `ops/alerts.yaml`, `docs/runbook.md`
+
+**Dep.**: T074, T042
+
+**Criterios de aceptación**:
+- [X] Dispara, sin `for`, cuando una recepción observada supera 900 s, y se apaga al normalizarse (promtool)
+- [X] Umbral justificado, dueño y entrada en el runbook con su primer paso de diagnóstico
+
+**🔴 Paso 1 — Rojo**: escenario en `tests/integration/test_alerts.py` (commit `d9ef3fc`). La expresión de la
+propuesta restaba series con labels distintos y nunca disparaba; el verde usa `sum()` a cada lado.
+**🟢 Paso 2 — Verde**: commit `421f6af`. La revisión humana del umbral (B7) sigue pendiente para esta alerta.
+
+---
+
+### T076 [TDD] — Consumo de `recomendacion.actualizar.v3`
+
+**Requisitos**: FR-009, FR-012, FR-061, RD-116
+
+**Archivos**: `src/recomendaciones/worker/topology.py`, `src/recomendaciones/worker/consumer.py`,
+`src/recomendaciones/worker/schemas.py`, `contracts/recomendacion-actualizar-v3.schema.json`
+
+**Dep.**: T023, T049
+
+**Criterios de aceptación**:
+- [X] La copia derivada es literal del contrato de `api-general` (commit `9137825`) y lleva el nombre del evento
+- [X] El worker se liga al exchange `recomendacion.actualizar.v3` y un v2 publicado en `recomendacion.actualizar`
+      nunca llega a su cola
+- [X] Un mensaje sin los headers `event_type` y `event_version` que el contrato exige, o con otro valor, va a la
+      DLQ con una causa que nombra el header; los valores esperados salen de la copia del contrato
+- [X] El gate de contratos falla si el exchange o los headers del contrato divergen de la topología
+
+**🔴 Paso 1 — Rojo**: commit `a907296`. **🟢 Paso 2 — Verde**: commit `f527b02`.
+
+---
+
+### T077 [TDD] — Consulta de la recepción para `api-general` *(implementada; condiciones de merge cumplidas)*
+
+**Requisitos**: FR-095c, FR-095b, Principio III (enmienda v1.2.0), RD-117
+
+**Archivos**: `src/recomendaciones/api/routes/recepciones.py`, `src/recomendaciones/api/services/recepcion.py`,
+`src/recomendaciones/storage/db/receipts.py`, `contracts/recomendaciones-api.openapi.yaml` (1.1.0)
+
+**Descripción**: el job `DeletionReceiptCheckpointPoller` de `api-general` consulta
+`GET /internal/v1/deletion-receipts/{event_id}` y espera `200` con `event_id` y `received_at`, o `404` si todavía
+no hay recepción. Responder exige leer `user_suppressions` en Postgres desde un proceso alcanzable por
+`api-general`.
+
+**Decisión** (RD-117): la API la sirve, como excepción de lectura del Principio III, con la API key interna normal.
+
+**Criterios de aceptación**:
+- [X] `200` con `event_id`, `received_at` y `suppression_state`, sin ningún dato del usuario
+- [X] `404 receipt_not_found` mientras no haya recepción registrada para ese `event_id`
+- [X] `503 receipts_unavailable` reintentable con la base caída, nunca `404`
+- [X] API key interna normal; `401` sin ella y `422` si `event_id` no es UUID
+- [X] Una fila por clave y sin Redis; la API solo llega a Postgres por `storage.db.receipts` (INV-1)
+- [X] **Enmienda v1.2.0 de la constitución aprobada por PR** (excepción de lectura del Principio III) — aprobada
+      por `albanofazzito` el 2026-10-06 sobre `2dd17fe` ([revisión](https://github.com/HingusPingus/prototipo_recomendaciones/pull/96#pullrequestreview-5429101769)); la constitución no cambió después
+- [X] Contrato 1.1.0 publicado en `api-general` (Principio II)
+      > *Despliegue, no merge (2026-10-13)*: el criterio incluía además la `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`
+      > configurada en `api-general`. Esa clave no la carga este repositorio y no existe ningún entorno donde cargarla:
+      > es el T056 de `api-general`, condición para **activar su poller**, no para fusionar. El título de la tarea ya
+      > ponía como condiciones de merge solo la enmienda y el contrato.
+      > *Estado al 2026-10-05 (RD-118)*: publicada en `api-general` (commit `83e6b59`), pero sin `422`, `503`, el
+      > cuerpo del `404`, `receipt_not_found`, `receipts_unavailable` ni `/health`; se le pidió que los sume. La
+      > clave está documentada en su spec (FR-028) con el mismo valor que `RECO_INTERNAL_API_KEY`; cargarla es su
+      > T056, abierta hasta que haya entornos.
+      > *Al 2026-10-06 (RD-119)*: `3f4ceab` agregó todo lo pedido y su contrato quedó normativamente igual al
+      > nuestro, pero lo rotulan «corrección local no publicada». Falta que confirmen la publicación.
+      > *Al 2026-10-06 (RD-121)*: **contrato publicado**. `0a2a1b6` lo marca `publicado-en-main` y la copia de este
+      > repositorio es literal. Falta solo la clave, que espera entornos (su T056).
+
+**🔴 Paso 1 — Rojo**: `tests/contract/test_deletion_receipt.py`, el gate y la conformidad (commit `31e406b`).
+**🟢 Paso 2 — Verde**: commit `c7eec50`.

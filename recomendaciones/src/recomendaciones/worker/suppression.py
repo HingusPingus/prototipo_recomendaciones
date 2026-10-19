@@ -3,6 +3,10 @@
 La dispara el evento de baja de cuenta que publica `api-general` (CR-19, DEP-12, RD-101), con idempotencia
 por `event_id`. El procedimiento, en su orden:
 
+0. **Recepción** (FR-095b, RD-115): apenas el evento pasa el schema, en una transacción propia, la fila de
+   `user_suppressions` con `event_id`, `received_at` y la marca `in_progress`. Es el checkpoint de entrega que
+   consulta `api-general`. No borra ni reemplaza datos, así que no contradice «Redis primero» (FR-080c); otra
+   baja del mismo usuario conserva la primera recepción.
 1. **Redis primero** (FR-080c): las cuatro familias de alcance de usuario —`filters:`, `reco:`, `reco:stale:`
    y `recompute:lock:`— para **toda** versión y módulo, y las entradas del usuario en `recompute:requests`.
 2. y 3. En una transacción: la **marca** (`user_suppressions`, `state = 'in_progress'`) y el borrado de la
@@ -126,6 +130,28 @@ class SuppressionProcedure:
         self._cache.call(lambda: self._cache.raw.xdel(keys.RECOMPUTE_STREAM, *entries))
 
     # --- Postgres --------------------------------------------------------------------------------
+    def record_receipt(self, event_id: uuid.UUID, user_id: uuid.UUID, requested_at: datetime) -> bool:
+        """Paso 0: registra la recepción si el usuario no tiene constancia; mide el lag una sola vez (FR-095b)."""
+        with self._factory.begin() as s:
+            received_at = s.execute(
+                insert(UserSuppression)
+                .values(
+                    user_id=user_id,
+                    requested_at=requested_at,
+                    state="in_progress",
+                    attempts=0,
+                    event_id=event_id,
+                    received_at=sa.func.now(),
+                )
+                .on_conflict_do_nothing()
+                .returning(UserSuppression.received_at)
+            ).scalar_one_or_none()
+        if received_at is None:
+            return False
+        self.metrics.observe("user_deletion_receipt_lag_seconds", max((received_at - requested_at).total_seconds(), 0.0))
+        log.info("recepción de baja registrada", extra={"event_id": str(event_id), "user_id": str(user_id)})
+        return True
+
     def _mark_and_delete(self, user_id: uuid.UUID, requested_at: datetime) -> None:
         with self._factory.begin() as s:
             stmt = insert(UserSuppression).values(user_id=user_id, requested_at=requested_at, state="in_progress", attempts=0)
@@ -213,6 +239,7 @@ class SuppressionHandler:
         with self._procedure.factory() as s:
             s.execute(_LOCK, key)
             try:
+                self._procedure.record_receipt(event.event_id, event.user_id, event.occurred_at)  # paso 0, antes de todo
                 result = self._idempotency.process_once(event.event_id, lambda: self._work(event))
             finally:
                 s.execute(_UNLOCK, key)

@@ -97,3 +97,31 @@ def test_worker_declares_both_event_queues_with_the_broker_limits(valid_env, db_
     events, _requests = build_worker(runtime)
     assert events._topology == actualizar_topology(**limits)
     assert build_suppression_consumer(runtime)._topology == eliminado_topology(**limits)
+
+
+async def test_v2_exchange_never_reaches_the_v3_queue(amqp_url) -> None:
+    """RD-116: `api-general` publica v2 y v3 en exchanges distintos; nuestra cola solo se liga al de v3, así que
+    un v2 nunca llega a ella (con un exchange compartido, cada interacción dejaría un v2 en la DLQ)."""
+    prefix = f"t{uuid.uuid4().hex[:6]}."
+    topology = actualizar_topology(prefix)
+    assert topology.exchange == f"{prefix}recomendacion.actualizar.v3"
+    connection = await aio_pika.connect_robust(amqp_url)
+    async with connection:
+        channel = await connection.channel()
+        await topology.declare(channel)
+        v2 = await channel.declare_exchange(f"{prefix}recomendacion.actualizar", aio_pika.ExchangeType.FANOUT, durable=True)
+        await v2.publish(aio_pika.Message(b'{"evento_id": "v2"}'), routing_key="")
+        v3 = await channel.get_exchange(topology.exchange)
+        await v3.publish(aio_pika.Message(b'{"event_id": "v3"}'), routing_key="")
+        queue = await channel.get_queue(topology.queue, ensure=False)
+        received = []
+        for _ in range(30):
+            message = await queue.get(fail=False)
+            if message is not None:
+                received.append(json.loads(message.body))
+                await message.ack()
+            elif received:
+                break
+            else:
+                await asyncio.sleep(0.1)
+        assert received == [{"event_id": "v3"}]

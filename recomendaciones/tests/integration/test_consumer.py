@@ -1,4 +1,4 @@
-"""T023 — consumo de `recomendacion.actualizar` con validación de schema (FR-009, FR-012, FR-061, FR-064)."""
+"""T023 — consumo de `recomendacion.actualizar.v3` con validación de schema y de transporte (FR-009, FR-012, FR-061, FR-064, RD-116)."""
 
 from __future__ import annotations
 
@@ -35,8 +35,8 @@ def _event(**overrides: object) -> dict:
 def test_packaged_schema_matches_the_contract_copy() -> None:
     from recomendaciones.worker import schemas
 
-    packaged = Path(schemas.__file__).with_name("contracts") / "recomendacion-actualizar.schema.json"
-    assert json.loads(packaged.read_text()) == json.loads((CONTRACTS / "recomendacion-actualizar.schema.json").read_text())
+    packaged = Path(schemas.__file__).with_name("contracts") / "recomendacion-actualizar-v3.schema.json"
+    assert json.loads(packaged.read_text()) == json.loads((CONTRACTS / "recomendacion-actualizar-v3.schema.json").read_text())
 
 
 def test_parse_valid_event() -> None:
@@ -67,6 +67,14 @@ def test_invalid_payloads_are_rejected_with_cause(overrides: dict) -> None:
     assert exc.value.message
 
 
+def test_unknown_field_is_rejected_as_the_v3_contract_declares() -> None:
+    """El contrato v3 publicado por `api-general` cierra el payload (`additionalProperties: false`)."""
+    from recomendaciones.shared.errors import InvalidEventPayload
+
+    with pytest.raises(InvalidEventPayload, match="campo_nuevo"):
+        parse_actualizar(json.dumps({**_event(), "campo_nuevo": 1}).encode())
+
+
 def test_non_json_is_rejected() -> None:
     from recomendaciones.shared.errors import InvalidEventPayload
 
@@ -74,12 +82,13 @@ def test_non_json_is_rejected() -> None:
         parse_actualizar(b"\x00no json")
 
 
-def _topology() -> Topology:
+def _topology(**kwargs: object) -> Topology:
     suffix = uuid.uuid4().hex[:8]
     return Topology(
         exchange=f"recomendacion.actualizar.{suffix}",
         queue=f"recomendaciones.actualizar.{suffix}",
         dead_letter_queue=f"recomendaciones.actualizar.{suffix}.dlq",
+        **kwargs,
     )
 
 
@@ -132,3 +141,40 @@ async def test_consumer_processes_valid_and_dead_letters_invalid(amqp_url: str) 
     assert reasons == ["invalid_payload", "invalid_payload"]
     assert all(m.headers.get("x-dlq-cause") for m in dead)
     assert all(m.headers.get("x-event-id") for m in dead)  # extraíble aun siendo inválido
+
+
+V3_HEADERS = {"event_type": "recomendacion.actualizar.v3", "event_version": "3.0.0"}
+
+
+async def test_v3_transport_headers_are_required_and_other_versions_go_to_dead_letter(amqp_url: str) -> None:
+    """El contrato v3 exige `event_type` y `event_version` en el mensaje AMQP (RD-116): un v2 mal ruteado o un
+    mensaje sin headers va a la DLQ con una causa que lo nombra, en vez de fallar el schema con otra causa."""
+    topology = _topology(required_headers=V3_HEADERS)
+    handled: list[ActualizarEvent] = []
+    consumer = EventConsumer(amqp_url, topology, handler=lambda event: handled.append(event) or "recomputed")
+    await consumer.start()
+    valid = _event()
+    try:
+        connection = await aio_pika.connect_robust(amqp_url)
+        async with connection:
+            channel = await connection.channel()
+            exchange = await channel.get_exchange(topology.exchange)
+            for body, headers in (
+                (_event(), None),
+                (_event(), {"event_type": "recomendacion.actualizar", "event_version": "2.0.0"}),
+                (valid, V3_HEADERS),
+            ):
+                await exchange.publish(aio_pika.Message(json.dumps(body).encode(), headers=headers), routing_key="")
+            for _ in range(100):
+                probe = await connection.channel()
+                dlq = await probe.declare_queue(topology.dead_letter_queue, passive=True)
+                await probe.close()
+                if handled and (dlq.declaration_result.message_count or 0) >= 2:
+                    break
+                await asyncio.sleep(0.1)
+    finally:
+        await consumer.stop()
+    assert [str(e.event_id) for e in handled] == [valid["event_id"]]
+    dead = await _drain(amqp_url, topology.dead_letter_queue)
+    assert sorted(m.headers["x-dlq-reason"] for m in dead) == ["invalid_payload", "invalid_payload"]
+    assert all("event_type" in m.headers["x-dlq-cause"] for m in dead)

@@ -51,7 +51,7 @@ def _schema(name: str) -> dict:
 
 
 def test_event_schema_requires_the_seven_fields_of_fr061() -> None:
-    assert set(_schema("recomendacion-actualizar.schema.json")["required"]) == {
+    assert set(_schema("recomendacion-actualizar-v3.schema.json")["required"]) == {
         "event_id", "origin_interaction_id", "user_id", "module", "item_id", "signal_type", "occurred_at"
     }
 
@@ -63,5 +63,5 @@ def test_deletion_event_schema() -> None:
 def test_readme_declares_custody_and_pending_publication() -> None:
     readme = (CONTRACTS / "README.md").read_text(encoding="utf-8")
     assert "Custodio: `api-general`" in readme and "copias derivadas" in readme
-    for name in ("recomendaciones-api.openapi.yaml", "recomendacion-actualizar.schema.json", "usuario-eliminado.schema.json"):
+    for name in ("recomendaciones-api.openapi.yaml", "recomendacion-actualizar-v3.schema.json", "usuario-eliminado.schema.json"):
         assert name in readme

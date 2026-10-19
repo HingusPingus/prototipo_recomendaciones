@@ -9,7 +9,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]  # dev es la rama de integración: lo que llega por merge también pasa los gates
   pull_request:
 
 concurrency:

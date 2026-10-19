@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.recome.internal/events/recomendacion.actualizar.v3/3.0.0",
+  "title": "recomendacion.actualizar.v3",
+  "description": "Contrato de evento de hecho de interacción, todavía no publicado como paquete formal. Cambio BREAKING frente a recomendacion.actualizar 2.0.0: nuevo nombre/schema y campos obligatorios para identidad del hecho, señal y hora de origen. Recomendaciones reportó la migración a v3 y el retiro de v2 por su único consumidor conocido en PR #95 y decisión RD-120 del PR #96. Notificaciones reportó aprobación de la topología el 2026-10-06; faltan adjuntar su respuesta primaria, firmante y canal. V2 queda apagado por defecto; cualquier otro consumidor debe confirmar binding antes de habilitarlo.",
+  "x-change-classification": "breaking",
+  "x-change-reason": "Incorporar un hecho inmutable con identidad estable, signal_type y occurred_at verificables sin sobrescribir el evento v2 vigente.",
+  "x-event-type": "recomendacion.actualizar.v3",
+  "x-event-version": "3.0.0",
+  "x-contract-origin": {
+    "status": "aprobacion-reportada-no-publicada",
+    "drafted": "2026-09-28",
+    "schema_version": "3.0.0",
+    "coexists_with": "recomendacion.actualizar 2.0.0 solo con consumidor confirmado y RECOMMENDATIONS_OUTBOX_V2_ENABLED=true"
+  },
+  "x-amqp-transport": {
+    "exchange": {
+      "name": "recomendacion.actualizar.v3",
+      "type": "fanout",
+      "durable": true,
+      "status": "aprobacion-reportada",
+      "approval_reported_date": "2026-10-06"
+    },
+    "messageId": {"required": true, "source": "event_id"},
+    "headers": {
+      "event_type": {"required": true, "value": "recomendacion.actualizar.v3"},
+      "event_version": {"required": true, "value": "3.0.0"}
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "origin_interaction_id",
+    "user_id",
+    "module",
+    "item_id",
+    "signal_type",
+    "occurred_at"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identidad del mensaje, estable ante reintentos de publicación."
+    },
+    "origin_interaction_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identidad estable y no reutilizada del hecho; igual a la expuesta por la API REST."
+    },
+    "user_id": { "type": "string", "format": "uuid" },
+    "module": { "type": "string", "enum": ["peliculas", "juegos"] },
+    "item_id": { "type": "string", "format": "uuid" },
+    "signal_type": { "type": "string", "enum": ["like", "dislike", "consumo"] },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Marca temporal provista por el origen, con zona horaria; no se infiere ni sustituye."
+    },
+    "correlation_id": { "type": "string", "minLength": 1 }
+  }
+}

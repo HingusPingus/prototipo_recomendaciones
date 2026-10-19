@@ -46,6 +46,9 @@ SPECS: dict[str, MetricSpec] = {
     "fallback_new_item_share": MetricSpec("gauge", ("module", "kind"), "Cuota de novedades disponible/ocupada (FR-033a8)"),
     "signal_duplicate_rejections_total": MetricSpec("counter", ("source",), "Reentregas de una misma interacción (§7.10)"),
     "signal_ingest_lag_seconds": MetricSpec("histogram", ("source",), "received_at − occurred_at (§7.10)", LAG_BUCKETS),
+    "user_deletion_receipt_lag_seconds": MetricSpec(
+        "histogram", (), "received_at − requested_at de cada baja recibida; negativo ⟹ 0 (FR-095b)", LAG_BUCKETS
+    ),
     "contract_violations_total": MetricSpec("counter", ("field",), "Incumplimientos de contrato del origen; esperado 0"),
     "exclusion_resolve_lag_seconds": MetricSpec("gauge", (), "Rezago del resolutor de exclusiones (§7.12)"),
     "suppressions_unverified_total": MetricSpec("gauge", (), "Supresiones sin constancia; esperado 0 (FR-095a)"),

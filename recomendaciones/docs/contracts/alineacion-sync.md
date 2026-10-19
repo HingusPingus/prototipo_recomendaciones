@@ -5,9 +5,12 @@ Propuesta de `recomendaciones` para el ítem 4 de la respuesta de `api-general`
 `contracts/api-general-sync.openapi.yaml` de la spec 004 con el runtime actual de `api-general` y
 propone cómo cerrar cada diferencia.
 
-> **Estado: propuesta, sin acuerdo.** El contrato lo custodia `api-general` (Principio II). Donde
-> proponemos aceptar el runtime tal como está, ese cambio en el contrato lo tiene que registrar
-> `api-general`.
+> **Estado: aplicada por `api-general` (verificado en su código el 2026-10-05).** El commit `4636c17` de su
+> repositorio registró `/internal/v1/sync/...` con `X-Internal-API-Key`, IDs UUID estables y `snapshot_id` en
+> las tres rutas, con `page_size` de 1 a 1000 (500 por defecto). El `9137825` sumó `module` obligatorio en la
+> actividad y declaró el prefijo `/api/v1` en el contrato, que copiamos literal. **Falta la verificación contra
+> staging** de «Cómo lo verificamos» (sus tareas T038 y T039). El resto del documento describe la situación al
+> momento de la propuesta.
 
 ## En corto
 

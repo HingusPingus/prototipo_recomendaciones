@@ -56,6 +56,7 @@ REQUIRED = {
     "PopularityStale", "CatalogUnrated", "TagProjectionAnomalies", "VectorRecomputeLag", "VocabTransitionStalled",
     "CatalogUnvectorized", "SignalIngestLag", "SignalsPurgeDeferred", "UserDeletionResidualKeys",
     "ExclusionResolveLag", "SyncVolumeDrop", "DeclarableTagsBelowMinimum", "DeletionEventsDeadLettered",
+    "DeletionReceiptLate",
 }
 
 
@@ -81,11 +82,8 @@ def test_orphaned_exclusions_have_no_alert() -> None:
 @pytest.mark.parametrize(
     ("alert", "needle"),
     [
-        ("CatalogSyncStale", "93600"),  # > 26 h (§7.7)
         ("AgeRefreshStale", "93600"),  # > 26 h (§7.5.1)
         ("PopularityStale", "93600"),
-        ("VectorRecomputeLag", "93600"),
-        ("CatalogUnrated", "0.05"),  # > 5 % (§7.7)
         ("CatalogUnvectorized", "0.1"),  # > 10 % (§7.9)
         ("RetiredSetLarge", "10000"),  # > 10 000 (§4.4)
         ("SyncVolumeDrop", "0.9"),  # < 0,9 (§7.12)
@@ -98,12 +96,31 @@ def test_thresholds_come_from_the_data_model(alert: str, needle: str) -> None:
     assert needle in _rule(alert)["expr"]
 
 
+@pytest.mark.parametrize(
+    ("alert", "expr"),
+    [
+        ("CatalogSyncStale", "time() - catalog_sync_last_success_timestamp > 3600"),
+        ("VectorRecomputeLag", "vector_recompute_lag_seconds > 3600"),
+    ],
+)
+def test_sync_derived_alerts_follow_the_15_minute_sync(alert: str, expr: str) -> None:
+    """Sincronización cada 15 minutos (2026-10-05): una hora son unas cuatro corridas perdidas. Con el umbral
+    anterior, pensado para una sincronización diaria, hacían falta unas cien antes de avisar."""
+    assert _rule(alert)["expr"] == expr
+
+
+def test_catalog_unrated_fires_on_a_single_unrated_item() -> None:
+    """Revisión B7 (2026-10-05): toda clasificación es obligatoria (CR-15), así que un solo ítem sin ella ya
+    incumple el contrato, como en las alertas de contrato. Antes disparaba recién con el 5 % del catálogo."""
+    assert _rule("CatalogUnrated")["expr"] == "catalog_unrated_ratio > 0"
+
+
 # --- Nivel 1: promtool --------------------------------------------------------------------------------
 
 # Por alerta: series inducidas (valores por minuto), minuto en que debe estar disparando, minuto en que
 # debe haberse apagado, y etiquetas propias de la serie que la alerta conserva.
 SCENARIOS: dict[str, dict] = {
-    "CatalogSyncStale": {"series": {"catalog_sync_last_success_timestamp": "-100000x40 2400x40"}, "fire": "30m", "clear": "60m"},
+    "CatalogSyncStale": {"series": {"catalog_sync_last_success_timestamp": "-6000x40 2400x40"}, "fire": "30m", "clear": "60m"},  # 2 h sin éxito
     "DeadLetterGrowth": {"series": {'reco_dlq_messages_total{reason="invalid_payload"}': "0+1x60 60x120"}, "fire": "50m", "clear": "150m"},
     "QueueDepthGrowth": {"series": {'reco_queue_depth{queue="q"}': "5000x40 0x40"}, "fire": "30m", "clear": "60m", "labels": {"queue": "q"}},
     "RedisUnavailable503": {"series": {'reco_unavailable_responses_total{error="cache_unavailable"}': "0+60x30 1800x40"}, "fire": "20m", "clear": "60m"},
@@ -131,9 +148,9 @@ SCENARIOS: dict[str, dict] = {
     "SuppressionsUnverified": {"series": {"suppressions_unverified_total": "1x60 0x30"}, "fire": "45m", "clear": "75m"},
     "RetiredSetLarge": {"series": {'retired_set_size{module="juegos"}': "20000x100 10x30"}, "fire": "80m", "clear": "120m", "labels": {"module": "juegos"}},
     "PopularityStale": {"series": {"catalog_popularity_last_success_timestamp": "-100000x40 2400x40"}, "fire": "30m", "clear": "60m"},
-    "CatalogUnrated": {"series": {"catalog_unrated_ratio": "0.2x100 0x30"}, "fire": "80m", "clear": "120m"},
+    "CatalogUnrated": {"series": {"catalog_unrated_ratio": "0.01x100 0x30"}, "fire": "80m", "clear": "120m"},  # 1 %: un ítem en cien
     "TagProjectionAnomalies": {"series": {'projection_field_anomalies_total{field="tag_name",reason="empty"}': "0x5 4x100"}, "fire": "10m", "clear": "90m"},
-    "VectorRecomputeLag": {"series": {"vector_recompute_lag_seconds": "200000x40 0x40"}, "fire": "30m", "clear": "60m"},
+    "VectorRecomputeLag": {"series": {"vector_recompute_lag_seconds": "7200x40 0x40"}, "fire": "30m", "clear": "60m"},  # 2 h sin vector
     "VocabTransitionStalled": {"series": {"vocab_transition_progress": "0.5x200 1x30"}, "fire": "180m", "clear": "220m"},
     "CatalogUnvectorized": {"series": {"catalog_unvectorized_ratio": "0.5x100 0x30"}, "fire": "80m", "clear": "120m"},
     "SignalIngestLag": {
@@ -150,6 +167,15 @@ SCENARIOS: dict[str, dict] = {
     "UserDeletionResidualKeys": {"series": {"user_deletion_residual_keys_total": "0x5 2x100"}, "fire": "10m", "clear": "90m"},
     "DeclaredMinimumViolations": {"series": {"declared_minimum_violations_total": "0x5 1x40 0x40"}, "fire": "20m", "clear": "70m"},  # T069
     "DeletionEventsDeadLettered": {"series": {'reco_dead_letter_depth{queue="recomendaciones.usuario-eliminado.dlq"}': "0x5 1x40 0x40"}, "fire": "30m", "clear": "70m"},
+    # T075: una recepción observada pasado el límite de 15 minutos (cubeta le=900 sin incrementar) dispara sin `for`.
+    "DeletionReceiptLate": {
+        "series": {
+            "user_deletion_receipt_lag_seconds_count": "0x10 1x60",
+            'user_deletion_receipt_lag_seconds_bucket{le="900"}': "0x70",
+        },
+        "fire": "15m",
+        "clear": "40m",
+    },
     "ExclusionResolveLag": {"series": {"exclusion_resolve_lag_seconds": "7200x30 0x30"}, "fire": "20m", "clear": "50m"},
     "SyncVolumeDrop": {"series": {'sync_volume_delta_ratio{entity="items"}': "0.5x20 1x20"}, "fire": "10m", "clear": "30m", "labels": {"entity": "items"}},
     "DeclarableTagsBelowMinimum": {"series": {'declarable_tags_total{module="peliculas"}': "3x40 8x40"}, "fire": "30m", "clear": "60m", "labels": {"module": "peliculas"}},
@@ -200,6 +226,31 @@ def test_promtool_validates_the_rule_file(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         timeout=120,
+        check=False,  # se inspecciona returncode para mostrar la salida de promtool
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_redis_unavailable_counts_only_cache_and_filters() -> None:
+    """La consulta de recepciones (T077) también responde 503, pero por Postgres: contarla haría que una caída de
+    la base disparara una alerta que dice «Redis caído» y mandara a la guardia a mirar el componente equivocado."""
+    assert _rule("RedisUnavailable503")["expr"] == (
+        'sum(rate(reco_unavailable_responses_total{error=~"cache_unavailable|filters_unavailable"}[5m])) > 0.1'
+    )
+
+
+def test_promtool_receipts_unavailable_does_not_fire_redis_alert(tmp_path: Path) -> None:
+    (tmp_path / "alerts.yaml").write_text(ALERTS.read_text(encoding="utf-8"), encoding="utf-8")
+    series = [{"series": 'reco_unavailable_responses_total{error="receipts_unavailable"}', "values": "0+60x40"}]
+    test = {"interval": "1m", "input_series": series, "alert_rule_test": [{"eval_time": "30m", "alertname": "RedisUnavailable503", "exp_alerts": []}]}
+    path = tmp_path / "alerts.test.yaml"
+    path.write_text(yaml.safe_dump({"rule_files": ["alerts.yaml"], "evaluation_interval": "1m", "tests": [test]}), encoding="utf-8")
+    _readable(tmp_path)
+    proc = subprocess.run(
+        ["docker", "run", "--rm", "--entrypoint", "promtool", "-v", f"{tmp_path}:/t", PROMETHEUS, "test", "rules", "/t/alerts.test.yaml"],
+        capture_output=True,
+        text=True,
+        timeout=300,
         check=False,  # se inspecciona returncode para mostrar la salida de promtool
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr

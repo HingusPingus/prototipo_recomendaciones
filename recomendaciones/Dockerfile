@@ -23,7 +23,7 @@ COPY src ./src
 RUN pip install . \
  && python -c "import pathlib, recomendaciones as r; p = pathlib.Path(r.__file__).parent; \
 assert (p / 'config/engine_config/v1.yaml').is_file(), 'falta engine_config/v1.yaml'; \
-assert (p / 'worker/contracts/recomendacion-actualizar.schema.json').is_file(), 'faltan los schemas del worker'" \
+assert (p / 'worker/contracts/recomendacion-actualizar-v3.schema.json').is_file(), 'faltan los schemas del worker'" \
  && rm -rf src
 
 COPY alembic.ini ./

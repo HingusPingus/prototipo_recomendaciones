@@ -104,22 +104,39 @@ Una declaración es definitiva (FR-086a): para repetir el guion con la misma per
 
 ## Cuando esté el `api-general` real
 
-El simulado cumple el contrato **que propusimos**
+El simulado cumple los contratos publicados
 ([`api-general-sync.openapi.yaml`](../specs/001-recomendaciones-precomputadas/contracts/api-general-sync.openapi.yaml)
-y los schemas de eventos), no el runtime actual de `api-general`. Hoy el real difiere en cosas que impiden
-conectarse: la ruta de sync, el header de la API key, los IDs (`Long` en lugar de UUID), el catálogo sin tags y
-el exchange compartido por los eventos v2 y v3. Si se le apunta el Transformer así, las llamadas dan 404 o 401,
-o la pasada se aborta. Cada diferencia, y lo que le pedimos, está en [`docs/contracts/`](contracts/):
-`alineacion-sync.md`, `vocabulario-catalogo-actividad.md`, `migracion-v3.md` y `checkpoint-baja.md`.
+y los schemas de eventos), y el runtime de `api-general` también: su suite pasa completa (verificado el 2026-10-19
+en `f8a6180`). Desde `0a2a1b6` (RD-121), ni un usuario incompleto ni el mínimo de tags por módulo tiran la sincronización
+entera; un ítem **activo** inválido, sí.
 
-Cuando `api-general` las cierre:
+**Lo que todavía impide usarlo** (estado al 2026-10-19) son datos y operación, del lado de `api-general`:
 
-1. Sacar del `docker-compose.yml` los servicios `api-general-simulada` y `semilla-declaraciones`.
-2. Apuntar `RECO_API_GENERAL_BASE_URL` a su URL, con `/api/v1` (ver `docs/contracts/alineacion-sync.md`).
-3. Usar su API key del entorno, recibida por un canal seguro: nunca en el repo.
-4. Si v3 pasa a un exchange propio (`migracion-v3.md`), cambiar esa constante en `worker/topology.py`. Es el
-   único cambio de código de este lado.
-5. Verificar en staging como indica `alineacion-sync.md` («Cómo lo verificamos»).
+- **Catálogo**: no hay tags cargados en ninguno de los dos módulos. La importación de películas desde TMDB (su
+  spec 005) está implementada, pero apagada y con sus aprobaciones pendientes. La de juegos no está subida.
+- **Usuarios**: su `main` no tiene alta de usuarios. Solo se sincronizan los que tienen perfil verificado, fecha de
+  nacimiento y región.
+- **Interacciones**: las rutas de actividad piden un JWT, y no hay un emisor configurado
+  (`USER_IDENTITY_ISSUER_URI`). Sin interacciones no hay señales ni eventos v3.
+
+Cuando eso esté:
+
+1. Sacar del `docker-compose.yml` los servicios `api-general-simulada` y `semilla-declaraciones`. Así también se
+   libera el puerto 8080, que es el mismo que publica el `compose.yaml` de `api-general`.
+2. Conectar los dos stacks a una misma red de Docker, por ejemplo declarando en el de `api-general` la red
+   `recomendaciones_default` como externa. RabbitMQ no publica el 5672 hacia el host, así que la red es el camino.
+3. Apuntar `RECO_API_GENERAL_BASE_URL` a su servicio, con `/api/v1` (por ejemplo, `http://api-general:8080/api/v1`).
+4. **Una sola clave para los dos sentidos**: nuestro `RECO_INTERNAL_API_KEY`, su
+   `RECOMMENDATIONS_SERVICE_API_KEY` y la clave de su poller de recepciones llevan el mismo valor,
+   `<entorno>.<secreto>`, con el entorno igual a `RECO_ENVIRONMENT`. Se entrega por un canal seguro: nunca en el repo.
+5. Broker: `api-general` publica en el RabbitMQ de este compose. Primero arranca nuestro `worker`, que declara los
+   exchanges `recomendacion.actualizar.v3` y `usuario.eliminado` y sus colas; después se corre la prueba de humo de
+   [`migracion-v3.md`](contracts/migracion-v3.md) («Cómo lo verificamos»), y recién entonces `api-general` activa
+   `RECOMMENDATIONS_OUTBOX_ENABLED=true`, con el v2 apagado (RD-120).
+6. Para la consulta de recepciones, su `RECOMMENDATIONS_DELETION_RECEIPT_BASE_URL` apunta a nuestra API
+   (`http://api:8000`).
+7. Verificar la sincronización como indica [`alineacion-sync.md`](contracts/alineacion-sync.md) («Cómo lo
+   verificamos»).
 
 Fuera de eso, los procesos del servicio no cambian: el paquete `recomendaciones.demo` solo lo usa `reco-demo`.
 
@@ -131,7 +148,10 @@ Una demo en verde prueba este servicio contra el contrato propuesto, no la compa
 - la baja de cuenta: no publica `usuario.eliminado`, así que la supresión no se ve en la demo;
 - ítems retirados: todo el catálogo va como `available`;
 - el vencimiento del snapshot de catálogo (410) del runtime real;
-- los IDs `Long`, el header `X-Service-Api-Key` y los mensajes v2 en el mismo exchange.
+- el 503 de la sync de catálogo cuando un ítem **activo** no tiene tags elegibles de su módulo o tiene una
+  clasificación inválida;
+- la purga por retención de las películas de TMDB, que las saca del listado a los 6 meses. Si salen muchas juntas,
+  ver [SyncVolumeDrop](runbook.md#syncvolumedrop).
 
 ## Imagen sin compose
 

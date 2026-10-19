@@ -1,10 +1,10 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
-[constitution v1.1.1](../../.specify/memory/constitution.md) (enmendada el 2026-09-27, RD-98; aclarada el 2026-09-28, RD-111).
+[constitution v1.2.0](../../.specify/memory/constitution.md) (enmendada el 2026-09-27, RD-98; aclarada el 2026-09-28, RD-111; v1.2.0 propuesta el 2026-10-05, RD-117, y aprobada por PR el 2026-10-06).
 
 **Regla de lectura**: este documento especifica **qué datos existen y por qué**, no con qué ORM se
 acceden. Los tipos son lógicos; su mapeo concreto es decisión de T003.
@@ -970,6 +970,8 @@ la constancia de FR-095— y funcionar como **lápida**: la sincronización no r
 | `state` | enum(`in_progress`,`completed`,`failed`) | No | **Funcional** | `in_progress` **es** la marca de FR-092a; `failed` es el estado «fallido visible» de FR-095a |
 | `attempts` | smallint | No | **Operativo** | Reintento acotado con backoff (FR-095a) |
 | `verified_at` | timestamptz | Sí | **Funcional** | Constancia de la verificación de FR-095. `NULL` ⟹ supresión **no completada** |
+| `event_id` | UUID | Sí | **Identidad del evento** | **UNIQUE**. Evento de baja cuya recepción originó la fila: la clave con que `api-general` cruza el checkpoint con su outbox (FR-095b, RD-115). Identifica al evento, no al usuario (FR-095). `NULL` solo en constancias anteriores a la migración `0006` |
+| `received_at` | timestamptz | Sí | **Funcional** | Marca de recepción de FR-095b: fin del cronómetro de entrega. Otra baja del mismo `user_id` conserva el `event_id` y el `received_at` de la primera. `NULL` en los mismos casos que `event_id` |
 
 **Índices**: PK — el worker consulta la marca por `user_id` inmediatamente antes de escribir
 (FR-092a), y la ingesta la consulta como lápida · `idx_suppressions_open (requested_at) WHERE state <>
@@ -979,9 +981,10 @@ la constancia de FR-095— y funcionar como **lápida**: la sincronización no r
 transitoria, y el período de gracia lo pone el `for: 30m` de la alerta `SuppressionsUnverified`, no la
 métrica.
 
-**Integridad**: `CHECK ((state = 'completed') = (verified_at IS NOT NULL))`. La fila **no se borra**:
-es la constancia, y solo contiene el identificador y marcas temporales, que es exactamente lo que
-FR-095 permite retener.
+**Integridad**: `CHECK ((state = 'completed') = (verified_at IS NOT NULL))` · `CHECK ((event_id IS NULL) =
+(received_at IS NULL))` · `UNIQUE (event_id)`. La fila **no se borra**: es la constancia, y solo contiene el
+identificador del usuario, el del evento y marcas temporales, que es exactamente lo que FR-095 permite
+retener (RD-115).
 
 ### 2.16 `item_promotions` — promoción definitiva del conjunto emergente al general
 
@@ -1536,6 +1539,8 @@ erDiagram
         enum state "in_progress|completed|failed"
         smallint attempts "NOT NULL"
         timestamptz verified_at "NULL si no completada (FR-095)"
+        UUID event_id UK "checkpoint de recepción (FR-095b)"
+        timestamptz received_at "fin del cronómetro de entrega"
     }
     item_popularity {
         UUID item_id PK "FK, CASCADE"
@@ -2068,9 +2073,9 @@ cuesta credibilidad y puede tener consecuencias contractuales del lado del catá
 
 | Métrica | Umbral | Acción que dispara | Responsable |
 |---|---|---|---|
-| `catalog_sync_last_success_timestamp` | **> 26 h** | **Alerta.** Catálogo congelado: altas y retiros no se reflejan. Ejecutar sync, investigar | Guardia de plataforma |
+| `catalog_sync_last_success_timestamp` | **> 1 h** *(era > 26 h con sincronización diaria; cada 15 minutos desde el 2026-10-05)* | **Alerta.** Catálogo congelado: altas y retiros no se reflejan. Ejecutar sync, investigar | Guardia de plataforma |
 | `catalog_popularity_last_success_timestamp` | **> 26 h** | **Alerta.** El respaldo sirve un ranking congelado (RD-11). Degradación silenciosa de la calidad del `fallback` | Guardia de plataforma |
-| `catalog_unrated_ratio` = `age_rating_source='unknown_defaulted'` / total vigentes | **> 5 %** | **Alerta.** Esa fracción del catálogo es **inalcanzable para todo usuario** por el fail-closed etario. Escalar al proveedor del catálogo para que declare las clasificaciones faltantes (RD-9) | Dueño de producto |
+| `catalog_unrated_ratio` = `age_rating_source='unknown_defaulted'` / total vigentes | **> 0** *(era > 5 % hasta la revisión B7 del 2026-10-05: la clasificación es obligatoria por CR-15)* | **Alerta.** Esa fracción del catálogo es **inalcanzable para todo usuario** por el fail-closed etario. Escalar al proveedor del catálogo para que declare las clasificaciones faltantes (RD-9) | Dueño de producto |
 | `catalog_retired_total` | Sin umbral | **Ninguna.** Panel: dimensiona el catálogo vigente vs. histórico | — |
 | `projection_field_anomalies_total{field="tag_name", reason="collision"\|"empty"}` | **> 0** | **Alerta.** El origen emite tags que colisionan o valores fuera de dominio. Escalar al proveedor (RD-16) | Guardia de plataforma |
 
@@ -2137,7 +2142,7 @@ es el recomendable.
 
 | Métrica | Umbral | Acción que dispara | Responsable |
 |---|---|---|---|
-| `vector_recompute_lag_seconds` = antigüedad del **ítem vigente más viejo sin vector** bajo la versión activa, desde `greatest(items.first_synced_at, vocab_versions.activated_at)`; 0 si no falta ninguno | **> 26 h** | **Alerta.** Un ítem que debería tener vector no lo tiene: la reconciliación falla. Re-ejecutar e investigar | Guardia de plataforma |
+| `vector_recompute_lag_seconds` = antigüedad del **ítem vigente más viejo sin vector** bajo la versión activa, desde `greatest(items.first_synced_at, vocab_versions.activated_at)`; 0 si no falta ninguno | **> 1 h** *(era > 26 h; sincronización cada 15 minutos desde el 2026-10-05)* | **Alerta.** Un ítem que debería tener vector no lo tiene: la reconciliación falla. Re-ejecutar e investigar | Guardia de plataforma |
 | `vocab_transition_progress` = vectores en versión entrante / total esperado | **Estancado > 2 h** | **Alerta.** Transición de vocabulario detenida a mitad de camino (RD-22) | Guardia de plataforma |
 | `catalog_unvectorized_ratio` = ítems vigentes sin vector / vigentes | **> 10 %** | **Alerta.** Esa fracción no participa de las señales α ni γ (RD-24). Escalar al proveedor: son ítems sin tags | Dueño de producto |
 
@@ -2226,12 +2231,17 @@ Procedimiento obligatorio ante una baja de cuenta. **Disparo** (RD-101): la noti
 importa**: Redis primero, porque una clave reconstruida después del borrado relacional volvería a
 materializar datos ya suprimidos.
 
+0. **Registrar la recepción** (FR-095b, RD-115): apenas el evento pasa la validación del schema, en una
+   transacción propia y con el lock por usuario tomado, insertar la fila `user_suppressions` con `event_id`,
+   `received_at` y `state = 'in_progress'`, de modo que la marca del paso 2 queda escrita desde acá. Si la fila
+   ya existe, se conserva. No contradice FR-080c: no borra ni reemplaza datos. Un evento inválido no llega a
+   este paso.
 1. **Invalidar las cuatro claves de alcance de usuario** en Redis, para **toda** `config_version` y
    módulo —no solo los activos—: `filters:{user_id}`, `reco:v{cfg}:{user_id}:{module}`,
    `reco:stale:v{cfg}:{user_id}:{module}`, `recompute:lock:{user_id}:{module}` —y las **entradas
    pendientes del usuario en `recompute:requests`**, recorrido acotado por `MAXLEN` (RD-100)—.
 2. **Marcar al usuario como en supresión** (FR-092a): fila `user_suppressions` con `state = 'in_progress'`
-   (§2.15). El worker consulta esa marca **inmediatamente
+   (§2.15), escrita en el paso 0; una supresión retomada la vuelve a dejar en `in_progress`. El worker consulta esa marca **inmediatamente
    antes de escribir** y aborta la corrida si está presente, descartando el cómputo ya realizado.
    > **Corrección 2026-09-22 (CHK045, RD-82).** Este paso decía «suprimir el bloqueo de recálculo».
    > **Borrar el lock no detiene al worker que ya lo tomó**: solo habilita a un segundo worker a
@@ -2262,6 +2272,7 @@ materializar datos ya suprimidos.
 | Métrica | Umbral | Acción | Responsable |
 |---|---|---|---|
 | `user_deletion_residual_keys_total` = claves con `user_id` suprimido halladas en la verificación del paso 4 | **> 0** | **Alerta.** Una supresión incompleta es peor que ninguna: existe constancia de haberla ejecutado. Denominador acotado a la supresión en curso, no al histórico | Guardia de plataforma |
+| `user_deletion_receipt_lag_seconds` = histograma sin etiquetas de `received_at − requested_at`, una observación por recepción nueva; negativo ⟹ 0 (FR-095b, RD-115) | **> 900 s** en alguna recepción | **Alerta `DeletionReceiptLate`**: una baja llegó pasado el límite propuesto a `api-general`. Escala a ese equipo y a `notificaciones` | Guardia de plataforma |
 
 ### 7.12 Exclusiones y sincronización: consumidores declarados
 
@@ -2905,7 +2916,7 @@ Este repositorio tiene **prioridad de definición** sobre el modelo de datos; `a
 | **CR-1** | El usuario expone **`birth_date`** (`date`, ISO 8601), **obligatoria y no nula** | El usuario se rechaza en ingesta y no recibe recomendaciones |
 | **CR-2** | `birth_date` es **confiable**: validada en origen, no derivada ni estimada | Un dato erróneo produce un permiso etario erróneo. Es la fuente única |
 | **CR-3** | No se expone campo `age` ni escalar equivalente | Un segundo formato reintroduce la resolución ambigua que RD-1 elimina |
-| **CR-4** | Toda corrección de `birth_date` genera evento de sincronización | Sin él, un permiso restringido tarda hasta el próximo sync completo |
+| **CR-4** | Toda corrección de `birth_date` se refleja en la **siguiente sincronización**: la próxima lectura REST de usuarios trae el valor corregido. No exige evento dedicado. **Modificado por RD-118**: decía «genera evento de sincronización», un evento que ningún contrato define | Sin él, un permiso restringido por la corrección **no llega nunca**. Con él tarda como máximo un intervalo de sincronización (cada 15 minutos desde el 2026-10-05) y, al llegar, T029 invalida los resultados del usuario en el mismo acto (DI-2c, FR-080c) |
 | **CR-5** | El usuario expone **`region`** como código **ISO 3166-1 alfa-2** en mayúsculas, **obligatoria y no nula**. Se recoge al crear la cuenta | **El usuario se rechaza en la ingesta**, igual que ante `birth_date` ausente (CR-1). **Modificado por RD-52**: era best-effort mientras nada la consumía |
 | **CR-6** | Toda corrección de `region` se refleja en la siguiente sincronización | **Ya no es inocua** (RD-52): la región segmenta el vecindario colaborativo, de modo que una corrección cambia **qué recomendaciones recibe** esa persona. No exige evento dedicado —el cambio de país es infrecuente y el recálculo natural lo absorbe—, pero deja de ser «ninguna consecuencia» |
 | **CR-7** | El catálogo expone el **estado de disponibilidad** del ítem, y comunica el retiro de forma explícita | **Deseable, no bloqueante** (RD-92). Sin él el retiro se detecta igual, por desaparición (CR-8, FR-074), pero con el rezago del sync completo — y ese rezago **es la ventana durante la cual un ítem retirado se sigue recomendando**. Degrada latencia de detección, no corrección |
@@ -4863,6 +4874,302 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-122 — La baja masiva legítima se procesa con un procedimiento, no cambiando la guarda
+
+**Fecha**: 2026-10-19 · **Origen**: revisión del código de la spec 005 de `api-general` (`f8a6180`) · **Tipo**:
+operación; condición de revisión de RD-53 cumplida
+
+**Contexto**: la spec 005 de `api-general` importa películas de TMDB, cuyos términos prohíben conservar sus datos más
+de 6 meses. Su purgador (`CatalogMutationService.purgeImportedProviderData`) desactiva cada película antes de que
+venza y **le borra los tags**. Un retirado sin tags no entra en el listado de sincronización, así que la película
+desaparece de él. Si las películas se importan juntas, vencen juntas: el catálogo cae de golpe más del 10 % y la
+guarda de volumen (`sync_volume_delta_ratio` = 0,9, RD-53) aborta. Como compara contra la última corrida exitosa,
+que no se actualiza mientras se aborta, **abortan todas las corridas siguientes**. El runbook no decía cómo salir.
+
+RD-53 lo había previsto: «si el catálogo tiene cargas masivas previstas, el ratio no es la guarda adecuada y
+debería reemplazarse por un tope absoluto de retiros por corrida».
+
+**Decisiones**:
+1. **Por ahora se mantiene la guarda** y se agrega al runbook (`SyncVolumeDrop`) un procedimiento para la baja
+   masiva legítima: confirmarla con `api-general` y correr **una** sincronización con
+   `RECO_SYNC_VOLUME_DELTA_RATIO` apenas por debajo del ratio observado. La corrida exitosa fija la nueva referencia
+   y las siguientes vuelven a pasar con 0,9. La comprobación de listado completo (CR-9) no se relaja.
+2. **Se le pide a `api-general` importar en tandas espaciadas**, para que nunca venza de golpe más del 10 % del
+   catálogo. No puede conservar los tags: son datos de TMDB y vencen igual que el resto.
+3. **El tope absoluto de retiros por corrida queda como alternativa**, para cuando la baja masiva ocurra de
+   verdad: es un cambio de código que hoy no tiene datos con qué calibrarse.
+
+**Lo que se acepta**: la baja masiva requiere intervención humana, con `CatalogSyncStale` como aviso una hora
+después. Es el mismo trato asimétrico de RD-53: entre congelar el catálogo y vaciarlo por error, se congela.
+
+---
+
+### RD-121 — `api-general` corrige su sincronización y publica los contratos (`0a2a1b6`)
+
+**Fecha**: 2026-10-06 · **Origen**: revisión de `api-general` en `0a2a1b6`, con sus tests corridos contra Postgres y
+RabbitMQ · **Tipo**: seguimiento de RD-119 y RD-120, y sincronización de contratos
+
+**Lo que corrigió `api-general`** (verificado en el código y con sus tests: `RecommendationReadinessVerificationTest`
+pasa 21 de 21, y antes fallaban 2 de 19):
+1. La actividad sin `since` usa una consulta propia: la primera corrida ya no responde `500`.
+2. El mínimo de cinco tags por módulo salió de la sincronización y quedó en su verificador. El catálogo sigue
+   respondiendo `503` entero por un ítem **activo** inválido, y ahora también por un tag elegible de nombre vacío.
+   Con eso, DEP-10 vuelve a cortar un módulo (RD-118) y `DeclarableTagsBelowMinimum` puede disparar.
+3. Los usuarios sin perfil verificado se omiten del listado. Para este repositorio el efecto es el de un rechazo en
+   la ingesta, pero `contract_violations_total{field="birth_date"|"region"}` deja de verlos: la cobertura de DEP-11 la
+   mide su verificador (su FR-008).
+4. El v2 quedó apagado por defecto (`RECOMMENDATIONS_OUTBOX_V2_ENABLED=false`) y sus eventos pendientes se retiran sin
+   publicarse. Queda resuelto lo que RD-120 dejaba en `api-general`.
+5. El chequeo de colisiones por formato de los nombres de tag (CR-11) también salió de la sincronización y quedó en
+   su verificador. Este repositorio no normaliza (RD-16), así que una colisión que el verificador no detecte llega
+   como dos tags distintos.
+
+**Contratos**: `0a2a1b6` marca `recomendaciones-api` 1.1.0 como `publicado-en-main`, con la publicación confirmada el
+2026-10-06. Las cuatro copias de `contracts/` pasan a ser **literales** de ese commit; las suites pasan sin cambios
+de código. `usuario.eliminado` declara desde ahora headers AMQP obligatorios. El worker no los exige para ese
+evento, a propósito: rechazar una baja por un header retendría datos de quien pidió ser eliminado.
+
+**Historial de `api-general`**: `0a2a1b6` llegó por un *force-push* sobre `main`. Los commits de reportes y anuncios
+siguen en su rama `notis`. Los de `Recome-Recos-Auto` (`RecommendationsGateway`) no están en ninguna rama remota,
+así que el consumidor nuevo de nuestra API señalado en la revisión anterior **no existe hoy en `main`**. Los permisos
+`reporte.*` de RD-120 describen código que hoy vive en `notis`: no cambian nada mientras no se fusione.
+
+**Test de `api-general` con falla previa**: `OutboxRabbitMqIntegrationTest.eachEventTypeUsesItsOwnConfiguredDestination`
+falla igual en `3f4ceab`. El header llega con el valor correcto, pero el test lo compara como `String` y RabbitMQ
+lo entrega como `LongString`. Es un defecto del test, no de la publicación.
+
+---
+
+### RD-120 — Topología y permisos del broker, acordados con `notificaciones`
+
+**Fecha**: 2026-10-06 · **Origen**: respuesta escrita de `notificaciones` del 2026-10-06, que aprobó la topología y
+dejó a este repositorio las decisiones sobre quién crea los exchanges y los permisos · **Tipo**: operación y
+acuerdo con terceros
+
+**Contexto**: `api-general` no declara exchanges ni colas de eventos. Hacía falta decidir quién crea los exchanges,
+con qué vhost y con qué permisos, y quién opera el broker.
+
+**Decisiones**:
+1. **El broker lo opera `notificaciones`** hasta que el sistema se despliegue en Dokploy. Más adelante podría
+   desplegarse por separado.
+2. **El worker declara y liga** al arrancar `recomendacion.actualizar.v3` y `usuario.eliminado` (fanout, durables)
+   y sus colas, como ya hacía. El exchange v2 `recomendacion.actualizar` no es de este repositorio y no se declara.
+3. **El worker arranca antes** de que `api-general` active la publicación. Es buena práctica, no una condición
+   dura: `api-general` publica con confirmación y `mandatory`, así que si falta el exchange o la cola el mensaje se
+   reintenta y no se pierde. Lo que el orden no cubre es un exchange mal nombrado, así que **antes de activar la
+   publicación se corre la prueba de humo** de `migracion-v3.md` («Cómo lo verificamos»).
+4. **Un vhost por entorno, sin prefijo** en los nombres. Los parámetros `prefix` de `worker/topology.py` quedan
+   sin usar.
+5. **Permisos**:
+
+   | Usuario | configure | write | read |
+   |---|---|---|---|
+   | Worker de `recomendaciones` | `^(recomendacion\.actualizar\.v3\|usuario\.eliminado\|recomendaciones\..*)$` | `^(recomendaciones\..*\|amq\.default)$` | igual que configure |
+   | `api-general` | `^reporte\.(generar\|listo)$` | `^(recomendacion\.actualizar\|recomendacion\.actualizar\.v3\|usuario\.eliminado\|amq\.default)$` | `^reporte\.(generar\|listo)$` |
+
+   El worker necesita `amq.default` porque manda los reintentos y la DLQ por el exchange por defecto. Los permisos
+   de `reporte.*` de `api-general` los señaló `notificaciones`: declara y consume esas colas y publica
+   `reporte.generar` por el exchange por defecto. No dependen de este repositorio.
+6. **`event_version` exactamente `3.0.0`**: el worker compara el valor fijo del schema, no la versión mayor.
+   `migracion-v3.md` decía «versión mayor 3» y se corrige; `api-general` publica `3.0.0`.
+
+**Ratificación del 2026-10-08**, firmada por dos integrantes con nombre y verificada contra `api-general` `3d1a3ba`:
+- **v2**: queda apagado (`RECOMMENDATIONS_OUTBOX_V2_ENABLED=false`) y **nadie crea** `recomendacion.actualizar`. Para
+  activar la publicación alcanza con `RECOMMENDATIONS_OUTBOX_ENABLED=true`, en orden: worker, prueba de humo y recién
+  después la publicación. La observación previa, que exigía el v2, se basaba en la rama `notis`.
+- **Permisos de `api-general` en su `main` actual**: solo `write` sobre
+  `^(recomendacion\.actualizar\.v3|usuario\.eliminado)$`. Su `main` solo publica (`OutboxPublisher`): no declara ni
+  consume nada. Los permisos de `reporte.*` y `amq.default` de la tabla corresponden a la rama `notis`, y se aplican
+  cuando se fusione. Si al fusionarla se pierde la versión de `main` de `OutboxProperties`, vuelve a exigirse el v2.
+
+**Queda en `api-general`**: el v2 no tiene consumidor. Con `mandatory`, aunque alguien creara el exchange, cada v2
+sin cola ligada vuelve y se reintenta sin fin. Se le pidió resolverlo antes de activar la publicación.
+
+---
+
+### RD-119 — La sincronización de `api-general` falla por listado entero, y eso amplía DEP-10 y DEP-11
+
+**Fecha**: 2026-10-06 · **Origen**: revisión del código de `api-general` en `3f4ceab` y ejecución de su test de
+integración `RecommendationReadinessVerificationTest` contra Postgres (19 tests, 2 fallas; las dos ya fallaban en
+`e20d400`) · **Tipo**: riesgo de integración y pedidos a `api-general`
+
+**Contexto**: la corrida del Data Transformer es todo o nada (T029): lee usuarios, catálogo y actividad, y un error en
+cualquiera de los tres aborta la corrida entera sin escribir nada. Del lado de `api-general`, cada listado responde
+`503` completo ante un solo dato que no cumple. La combinación produce efectos que RD-118 no describía.
+
+**Hallazgos**:
+1. **La primera corrida nunca termina.** Sin marca de agua, este repositorio no manda `since`, y el contrato lo
+   permite (`required: false`). `api-general` lo recibe nulo, y su consulta `(:since is null or f.occurredAt >=
+   :since)` falla en Postgres porque no puede inferir el tipo del parámetro: responde `500`. Como esa corrida no deja
+   marca de agua, todas las siguientes repiten el mismo pedido y fallan igual. Su test
+   `activitySyncReturnsFactWithExplicitSourceProvenanceAndMatchingEvent` lo reproduce.
+2. **DEP-10 corta toda la sincronización, no un módulo.** Con menos de cinco tags elegibles en *cualquier* módulo,
+   `api-general` responde `503` a todo el catálogo, y este repositorio aborta la corrida: no entran usuarios, ni
+   actividad, ni ítems de ninguno de los dos módulos. Además, `declarable_tags_total{module}` conserva su último valor,
+   porque no llega el catálogo que lo bajaría, así que `DeclarableTagsBelowMinimum` no dispara y el único aviso es
+   `CatalogSyncStale`, una hora después.
+3. **Un solo usuario incompleto detiene a todos.** `api-general` responde `503` a todo el listado de usuarios si un
+   usuario final no tiene el perfil verificado o tiene `birth_date` o `region` inválidas. `sync_profile_verified`
+   arranca en falso y solo se marca al guardar el perfil, y `api-general` no crea cuentas. Una sola alta sin perfil
+   completo frena la sincronización de todos, incluida la corrección de `birth_date` de la que depende CR-4 desde RD-118.
+
+**Decisiones**:
+1. **La corrida sigue siendo todo o nada.** Una corrida parcial, con usuarios y actividad pero sin catálogo,
+   descartaría la actividad de los ítems que todavía no se materializaron (T029 la saltea) y, al avanzar la marca
+   de agua, la perdería. El problema está en la granularidad del `503` del origen, no en que este repositorio aborte.
+2. **Se le pide a `api-general`**:
+   - corregir la consulta con `since` nulo, sin que este repositorio invente un `since` artificial;
+   - sacar de la sincronización el chequeo de cinco tags por módulo y dejarlo en su verificador de preparación,
+     porque el mínimo por módulo lo vigila este repositorio (DEP-10, RD-110);
+   - omitir del listado a los usuarios sin perfil verificado en lugar de responder `503`. La ausencia no es una baja
+     (FR-091a), y para este repositorio el efecto es el mismo que el rechazo en la ingesta: el usuario no se
+     materializa. Su costo: `contract_violations_total{field="birth_date"|"region"}` deja de verlos, y la
+     cobertura pasa a medirla su verificador (su FR-008).
+3. **Hasta que lo resuelvan**, DEP-10 y DEP-11 se documentan con su efecto real: los dos detienen la sincronización
+   entera.
+
+**Contrato 1.1.0 (seguimiento de RD-118)**: `3f4ceab` agregó a su contrato el `422`, el `503`, el cuerpo del `404`,
+los dos códigos y `/health`. Normativamente queda igual a la copia de este repositorio: las suites de los dos
+lados pasan con el archivo de `api-general` tal cual. Lo rotulan «corrección local no publicada», aunque está en su
+`main`. La copia literal se hace cuando confirmen la publicación.
+
+---
+
+### RD-118 — Respuesta a las observaciones de `api-general` sobre los campos requeridos y el contrato 1.1.0
+
+**Fecha**: 2026-10-05 · **Origen**: revisión de `api-general` (spec 004, `contracts/approval.md`, commits `83e6b59` y
+`e20d400`) · **Tipo**: corrección de requisito (CR-4), precisión de alcance (DEP-10, DEP-11) y aclaración de contrato
+
+**Contexto**: al publicar `recomendaciones-api` 1.1.0, `api-general` dejó tres observaciones sobre
+`docs/contracts/required-fields.md` y la revisión de su contrato encontró diferencias con el nuestro.
+
+**Decisiones**:
+1. **CR-4 se cumple por sincronización, sin evento.** Decía «genera evento de sincronización», pero el contrato de
+   usuarios es lectura REST y no define ningún evento de cambio de perfil. Pasa a la misma forma que CR-6: la
+   corrección se refleja en la siguiente lectura. Con la sincronización cada 15 minutos, la demora máxima de un
+   permiso restringido es un intervalo. El resto no cambia: al llegar, la ingesta invalida los resultados del
+   usuario en el mismo acto (T029, DI-2c, FR-080c) y la guarda del request path descarta el snapshot con ordinal
+   mayor (§3.2).
+2. **DEP-10 no es la única dependencia que deja a muchos usuarios sin servicio a la vez.** Sigue siendo la de mayor
+   severidad, pero por su alcance y no por exclusividad: corta **un módulo entero** para todo usuario que aún no
+   declaró sus gustos en él, durante todo el tiempo que dure la falta y sin mitigación técnica. DEP-11 corta **una
+   cohorte** (los usuarios preexistentes sin `region`) en todos los módulos, y se resuelve completando el backfill.
+   La afirmación «la única cuyo incumplimiento deja al sistema sin ningún usuario atendible» queda corregida donde
+   aparece como afirmación vigente: `required-fields.md` y `plan.md`.
+3. **Un ítem retirado nunca bloquea la sincronización.** `api-general` preguntó si un retirado que se incluye en el
+   listado pero tiene clasificación inválida, o solo tags de otro módulo, debe seguir bloqueándola. No: un retirado
+   nunca se recomienda, así que su clasificación no alcanza a nadie, y este repositorio no exige coherencia entre el
+   módulo del ítem y sus tags. Lo preferible es **proyectarlo con sus tags y `status: retired`**: sus tags siguen
+   alimentando los perfiles de quienes lo consumieron (FR-073; T030 vectoriza los retirados con señales), y sus
+   interacciones solo se ingieren si el ítem está materializado. Omitirlo también es correcto: desde un listado completo, la ausencia se interpreta como retiro
+   (CR-8). Para los ítems **activos** no cambia nada.
+4. **El contrato 1.1.0 publicado se adopta cuando declare las respuestas que la API devuelve.** El publicado declara,
+   para la consulta de recepción, solo `200`, `401` y `404`, y su enum de errores no incluye `receipt_not_found`
+   ni `receipts_unavailable`. La API devuelve además `422` (identificador que no es UUID) y `503
+   receipts_unavailable` (decisión 3 de RD-117). En ejecución son compatibles: el job de `api-general` trata como
+   reintento todo estado distinto de `200` y `404`, y siempre consulta con un UUID. Pero copiar el contrato
+   publicado tal cual haría fallar `test_openapi_conformance`. La comparación campo por campo encontró además dos
+   diferencias que no son de redacción: su `404` de la consulta no declara cuerpo, y la API devuelve el `Error`
+   con `receipt_not_found`; y la ruta pública `/health` (FR-025d, SC-023) **no figura en ninguna versión** del
+   contrato de `api-general`, ni siquiera en la 1.0.0, aunque su schema `Health` sí. La copia de este repositorio
+   nunca fue literal. Se le pide a `api-general` que agregue esas respuestas, esos códigos, el cuerpo del `404` y
+   la ruta `/health`: todo es compatible. Hasta entonces la copia de este repositorio se mantiene y las
+   diferencias quedan registradas en `contracts/README.md`. El resto son descripciones, `summary` y `tags`.
+
+**Alternativas descartadas**: para CR-4, pedir un evento de cambio de perfil. Exigía un contrato nuevo para acortar
+una demora de 15 minutos sobre un dato que ya era erróneo antes de corregirse, y CR-6 resolvió `region` igual. Para
+los retirados, exigirles el mismo contrato que a los activos bloquearía el catálogo entero por un ítem que nadie va
+a ver.
+
+---
+
+### RD-117 — La consulta de la recepción vive en la API, como excepción de lectura del Principio III
+
+**Fecha**: 2026-10-05 · **Origen**: decisión del autor sobre la opción abierta en RD-115 · **Tipo**: gobernanza y
+requisito nuevo (FR-095c)
+
+**Contexto**: el job de `api-general` consulta la recepción de cada baja por `event_id`. Responder exige leer
+`user_suppressions` en Postgres desde un proceso que `api-general` alcance. Las opciones eran tres: enmendar la
+constitución para que la API la sirva, servirla desde el worker o leer una copia en Redis.
+
+**Decisiones**:
+1. **La API la sirve** (`GET /internal/v1/deletion-receipts/{event_id}`, T077), como **segunda excepción del Principio
+   III**, ahora de lectura: una fila por clave por el índice único de `event_id`, sin cómputo, sin Redis y sin datos
+   del usuario. Requiere la **enmienda v1.2.0** de la constitución, aprobada por PR (Governance). Hasta entonces el
+   endpoint se desarrolla y prueba, pero **no se fusiona**. *Aprobada el 2026-10-06 en el PR #96
+   ([revisión](https://github.com/HingusPingus/prototipo_recomendaciones/pull/96#pullrequestreview-5429101769))*.
+2. **Credencial**: la API key interna normal del entorno. `api-general` configura su
+   `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY` con el mismo valor que usa para llamar a esta API; no hay una segunda
+   clave de este lado.
+3. **Respuestas**: `200` con `event_id`, `received_at` y `suppression_state`; `404 receipt_not_found` sin recepción;
+   `503 receipts_unavailable` reintentable si la base no responde, nunca un `404`, que se leería como «no llegó».
+4. **Contrato primero** (Principio II): `recomendaciones-api.openapi.yaml` pasa a 1.1.0, cambio compatible, y tiene que
+   publicarse en `api-general` antes de fusionar.
+
+**Alternativas descartadas**: servirla desde el worker exponía un proceso más a `api-general`, con su propia
+validación de clave y otra política de red. Una copia en Redis cumplía la letra del principio, pero si se pierde
+Redis responde `404`, y del lado de `api-general` eso dispara falsas alarmas de recepción vencida.
+
+**Límite conocido**: una segunda baja del mismo usuario no genera recepción propia (FR-095b conserva la primera), así
+que su consulta responde `404`. `api-general` hace idempotente la baja lógica, por lo que no debería emitirse.
+
+---
+
+### RD-116 — Se consume `recomendacion.actualizar.v3`, en su propio exchange y con headers obligatorios
+
+**Fecha**: 2026-10-05 · **Origen**: propuesta `docs/contracts/migracion-v3.md`, aplicada por `api-general` en
+el commit `9137825` de su repositorio · **Tipo**: contrato consumido
+
+**Contexto**: `api-general` publica por cada interacción dos eventos: el v2 (`{evento_id, usuario_id}`, para sus
+otros consumidores) y el v3, con los siete campos de FR-061. Su borrador de ruteo los mandaba al mismo exchange
+fanout, lo que dejaba en nuestra DLQ un v2 por cada interacción.
+
+**Decisiones**:
+1. **Este repositorio consume solo v3**, ligado al exchange fanout **`recomendacion.actualizar.v3`**. Nunca se liga
+   al exchange de v2. Las colas propias conservan su nombre: no forman parte del contrato.
+2. **Nombre en los textos**: `recomendacion.actualizar`, tal como aparece en `spec.md`, `plan.md`, `tasks.md`, este
+   documento y la constitución, designa al contrato publicado como `recomendacion.actualizar.v3`, schema 3.0.0.
+   No se renombran sus 41 menciones; la copia derivada sí lleva el nombre del evento
+   (`contracts/recomendacion-actualizar-v3.schema.json`).
+3. **La copia derivada es literal** de la de `api-general`: payload cerrado (`additionalProperties: false`) y bloque
+   `x-amqp-transport`, que declara el exchange y los headers `event_type` y `event_version` como obligatorios. El
+   worker toma los valores esperados de esa copia (`worker/schemas.transport_headers`). Un mensaje sin ellos, o con
+   otra versión, va a la DLQ con una causa que nombra el header, sin interpretar el payload.
+4. **Contrato de sync**: la copia de `api-general-sync.openapi.yaml` también pasa a ser literal. Suma `module`
+   obligatorio en la actividad, que el Transformer no lee porque toma el módulo del ítem, y el prefijo `/api/v1`.
+
+**Lo que no cambia**: idempotencia por `event_id`, reintentos con backoff, DLQ, persistencia de la señal (T064) y
+el evento `usuario.eliminado`.
+
+**Pendiente externo**: que `notificaciones` confirme el exchange, su tipo y los bindings antes de habilitar la
+publicación en un entorno compartido.
+
+---
+
+### RD-115 — La recepción del evento de baja se registra como checkpoint de entrega
+
+**Fecha**: 2026-10-05 · **Origen**: propuesta `docs/contracts/checkpoint-baja.md`; `api-general` implementó su
+lado (`DeletionReceiptCheckpointPoller`, apagado por defecto) en el commit `9137825` de su repositorio y propone
+el 2026-10-30 para staging · **Tipo**: requisito nuevo (FR-095b) y precisión de FR-080c
+
+**Decisiones**:
+1. **FR-095b**: la recepción de una baja válida se registra en `user_suppressions` con `event_id` y `received_at`
+   (migración `0006`), en una transacción propia y antes de la supresión (§7.11, paso 0). Esa fila es a la vez el
+   checkpoint y la marca de FR-092a. Otra baja del mismo usuario conserva la primera recepción.
+2. **FR-095** admite el identificador del evento en la constancia: identifica al evento, no al usuario.
+3. **FR-080c** rige las operaciones que borran o reemplazan datos en ambos almacenes. Escribir la recepción
+   antes de invalidar Redis no es una de ellas: solo adelanta la marca.
+4. **Medición**: `user_deletion_receipt_lag_seconds` y la alerta `DeletionReceiptLate` (> 900 s, sin `for`).
+   Las constancias anteriores a la migración quedan con `event_id` y `received_at` nulos: inventarles un evento
+   haría pasar por recibido algo que nadie consultó.
+5. **El endpoint de consulta** `GET /internal/v1/deletion-receipts/{event_id}` que usa el job de `api-general`
+   quedó abierto en esta decisión y lo resuelve **RD-117**.
+
+**Corrección**: la expresión de la alerta de la propuesta restaba series con labels distintos (`_count` sin `le`,
+`_bucket` con `le`) y nunca disparaba; se usa `sum()` a cada lado, verificado con promtool.
+
+---
 
 ### RD-114 — Modo demo: un `api-general` simulado, fuera del camino de producción
 
@@ -7290,11 +7597,11 @@ Los tres **conflictos entre textos ya decididos** que detectó el saneamiento de
 **resueltos por el autor** el mismo día: el peso de consumo (RD-73 frente a FR-022b → RD-99), el orden del
 emergente por afinidad (RD-70 frente a FR-033c/d → RD-102) y la convivencia de versiones de configuración
 (§2.8 frente a FR-025c → RD-103). Los valores que quedaban abiertos se fijaron en RD-104 (conteo por
-usuario y módulo) y RD-108. Solo quedan valores operativos: frecuencia de sincronización, periodicidad
-del respaldo y `event_redelivery_window_hours`.
+usuario y módulo) y RD-108. Solo quedan valores operativos: periodicidad del respaldo y
+`event_redelivery_window_hours`; la frecuencia de sincronización se fijó el 2026-10-05 en cada 15 minutos.
 
 
 
 ---
 
-<sub>Refinamiento de `plan.md` §2 · Trazable a spec.md (FR-001…FR-096) y constitution v1.1.1 · Prototipo consultado como referencia (no normativo)</sub>
+<sub>Refinamiento de `plan.md` §2 · Trazable a spec.md (FR-001…FR-096) y constitution v1.2.0 · Prototipo consultado como referencia (no normativo)</sub>

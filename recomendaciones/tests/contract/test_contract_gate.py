@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import sqlalchemy as sa
 import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator, FormatChecker
@@ -69,7 +70,7 @@ SYNC_CONSUMER = {
     "Interaction": {"origin_interaction_id", "user_id", "item_id", "signal_type", "occurred_at"},
 }
 EVENTS = {
-    "recomendacion-actualizar.schema.json": (ActualizarEvent, parse_actualizar),
+    "recomendacion-actualizar-v3.schema.json": (ActualizarEvent, parse_actualizar),
     "usuario-eliminado.schema.json": (EliminadoEvent, parse_eliminado),
 }
 
@@ -96,7 +97,7 @@ def test_every_field_the_worker_consumes_is_required_by_the_official_event_schem
 
 def _producer_samples() -> dict[str, dict[str, Any]]:
     return {
-        "recomendacion-actualizar.schema.json": {
+        "recomendacion-actualizar-v3.schema.json": {
             "event_id": str(uuid.uuid4()), "origin_interaction_id": f"int-{uuid.uuid4()}", "user_id": str(uuid.uuid4()),
             "module": "juegos", "item_id": str(uuid.uuid4()), "signal_type": "consumo",
             "occurred_at": datetime(2026, 9, 28, tzinfo=UTC).isoformat(), "correlation_id": "c-1",
@@ -120,9 +121,23 @@ def test_worker_copies_are_identical_to_the_contracts(name: str) -> None:
     assert _json(WORKER_COPIES / name) == _json(CONTRACTS / name)
 
 
+def test_v3_transport_of_the_contract_is_the_one_the_worker_consumes() -> None:
+    """RD-116: el exchange y los headers AMQP que declara el contrato v3 (`x-amqp-transport`) son los que usa la
+    topología del worker. Si `api-general` cambia el destino o los headers, este gate falla antes del despliegue."""
+    from recomendaciones.worker.topology import actualizar_topology
+
+    transport = _json(CONTRACTS / "recomendacion-actualizar-v3.schema.json")["x-amqp-transport"]
+    topology = actualizar_topology()
+    assert topology.exchange == transport["exchange"]["name"]
+    assert transport["exchange"]["type"] == "fanout"
+    required = {name: spec["value"] for name, spec in transport["headers"].items() if spec.get("required")}
+    assert required == {"event_type": "recomendacion.actualizar.v3", "event_version": "3.0.0"}
+    assert dict(topology.required_headers or {}) == required
+
+
 def test_gate_fails_if_signal_type_disappears_from_the_contract() -> None:
     """Verificación de T043: eliminar `signal_type` del schema del doble debe hacer fallar el gate."""
-    mutated = copy.deepcopy(_json(CONTRACTS / "recomendacion-actualizar.schema.json"))
+    mutated = copy.deepcopy(_json(CONTRACTS / "recomendacion-actualizar-v3.schema.json"))
     mutated["required"].remove("signal_type")
     mutated["properties"].pop("signal_type")
     with pytest.raises(ContractGap, match="signal_type"):
@@ -170,6 +185,7 @@ def _response_validator(spec: dict[str, Any], path: str, method: str, status: in
 
 READ = "/internal/v1/recommendations/{user_id}"
 DECLARE = "/internal/v1/declarations/{user_id}"
+RECEIPT = "/internal/v1/deletion-receipts/{event_id}"  # T077
 
 
 def _declared(db_factory, modules=("peliculas", "juegos"), ordinal: int = 2) -> uuid.UUID:
@@ -265,12 +281,33 @@ def test_every_declaration_response_validates_against_the_published_openapi(api,
         _response_validator(spec, DECLARE, "post", status).validate(response.json())
 
 
+def test_every_receipt_response_validates_against_the_published_openapi(api, db_factory) -> None:
+    client, _ = api
+    spec = _yaml("recomendaciones-api.openapi.yaml")
+    event = uuid.uuid4()
+    with db_factory.begin() as s:
+        s.execute(
+            sa.text(
+                "INSERT INTO user_suppressions (user_id, requested_at, state, attempts, event_id, received_at) "
+                "VALUES (:u, now(), 'in_progress', 0, :e, now())"
+            ),
+            {"u": uuid.uuid4(), "e": event},
+        )
+    cases = [
+        (client.get(f"/internal/v1/deletion-receipts/{event}", headers=HEADERS), 200),
+        (client.get(f"/internal/v1/deletion-receipts/{uuid.uuid4()}", headers=HEADERS), 404),
+    ]
+    for response, status in cases:
+        assert response.status_code == status, (status, response.text)
+        _response_validator(spec, RECEIPT, "get", status).validate(response.json())
+
+
 def test_every_exposed_operation_is_exercised_by_this_gate() -> None:
     """SC-013: el 100 % de los endpoints expuestos pasa la validación; ninguno queda fuera de la suite."""
     spec = _yaml("recomendaciones-api.openapi.yaml")
     exposed = {(path, method) for path, ops in spec["paths"].items() for method in ops if method in ("get", "post", "put", "delete", "patch")}
     health = {(p, m) for p, m in exposed if p.startswith("/health")}
-    assert exposed - health == {(READ, "get"), (DECLARE, "post")}  # salud la cubre T041 contra el mismo schema
+    assert exposed - health == {(READ, "get"), (DECLARE, "post"), (RECEIPT, "get")}  # salud la cubre T041 contra el mismo schema
 
 
 # --- Dependencias externas vigentes ---------------------------------------------------------------------------
@@ -281,16 +318,16 @@ def _sync_schema(name: str) -> dict[str, Any]:
 
 
 DEP_CHECKS = {
-    "DEP-1": lambda: {"signal_type"} <= set(_json(CONTRACTS / "recomendacion-actualizar.schema.json")["required"])
+    "DEP-1": lambda: {"signal_type"} <= set(_json(CONTRACTS / "recomendacion-actualizar-v3.schema.json")["required"])
     and "signal_type" in _sync_schema("Interaction")["required"],
-    "DEP-2": lambda: "occurred_at" in _json(CONTRACTS / "recomendacion-actualizar.schema.json")["required"]
+    "DEP-2": lambda: "occurred_at" in _json(CONTRACTS / "recomendacion-actualizar-v3.schema.json")["required"]
     and "occurred_at" in _sync_schema("Interaction")["required"],
     "DEP-5": lambda: "birth_date" in _sync_schema("User")["required"],
     "DEP-6": lambda: len(_yaml("recomendaciones-api.openapi.yaml")["components"]["schemas"]["ResultType"]["enum"]) == 5,
     "DEP-7": lambda: _sync_schema("CatalogItem")["properties"]["tags"].get("minItems", 0) >= 1,
-    "DEP-8": lambda: "origin_interaction_id" in _json(CONTRACTS / "recomendacion-actualizar.schema.json")["required"]
+    "DEP-8": lambda: "origin_interaction_id" in _json(CONTRACTS / "recomendacion-actualizar-v3.schema.json")["required"]
     and "origin_interaction_id" in _sync_schema("Interaction")["required"],
-    "DEP-9": lambda: {"event_id", "origin_interaction_id"} <= set(_json(CONTRACTS / "recomendacion-actualizar.schema.json")["required"]),
+    "DEP-9": lambda: {"event_id", "origin_interaction_id"} <= set(_json(CONTRACTS / "recomendacion-actualizar-v3.schema.json")["required"]),
     "DEP-10": lambda: _sync_schema("CatalogItem")["properties"]["tags"]["items"]["type"] == "string",
     "DEP-11": lambda: "region" in _sync_schema("User")["required"] and _sync_schema("User")["properties"]["region"]["pattern"] == "^[A-Z]{2}$",
     "DEP-12": lambda: {"event_id", "user_id", "occurred_at"} <= set(_json(CONTRACTS / "usuario-eliminado.schema.json")["required"]),

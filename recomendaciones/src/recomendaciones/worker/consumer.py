@@ -109,6 +109,11 @@ class EventConsumer(Generic[E]):
             self._on_dead_letter(reason)
 
     async def _on_message(self, message: aio_pika.abc.AbstractIncomingMessage) -> None:
+        mismatch = self._topology.transport_mismatch(message.headers)
+        if mismatch:  # otra versión u otro evento mal ruteado: el payload no se interpreta (RD-116)
+            await self.dead_letter(message, "invalid_payload", mismatch)
+            await message.ack()
+            return
         try:
             event = self._parser(message.body)
         except InvalidEventPayload as exc:

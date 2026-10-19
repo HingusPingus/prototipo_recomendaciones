@@ -323,6 +323,7 @@ async def interactuar(usuario: str, body: Interaccion, request: Request) -> dict
             "origin_interaction_id": origin_interaction_id,
             "user_id": str(user.id),
             "item_id": str(item.id),
+            "module": item.module,
             "signal_type": body.signal_type,
             "occurred_at": occurred_at,
         }

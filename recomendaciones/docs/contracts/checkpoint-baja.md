@@ -4,8 +4,16 @@ Propuesta de `recomendaciones` para el ítem 3 de la respuesta de `api-general`
 (`specs/004-contratos-recomendaciones`, FR-016, SC-003). Completa la tabla «Acuerdo medible de entrega del
 evento de baja» de `contracts/approval.md`.
 
-> **Estado: propuesta, sin acuerdo.** Nada de esto está implementado de nuestro lado. Según el Principio II,
-> lo implementamos después de que los tres equipos lo aprueben por escrito.
+> **Estado al 2026-10-05.** `api-general` implementó su lado (commit `9137825` de su repositorio): el job
+> `DeletionReceiptCheckpointPoller`, apagado por defecto, consulta `GET /internal/v1/deletion-receipts/{event_id}`
+> con una credencial propia (`RECOMMENDATIONS_DELETION_RECEIPT_API_KEY`). Espera `200` con `event_id` y
+> `received_at`, o `404` si todavía no hay recepción. Propone **2026-10-30 (UTC)** para la primera
+> habilitación de `usuario.eliminado` en staging. En su registro la propuesta sigue «sin acuerdo» hasta las
+> conformidades escritas. De nuestro lado, el registro de la recepción, su métrica y su alerta están implementados
+> (RD-115, T074, T075). El endpoint de consulta está implementado con la API key interna normal (RD-117, T077),
+> y sus dos condiciones de merge están cumplidas: la enmienda v1.2.0 de la constitución se aprobó el 2026-10-06 y el
+> contrato 1.1.0 está publicado en `api-general`. Para usarlo, `api-general` configura `RECOMMENDATIONS_DELETION_RECEIPT_API_KEY` con la misma clave
+> interna que usa para llamar a esta API.
 
 ## En corto
 
@@ -86,7 +94,7 @@ que ya usamos (`LAG_BUCKETS`, que incluyen 900 s). Es el mismo patrón que `sign
 
 | Quién | Alerta | Qué detecta |
 |---|---|---|
-| `recomendaciones` | `DeletionReceiptLate` (nueva): `increase(user_deletion_receipt_lag_seconds_count[15m]) - increase(user_deletion_receipt_lag_seconds_bucket{le="900"}[15m]) > 0` | Bajas que llegaron pasado el límite |
+| `recomendaciones` | `DeletionReceiptLate` (nueva): `sum(increase(user_deletion_receipt_lag_seconds_count[15m])) - sum(increase(user_deletion_receipt_lag_seconds_bucket{le="900"}[15m])) > 0` *(corregida el 2026-10-05: sin `sum()`, la resta no emparejaba series porque solo una lleva el label `le`, y la alerta nunca disparaba)* | Bajas que llegaron pasado el límite |
 | `recomendaciones` | `reco_dead_letter_depth{queue="recomendaciones.usuario-eliminado.dlq"} > 0` (existente) | Bajas que llegaron pero no se pueden procesar |
 | `api-general` | Antigüedad del outbox ≥ 300 s (existente) | Bajas que todavía no se publicaron, o que el broker devuelve por falta de ruta |
 | `api-general` | Confirmación vencida (nueva, ver abajo) | Bajas publicadas que **nunca llegaron** a nuestro checkpoint |
@@ -105,7 +113,15 @@ X-Internal-API-Key: <entorno>.<secreto>
 
 200 {"event_id": "…", "received_at": "2026-…Z", "suppression_state": "in_progress|completed|failed"}
 404 recepción no registrada
+422 event_id no es un UUID
+503 receipts_unavailable, con Retry-After: la base no responde; reintentar
 ```
+
+**`Retry-After` del `503` (compromiso, 2026-10-08)**: entero en segundos (*delta-seconds*), nunca una fecha
+HTTP, **entre 1 y 60**. Hoy vale siempre 5. Un valor fuera de ese rango es un defecto de este lado, y lo
+detecta `tests/contract/test_deletion_receipt.py`. `api-general` acota lo recibido a 300 segundos
+(`RECOMMENDATIONS_DELETION_RECEIPT_RETRY_AFTER_MAX_SECONDS`), así que un valor anómalo no demora la
+consulta más allá del límite de 15 minutos.
 
 No devuelve `user_id` ni ningún otro dato del usuario. Del lado de `api-general`, un job periódico
 recorre los eventos `usuario.eliminado` en estado `PUBLICADO` que todavía no tienen recepción confirmada:

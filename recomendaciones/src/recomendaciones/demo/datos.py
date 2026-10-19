@@ -220,6 +220,7 @@ def actividad_inicial(items: list[Item], users: list[Usuario]) -> list[dict]:
                     "origin_interaction_id": f"demo-{user.alias}-{n:03d}",
                     "user_id": str(user.id),
                     "item_id": str(item.id),
+                    "module": item.module,
                     "signal_type": kind,
                     "occurred_at": cuando.isoformat(),
                 })

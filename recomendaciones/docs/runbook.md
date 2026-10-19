@@ -15,7 +15,7 @@ causa está en el origen de datos o en un contrato) o de `notificaciones` (si es
 ## Alertas
 
 ### CatalogSyncStale
-**Qué significa**: no hubo sincronización exitosa en más de 26 h; altas y retiros del catálogo no se
+**Qué significa**: no hubo sincronización exitosa en más de 1 h (unas cuatro corridas, que van cada 15 minutos); altas y retiros del catálogo no se
 reflejan.
 **Primer paso**: `SELECT id, status, failure_reason, started_at FROM sync_runs ORDER BY id DESC LIMIT 5;`
 — si hay `failed`, leer `failure_reason`; si la última está `running` sin `finished_at`, la corrida se
@@ -23,6 +23,18 @@ interrumpió.
 **Acción**: `api-general no disponible` → verificar su salud y reintentar (`reco-transformer`); `listado
 no confirmado completo` o `volumen anómalo` → ver [SyncVolumeDrop](#syncvolumedrop); violaciones de
 contrato → ver [ContractViolationRegion](#contractviolationregion).
+`failure_reason` nombra el listado que falló. Con la salud de `api-general` en orden, la causa conocida es una
+validación suya que rechaza el catálogo entero por un solo dato. Como la corrida es todo o nada, detiene también
+los otros dos listados:
+- **503 en `/internal/v1/sync/catalog/items`**: un ítem **activo** sin tags elegibles del módulo correcto, con un
+  tag elegible de nombre vacío o con una clasificación fuera de `ATP`, `+13`, `+18`. Los retirados no bloquean
+  (RD-118). El mínimo de 5 tags por módulo ya no la bloquea (RD-121): lo avisa `DeclarableTagsBelowMinimum`.
+
+Desde `0a2a1b6` (RD-121) los usuarios sin perfil verificado se omiten en vez de bloquear el listado, y la
+actividad sin `since` responde bien.
+
+Nada de esto se arregla de este lado: escalar a `api-general` con la hora de la corrida y el `failure_reason`,
+para que corrija el dato y corra su verificador de preparación.
 
 ### PopularityStale
 **Qué significa**: la popularidad no se recalcula hace más de 26 h; el respaldo sirve un ranking congelado.
@@ -35,11 +47,11 @@ del último `reco-batch popularity`.
 cumplen años quedan sub-permitidos (degradación conservadora, no incidente de seguridad).
 **Primer paso**: revisar el log y el estado del CronJob del refresco etario.
 **Acción**: ejecutarlo manualmente (`reco-batch age-refresh`; es idempotente) e investigar la causa. La
-sincronización diaria también corrige el ordinal de quien ya cruzó el umbral, de modo que un día perdido se
-repara solo en la corrida siguiente de cualquiera de los dos.
+sincronización (cada 15 minutos) también corrige el ordinal de quien ya cruzó el umbral, de modo que un día
+perdido se repara solo en la corrida siguiente de cualquiera de los dos.
 
 ### VectorRecomputeLag
-**Qué significa**: hay ítems vigentes sin vector bajo la versión activa hace más de 26 h, contadas desde su
+**Qué significa**: hay ítems vigentes sin vector bajo la versión activa hace más de 1 h, contadas desde su
 primera sincronización o desde la activación de la versión, lo que sea más reciente (T070).
 **Primer paso**: `SELECT count(*) FROM items i WHERE status='available' AND NOT EXISTS (SELECT 1 FROM
 item_vectors v JOIN vocab_versions vv ON vv.version = v.vocab_version WHERE v.item_id = i.id AND
@@ -134,10 +146,29 @@ el escenario de DEP-11 (backfill no hecho).
 **Acción**: escalar a `api-general`: la transición se perdió y debe reemitirse con identificador nuevo.
 
 ### SyncVolumeDrop
-**Qué significa**: el volumen sincronizado cayó más del 10 %; la corrida abortó sin marcar retiros.
-**Primer paso**: comparar `entity_counts` de las dos últimas corridas en `sync_runs`.
-**Acción**: confirmar con `api-general` si fue una respuesta parcial; si fue una baja legítima masiva, el
-ratio no es la guarda adecuada (ver RD-53).
+**Qué significa**: el catálogo recibido tiene menos del 90 % de los ítems de la **última corrida exitosa**; la
+corrida abortó sin marcar retiros. La referencia no se mueve mientras se aborta, así que **todas las corridas
+siguientes abortan igual** hasta que alguien actúe: `CatalogSyncStale` dispara una hora después.
+**Primer paso**: comparar el conteo de ítems de la última corrida exitosa con el de la abortada:
+`SELECT id, status, entity_counts->>'items' AS items, failure_reason, started_at FROM sync_runs ORDER BY id DESC LIMIT 5;`
+El `failure_reason` dice `volumen anómalo del catálogo: ratio <r> < 0.9`.
+**Acción**: preguntar a `api-general` si la caída es real, y no aplicar nada hasta tener la respuesta.
+- **Si fue una respuesta parcial o un error suyo**: no tocar nada. Cuando lo corrijan, la próxima corrida vuelve a
+  pasar la guarda sola.
+- **Si fue una baja masiva legítima** (por ejemplo, la purga por retención de su importación de TMDB, que borra
+  los tags de las películas y las saca del listado; RD-122): procesarla una sola vez con la guarda relajada.
+  1. Pedirle a `api-general` cuántos ítems dio de baja y verificar que cierra con la caída observada.
+  2. Correr **una** sincronización con un ratio apenas por debajo del observado, sin cambiar la configuración del
+     entorno: `RECO_SYNC_VOLUME_DELTA_RATIO=<r - 0.05> reco-transformer`. Con `docker compose`:
+     `docker compose run --rm -e RECO_SYNC_VOLUME_DELTA_RATIO=<valor> preparacion reco-transformer`.
+     La comprobación de listado completo (CR-9) sigue activa: un listado truncado aborta igual.
+  3. Verificar que la corrida quedó `success`. Su conteo pasa a ser la nueva referencia, así que las corridas
+     normales vuelven a pasar con 0,9.
+  4. Los ítems que no llegaron quedan retirados (CR-8) y el vocabulario se recalcula en la misma corrida. Si la
+     baja vació un módulo, `DeclarableTagsBelowMinimum` dispara: ver esa sección.
+
+  **Nunca** dejar el ratio bajo en la configuración del entorno: la guarda es la única protección contra un
+  listado que se presenta como completo y no lo es.
 
 ### TagProjectionAnomalies
 **Qué significa**: el origen emite tags vacíos o mal formados.
@@ -197,6 +228,17 @@ Escalar al responsable del repo.
 'completed' ORDER BY requested_at;`
 **Acción**: `failed` → [UserDeletionResidualKeys](#userdeletionresidualkeys); `in_progress` antiguo →
 revisar el worker. **Escalamiento de severidad alta** (FR-095a): responsable del repo en el día.
+
+### DeletionReceiptLate
+**Qué significa**: una baja de cuenta llegó más de 15 minutos después de confirmarse en `api-general`, el
+límite acordado para el checkpoint de recepción (FR-095b). La supresión igual se ejecuta: lo que se incumplió
+es el plazo de entrega.
+**Primer paso**: `SELECT event_id, requested_at, received_at, received_at - requested_at AS lag FROM
+user_suppressions WHERE received_at > now() - interval '1 hour' ORDER BY lag DESC LIMIT 10;`
+**Acción**: si el worker estuvo caído o con cola acumulada en ese intervalo
+([QueueDepthGrowth](#queuedepthgrowth)), la demora es nuestra. Si no, está antes de este servicio: escalar a
+`api-general` (antigüedad de su outbox) y a `notificaciones` (broker) con los `event_id` del primer paso. Un
+lag de varias horas en todos los eventos a la vez suele ser desfase de reloj de `api-general`.
 
 ---
 
@@ -313,8 +355,8 @@ Los perfiles de usuario se reconstruyen bajo la versión nueva en su próximo re
 reproceso es **seguro** de repetir: el worker deduplica por `event_id` y la señal por
 `origin_interaction_id`.
 
-Colas (prefijo según entorno): `recomendaciones.recomendacion-actualizar.dlq` y
-`recomendaciones.usuario-eliminado.dlq`.
+Colas: `recomendaciones.recomendacion-actualizar.dlq` y `recomendaciones.usuario-eliminado.dlq`. No llevan prefijo:
+cada entorno tiene su vhost (RD-120).
 
 1. **Clasificar** por el encabezado `x-dlq-reason` (consola de RabbitMQ → la cola DLQ → *Get messages* con
    *Ack mode: Nack message requeue true*, que no los consume). Los que no lo tienen los mandó el **broker** y
@@ -344,12 +386,13 @@ una cola quorum no se pueden cambiar en caliente**: si cambia alguno de esos dos
 arrancar con `PRECONDITION_FAILED`. Para aplicarlo: detener los workers, esperar que la cola principal quede en
 0, borrarla (`rabbitmqctl delete_queue recomendaciones.recomendacion-actualizar`, y lo mismo con
 `recomendaciones.usuario-eliminado`) y arrancar con el valor nuevo;
-la DLQ no se toca. Mientras tanto `api-general` puede seguir publicando: el exchange sin cola descarta, y la
-sincronización diaria trae esas interacciones (los eventos de baja no: hacerlo fuera de horario y con el
-productor de bajas avisado).
+la DLQ no se toca. Mientras tanto `api-general` puede seguir publicando: publica con confirmación y `mandatory`,
+así que lo que no tiene cola vuelve y lo reintenta, sin perderse (RD-120). Las bajas se demoran lo que dure el
+cambio, y si pasa de 15 minutos dispara [DeletionReceiptLate](#deletionreceiptlate): hacerlo fuera de horario y con
+`api-general` avisado.
 
 **Cuánto esperar**: los eventos tienen valor mientras la señal es útil; más allá de
-`RECO_EVENT_REDELIVERY_WINDOW_HOURS` la sincronización diaria ya trajo la misma interacción desde
+`RECO_EVENT_REDELIVERY_WINDOW_HOURS` la sincronización ya trajo la misma interacción desde
 `api-general` (es idempotente por `origin_interaction_id`), de modo que una DLQ vieja de `recomendacion.actualizar`
 puede descartarse sin pérdida. Los de `usuario.eliminado` **nunca** se descartan: son supresiones
 pendientes (FR-091) y se reprocesan siempre.
@@ -358,13 +401,16 @@ pendientes (FR-091) y se reprocesan siempre.
 
 | Job | Frecuencia | Qué hace | Si falla |
 |---|---|---|---|
-| `reco-transformer` | diaria (o más) | sincroniza y regenera vocabulario | [CatalogSyncStale](#catalogsyncstale) |
+| `reco-transformer` | cada 15 minutos (decidido el 2026-10-05) | sincroniza y regenera vocabulario | [CatalogSyncStale](#catalogsyncstale) |
 | `reco-batch popularity` | diaria | Wilson por ventana, promociones | [PopularityStale](#popularitystale) |
 | `reco-batch fallback` | tras `popularity`, y cada `TTL_FALLBACK` | top-N de respaldo | [HitRateDrop](#hitratedrop) |
 | `reco-batch age-refresh` | diaria, fuera de pico | cruces de umbral etario y escala no compatible | [AgeRefreshStale](#agerefreshstale) |
 | `reco-batch purge-signals` | diaria o semanal | purga por retención con guarda de exclusión | [SignalsPurgeDeferred](#signalspurgedeferred) |
 | `reco-batch suppressions` | cada hora | retoma supresiones trabadas o fallidas | [SuppressionsUnverified](#suppressionsunverified) |
 | `reco-batch audits` | diaria | audita DI-28: declaraciones bajo el mínimo (T069) | [DeclaredMinimumViolations](#declaredminimumviolations) |
+
+En el servidor los programan las Schedules de Dokploy sobre el servicio `worker`, con estas frecuencias
+([despliegue.md](despliegue.md#3-dokploy-los-jobs-periódicos)). Si un job no corre, revisar ahí su última ejecución.
 
 **Reducir `RECO_SIGNAL_RETENTION_DAYS` exige aprobación registrada** (RD-54): la purga es irreversible. Cada
 corrida registra en el log el valor vigente (`reco_signal_retention_days`), de modo que una reducción no
@@ -385,6 +431,11 @@ el 2026-09-28) exige `gates` y prohíbe borrar `main` y forzar pushes. **No** ex
 con `main` (`strict` desactivado) ni revisión del PR. Recomendado: activar ambos en *Settings → Rules →
 Rulesets → main* —*Require branches to be up to date before merging* y *Require a pull request before
 merging* con al menos una aprobación—, que es lo que la constitución pide en su Flujo de Desarrollo.
+
+**Despliegue**: `.github/workflows/deploy.yml` corre después de `ci` y solo si terminó en verde sobre `main`:
+publica la imagen en ghcr.io y pide el deploy a Dokploy ([despliegue.md](despliegue.md)). Si `ci` falla, no se
+despliega nada. Si falla `deploy`, el servidor sigue con la versión anterior: revisar el job en GitHub Actions
+(imagen o llamada a Dokploy) y, si el deploy llegó a Dokploy, sus logs.
 
 Mutante sobreviviente en el job `mutation`: los tests de invariantes dejaron de detectar una rotura del
 filtro de edad o de exclusión. No se «arregla» el mutante: se escribe el test que lo mata.

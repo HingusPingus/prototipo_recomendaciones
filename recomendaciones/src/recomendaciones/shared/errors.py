@@ -55,6 +55,14 @@ class DeclarationConflict(RecoError):
     default_message = "el módulo ya tiene una declaración de gustos"
 
 
+class ReceiptNotFound(RecoError):
+    """FR-095c: no hay recepción registrada para ese evento de baja; quien consulta reintenta."""
+
+    http_status = 404
+    code = "receipt_not_found"
+    default_message = "no hay recepción registrada para ese evento"
+
+
 class _Unavailable(RecoError):
     http_status = 503
     retry_after_seconds: ClassVar[int] = 5
@@ -72,6 +80,13 @@ class ExclusionSetUnavailable(_Unavailable):
 
     code = "filters_unavailable"
     default_message = "servicio temporalmente no disponible"
+
+
+class ReceiptsUnavailable(_Unavailable):
+    """La consulta de recepción no pudo leer Postgres: reintentable, nunca un 404 que se lea como «no llegó»."""
+
+    code = "receipts_unavailable"
+    default_message = "constancias de recepción no disponibles"
 
 
 class StaleAgeScale(_Unavailable):
