@@ -17,8 +17,8 @@
       "name": "usuario.eliminado",
       "type": "fanout",
       "durable": true,
-      "status": "aprobacion-reportada",
-      "approval_reported_date": "2026-10-06"
+      "status": "aprobado",
+      "approval_date": "2026-10-06"
     },
     "messageId": {"required": true, "source": "event_id"},
     "headers": {
