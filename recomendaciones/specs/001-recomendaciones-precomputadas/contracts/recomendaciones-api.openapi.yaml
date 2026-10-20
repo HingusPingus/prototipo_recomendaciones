@@ -4,12 +4,11 @@ info:
   version: 1.1.0
   description: |
     Versión 1.1.0 del contrato del servicio recomendaciones, custodiado por api-general. El equipo
-    proveedor reportó que la corrección RD-118 —422/503, componentes de respuesta y `/health`— se
-    publicó en `main` mediante 3f4ceab y confirmó que puede copiarse textualmente. Este archivo local
-    contiene esos cambios; la copia movida disponible de recomendaciones solo contiene el OpenAPI
-    1.0.0 propuesto y no conserva `.git`, por lo que no se verificó paridad literal con 3f4ceab.
-    La publicación inicial 83e6b59 añadió la consulta del checkpoint y el 200/401/404. Esto no
-    acredita que el endpoint, la clave o la versión runtime estén desplegados en un entorno.
+    de recomendaciones confirma que la corrección RD-118 —422/503, componentes de respuesta y
+    `/health`— está publicada en `main` mediante 3f4ceab y que puede copiarse textual desde este archivo.
+    La publicación inicial 83e6b59 añadió la consulta del checkpoint y el 200/401/404; el commit
+    3f4ceab publica la corrección completa. Esto no acredita que el endpoint, la clave o la versión
+    runtime estén desplegados en un entorno.
     Se conserva sin cambios el artefacto recibido 1.0.0 en `files/`; esta propuesta también conserva los cinco estados,
     UUID y `DeclarationRequest.tags.minItems: 1`, y documenta el mínimo efectivo configurable de cinco.
     La ruta y la respuesta del checkpoint se basan en la propuesta recibida en `checkpoint-baja.md`;
@@ -26,7 +25,7 @@ info:
     publication-confirmed: "2026-10-06"
     source:
       - specs/004-contratos-recomendaciones/files/recomendaciones-api.openapi.yaml
-      - prototipo_recomendaciones-dev/recomendaciones/docs/contracts/checkpoint-baja.md (reviewed at dev commit 199cdf7; local copy has no Git metadata)
+      - repo_recomendaciones/recomendaciones/docs/contracts/checkpoint-baja.md
 servers:
   - url: http://recomendaciones.internal
     description: Solo alcanzable por servicios internos
