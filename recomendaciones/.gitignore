@@ -21,6 +21,10 @@ htmlcov/
 # Clon local de consulta del repo api-general (tiene su propio git)
 recome-api-general/
 
+# Clon local del repo recome-Frontend (tiene su propio git). Los arreglos del front se commitean en ese repo,
+# no en este.
+recome-Frontend/
+
 # Editor / SO
 .vscode/
 .idea/

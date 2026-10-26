@@ -8,17 +8,17 @@ documento es el mapa para quien llega al código.
 
 | Proceso | Entrypoint | Escribe | Lee |
 |---|---|---|---|
-| API | `reco-api` | `user_declared_tags` (única escritura, T053) y `recompute:requests` | Redis; Postgres solo ante miss de `filters:`/`retired:` |
-| Worker | `reco-worker` | `user_signals` (evento), `user_exclusions`, `user_profiles`, `processed_events`, `reco:`/`reco:stale:` | cola `recomendacion.actualizar`, Stream `recompute:requests`, Postgres |
+| API | `reco-api` | `user_declared_tags` (única escritura, T053) y `recompute:requests` | Redis; Postgres solo ante miss de `filters:`/`retired:` y en la consulta de recepciones de bajas (`user_suppressions`, T077; las dos excepciones del Principio III) |
+| Worker | `reco-worker` | `user_signals` (evento), `user_exclusions`, `user_profiles`, `processed_events`, `user_suppressions`, `reco:`/`reco:stale:` | colas de los exchanges `recomendacion.actualizar.v3` y `usuario.eliminado`, Stream `recompute:requests`, Postgres |
 | Data Transformer | `reco-transformer` (una corrida) | proyección (`users`, `items`, `tags`, `item_tags`, `user_signals` de sync), `sync_runs`; luego vocabulario (`vocab_*`, `item_vectors`, `tag_modules`) | REST de `api-general` |
-| Batch | `reco-batch popularity \| fallback \| warmup \| age-refresh \| purge-signals` | `item_popularity`, `item_promotions`, `fallback:`, `users` (ordinal etario), purga | Postgres |
+| Batch | `reco-batch popularity \| fallback \| warmup \| age-refresh \| purge-signals \| suppressions \| audits` | `item_popularity`, `item_promotions`, `fallback:`, `users` (ordinal etario), purga, reintento de supresiones, `process_runs` | Postgres |
 
 Cada fila tiene **un único proceso escritor** (DI-13).
 
 ```mermaid
 flowchart LR
     AG["api-general"] -->|REST, solo lectura| DT["Data Transformer"]
-    AG -->|"recomendacion.actualizar (RabbitMQ)"| W["Worker"]
+    AG -->|"recomendacion.actualizar.v3 y usuario.eliminado (RabbitMQ)"| W["Worker"]
     DT --> PG[("DB Recomendaciones<br/>Postgres + pgvector")]
     W --> PG
     B["Batch"] --> PG
@@ -27,7 +27,7 @@ flowchart LR
     API["API"] -->|"lee"| R
     API -->|"miss / declaración: XADD"| RQ["recompute:requests"]
     RQ --> W
-    AG -->|"HTTP interno + API key"| API
+    AG -->|"HTTP interno + API key: lectura y recepción de bajas"| API
 ```
 
 ## Reglas que el código hace cumplir
@@ -62,7 +62,7 @@ espera (`.retry`). La profundidad de la cola y de la DLQ se exportan como `reco_
 
 ## Datos
 
-18 tablas (`storage/db/models.py`, migración `migrations/versions/0001_initial.py`) y 8 familias de claves
+19 tablas (`storage/db/models.py`, migraciones `migrations/versions/0001_initial.py` a `0006_…`) y 8 familias de claves
 Redis (`storage/cache/keys.py`). La configuración del motor está versionada en
 `config/engine_config/vN.yaml`; su identidad es el hash del contenido y viaja en cada clave `reco:` y
 `fallback:`, de modo que cambiar de versión no exige invalidar en masa.
@@ -80,4 +80,5 @@ Redis caído ⟹ `503` con `Retry-After`; nunca se calcula ni se lee el top-N de
 ## Operación
 
 Runbook: [`docs/runbook.md`](runbook.md). Alertas: `ops/alerts.yaml`. Métricas: `:9100/metrics` en cada
-proceso; salud en `/health`, `/health/live`, `/health/ready` (API) y `:8081` (worker).
+proceso; salud en `/health`, `/health/live`, `/health/ready` (API) y `:8081` (worker). Despliegue en Dokploy:
+[`docs/despliegue.md`](despliegue.md).

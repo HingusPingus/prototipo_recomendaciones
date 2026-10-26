@@ -409,8 +409,8 @@ pendientes (FR-091) y se reprocesan siempre.
 | `reco-batch suppressions` | cada hora | retoma supresiones trabadas o fallidas | [SuppressionsUnverified](#suppressionsunverified) |
 | `reco-batch audits` | diaria | audita DI-28: declaraciones bajo el mínimo (T069) | [DeclaredMinimumViolations](#declaredminimumviolations) |
 
-En el servidor los programan las Schedules de Dokploy sobre el servicio `worker`, con estas frecuencias
-([despliegue.md](despliegue.md#3-dokploy-los-jobs-periódicos)). Si un job no corre, revisar ahí su última ejecución.
+En el servidor los programan las Schedules de Dokploy sobre la Application `reco-worker`, con estas frecuencias
+([despliegue.md](despliegue.md#4-los-jobs-periódicos)). Si un job no corre, revisar ahí su última ejecución.
 
 **Reducir `RECO_SIGNAL_RETENTION_DAYS` exige aprobación registrada** (RD-54): la purga es irreversible. Cada
 corrida registra en el log el valor vigente (`reco_signal_retention_days`), de modo que una reducción no

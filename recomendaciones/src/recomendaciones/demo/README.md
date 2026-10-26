@@ -21,8 +21,8 @@ Con RabbitMQ hablan dos procesos:
 
 | Proceso | Rol | Archivo | Conexiones |
 |---|---|---|---|
-| `api-general` (en la demo, el simulado) | **Publica** `recomendacion.actualizar` cuando un usuario interactúa con un ítem | [`api_general_simulada.py`](api_general_simulada.py), endpoint `POST /demo/usuarios/{usuario}/interacciones` | 1 |
-| `reco-worker` | **Consume** `recomendacion.actualizar` y `usuario.eliminado` | [`worker/consumer.py`](../worker/consumer.py), cableado en [`worker/runtime.py`](../worker/runtime.py) | 2 (una por consumidor) |
+| `api-general` (en la demo, el simulado) | **Publica** `recomendacion.actualizar.v3` cuando un usuario interactúa con un ítem | [`api_general_simulada.py`](api_general_simulada.py), endpoint `POST /demo/usuarios/{usuario}/interacciones` | 1 |
+| `reco-worker` | **Consume** `recomendacion.actualizar.v3` y `usuario.eliminado` | [`worker/consumer.py`](../worker/consumer.py), cableado en [`worker/runtime.py`](../worker/runtime.py) | 2 (una por consumidor) |
 
 Se puede comprobar con el stack levantado:
 

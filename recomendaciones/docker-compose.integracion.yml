@@ -1,0 +1,140 @@
+# Stack para probar la integración con el api-general REAL en local (spec 007 de api-general).
+# Guía, con el orden de los pasos: docs/integracion-local.md.
+#
+#   docker compose -f docker-compose.integracion.yml --env-file .env.integracion up -d --build --wait
+#   (api-general arranca después, unido a la red recome-integracion, y crea sus datos de prueba)
+#   docker compose -f docker-compose.integracion.yml --env-file .env.integracion run --rm sincronizacion
+#
+# Diferencias con docker-compose.yml (la demo):
+# - No hay api-general simulado ni semilla: el Data Transformer lee el api-general real.
+# - La clave interna y las credenciales de RabbitMQ vienen del .env de la corrida, nunca del repo. La clave es
+#   <RECO_ENVIRONMENT>.<secreto> y tiene el mismo valor que la RECOMMENDATIONS_SERVICE_API_KEY de api-general.
+# - La sincronización no corre al arrancar: se corre a pedido, cuando api-general ya tiene sus datos.
+# - Se comparte con api-general la red `recome-integracion`, solo con rabbitmq, api, worker y sincronizacion.
+#   Las bases quedan en una red interna: api-general también tiene un servicio `postgres`, y en una red común
+#   ese nombre sería ambiguo.
+# - Sin volúmenes: cada corrida arranca con una base vacía. Una base con datos del simulado haría abortar la
+#   primera sincronización contra el real por caída de volumen.
+
+name: recomendaciones-integracion
+
+x-reco-env: &reco-env
+  RECO_ENVIRONMENT: ${RECO_ENVIRONMENT:?definir RECO_ENVIRONMENT (test para la spec 007 de api-general)}
+  RECO_INTERNAL_API_KEY: ${RECO_INTERNAL_API_KEY:?definir RECO_INTERNAL_API_KEY como <RECO_ENVIRONMENT>.<secreto de 16 caracteres o más>}
+  RECO_DATABASE_URL: postgresql+psycopg://reco:reco@postgres:5432/recomendaciones
+  RECO_REDIS_URL: redis://redis:6379/0
+  RECO_AMQP_URL: amqp://${RABBITMQ_USER:?definir RABBITMQ_USER}:${RABBITMQ_PASSWORD:?definir RABBITMQ_PASSWORD}@rabbitmq:5672/
+  RECO_API_GENERAL_BASE_URL: http://api-general:8080/api/v1
+  RECO_ENGINE_CONFIG_FILE: v1.yaml
+  RECO_TTL_FRESH_SECONDS: "86400"
+  RECO_TTL_STALE_SECONDS: "604800"
+  RECO_TTL_FILTERS_SECONDS: "3600"
+  RECO_TTL_FALLBACK_SECONDS: "21600"
+  RECO_TTL_SUPPRESS_SECONDS: "300"
+  RECO_TTL_DEDUPE_SECONDS: "86400"
+  RECO_IDEMPOTENCY_RETENTION_HOURS: "168"
+  RECO_SIGNAL_RETENTION_DAYS: "730"
+  RECO_SYNC_VOLUME_DELTA_RATIO: "0.9"
+  # Cada interacción recalcula en el acto, para ver el efecto del evento en la prueba (producción: 10).
+  RECO_INTERACTION_RECALC_THRESHOLD: "1"
+  RECO_RECOMPUTE_REQUESTS_MAXLEN: "100000"
+  RECO_RECOMPUTE_REQUESTS_MAX_DELIVERIES: "5"
+  RECO_EVENT_REDELIVERY_WINDOW_HOURS: "24"
+  RECO_RETRY_MAX_ATTEMPTS: "5"
+  RECO_RETRY_BACKOFF_BASE_SECONDS: "1"
+  RECO_REDIS_TIMEOUT_SECONDS: "0.5"
+  RECO_API_GENERAL_TIMEOUT_SECONDS: "10"
+  RECO_WARMUP_RATE_PER_SECOND: "50"
+
+x-app: &app
+  build: .
+  image: recomendaciones:local
+  environment: *reco-env
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: reco
+      POSTGRES_PASSWORD: reco
+      POSTGRES_DB: recomendaciones
+    networks: [interna]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reco -d recomendaciones"]
+      interval: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    networks: [interna]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?definir RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?definir RABBITMQ_PASSWORD}
+    networks: [integracion]
+    ports:
+      - "127.0.0.1:${RECO_RABBITMQ_CONSOLE_PORT:-15672}:15672"  # consola web; api-general publica por la red, no por el host
+    healthcheck:
+      # `ping` da OK apenas arranca el nodo, antes de que el puerto AMQP acepte conexiones.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      retries: 30
+
+  migraciones:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    networks: [interna]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *app
+    command: ["reco-api"]
+    networks: [interna, integracion]
+    ports:
+      - "127.0.0.1:${RECO_API_PORT:-8000}:8000"  # API de recomendaciones (requiere X-Internal-API-Key)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      migraciones: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+  # Declara al arrancar los exchanges recomendacion.actualizar.v3 y usuario.eliminado y sus colas. Listo cuando
+  # Redis, Postgres y el broker responden: api-general espera este estado antes de su smoke.
+  worker:
+    <<: *app
+    command: ["reco-worker"]
+    networks: [interna, integracion]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/health/ready', timeout=2)"]
+      interval: 5s
+      retries: 30
+    depends_on:
+      migraciones: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+
+  # Data Transformer y los jobs del respaldo, a pedido (`run --rm sincronizacion`): una corrida contra el
+  # api-general real. Tiene que correr después de que api-general cree sus datos y antes de que publique eventos:
+  # un evento de un usuario o un ítem todavía no sincronizado se descarta como `skipped_not_materialized`.
+  sincronizacion:
+    <<: *app
+    profiles: [manual]
+    command: ["sh", "-c", "reco-transformer && reco-batch popularity && reco-batch fallback"]
+    networks: [interna, integracion]
+    depends_on:
+      migraciones: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+networks:
+  interna: {}
+  integracion:
+    name: recome-integracion

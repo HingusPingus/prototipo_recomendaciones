@@ -1,6 +1,6 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19; riesgos aceptados del despliegue, RD-123, 2026-10-19; servidor en Applications con el `api-general` real, RD-124, 2026-10-26) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4875,6 +4875,75 @@ revisar es la obligatoriedad, no la validación. El centinela descartado arriba 
 alternativa a evaluar.
 
 
+### RD-124 — El servidor pasa a Applications de Dokploy y al `api-general` real
+
+**Fecha**: 2026-10-26 · **Origen**: despliegue de `api-general` y del frontend con registro y login; decisiones del
+equipo del mismo día · **Tipo**: operación; condición de revisión de RD-123 alcanzada
+
+**Contexto**: `api-general` ya emite y valida la identidad de usuario (`/auth/signup`, `/auth/login`) y el frontend
+registra cuentas con el perfil que necesita la sincronización. El servidor corría un servicio *Compose* con el
+`api-general` simulado y un RabbitMQ propio (`docs/despliegue.md` hasta este cambio). El equipo no tiene acceso al
+servidor ni a la configuración global de Dokploy, solo a los proyectos.
+
+**Decisiones**:
+1. **Cada proceso es una Application de Dokploy con proveedor Docker**, que descarga la imagen de ghcr.io: `reco-api`
+   y `reco-worker`, con Postgres (`pgvector/pgvector:pg16`) y Redis como servicios *Database*. El redeploy lo pide
+   `deploy.yml` con `POST /api/application.deploy`, primero la API y después el worker. La configuración (variables,
+   credenciales, bases) vive en Dokploy; `docker-compose.dokploy.yml` se elimina.
+2. **La imagen pasa a privada.** Revierte la decisión del 2026-10-19 de publicarla: las Applications la descargan
+   con credenciales de registry propias (un token de solo lectura), que no requieren acceso al servidor.
+3. **Se deja el `api-general` simulado y se conecta el real**, por la sincronización REST cada 15 minutos. Los eventos
+   siguen apagados en `api-general` hasta la prueba de humo de `migracion-v3.md`: las interacciones y las bajas
+   llegan con la sincronización, no al instante.
+4. **El broker es el de `notificaciones`** (RD-120), con un usuario y un vhost propios; se elimina el RabbitMQ propio.
+5. **La API migra al arrancar** con un comando propio, `reco-api-con-migraciones`: el Run Command de Dokploy separa
+   por espacios sin respetar comillas y no admite `sh -c "alembic upgrade head && reco-api"`. Reemplaza al servicio
+   `migraciones` del compose.
+
+**Lo que queda abierto**: la condición de revisión de RD-123 —conectar el `api-general` real con usuarios de
+verdad— se cumplió **sin** backup de Postgres y **sin** alertas evaluadas. Desde ahora los datos no son
+regenerables: declaraciones, exclusiones, historial de señales y constancias de baja. RD-123 justificaba la
+aceptación en que eran datos de la demo, y eso dejó de ser cierto, así que **no se extiende sola**: el equipo tiene
+que resolver las dos cosas (lo mínimo: un backup diario a un destino externo y alguien que reciba las alertas
+críticas) o aceptarlas de nuevo con fecha y motivo. Mientras tanto, el incumplimiento del Principio VII en el
+servidor sigue vigente (`docs/despliegue.md`, «Riesgos abiertos»).
+
+---
+
+### RD-123 — Riesgos aceptados del despliegue en Dokploy: sin backups y sin alertas evaluadas
+
+**Fecha**: 2026-10-19 · **Origen**: análisis completo del proyecto tras el primer despliegue en Dokploy; decisiones del
+equipo del mismo día · **Tipo**: operación; condición de revisión de RD-71 cumplida
+
+**Contexto**: el servicio corre en un servidor desde el 2026-10-19 (`docs/despliegue.md`), con el `api-general`
+simulado. Dos cosas que el diseño deja a la operación no están en ese servidor:
+
+1. **Backups de Postgres.** RD-71 los dejó fuera de la feature «por ahora», con la condición de revisarlo «antes del
+   primer despliegue productivo». Sin backups, perder el volumen de Postgres pierde **sin forma de recuperarlas**
+   las declaraciones de gustos, las exclusiones, el historial de señales y las constancias de baja.
+2. **Evaluación de alertas.** Las 28 reglas de `ops/alerts.yaml` están probadas en CI (promtool y cadena viva), pero
+   en el servidor no hay Prometheus que las evalúe. El Principio VII pide que el estado del worker y de la
+   sincronización sea observable sin inspección manual, con alertas ante una falla sostenida.
+
+**Decisiones**:
+1. **Se acepta no tener backups mientras corra el `api-general` simulado.** Sus datos son de la demo: se regeneran
+   en cada despliegue y no hay usuarios reales que pierdan sus declaraciones.
+2. **Se acepta no evaluar las alertas en el servidor, por la misma razón.** Agregar Prometheus y Alertmanager se
+   descartó el 2026-10-19: nadie del equipo recibiría los avisos, y una alerta que nadie lee no es una
+   mitigación. Mientras tanto, la observación es manual: el estado de las Schedules en Dokploy, los logs y
+   `/health/ready`.
+
+**Condición de revisión, para las dos**: **antes de conectar el `api-general` real con usuarios de verdad**
+(`docs/despliegue.md`, «Pasar al api-general real»). En ese momento los datos dejan de ser regenerables y una falla
+silenciosa afecta a personas. Lo mínimo es un backup diario de Postgres a un destino externo y alguien que reciba
+las alertas críticas.
+
+**Lo que se acepta**: hoy la falla de un job o del worker se descubre solo si alguien entra a mirar, y una pérdida
+del servidor obliga a regenerar la demo desde cero. Es un incumplimiento del Principio VII **en el servidor**, no
+en el código: las métricas y las reglas existen y están probadas.
+
+---
+
 ### RD-122 — La baja masiva legítima se procesa con un procedimiento, no cambiando la guarda
 
 **Fecha**: 2026-10-19 · **Origen**: revisión del código de la spec 005 de `api-general` (`f8a6180`) · **Tipo**:
@@ -6665,6 +6734,9 @@ decorativo — el mismo defecto que este documento se prohíbe en los parámetro
 
 **Condición de revisión**: antes del primer despliegue productivo. La decisión es «no ahora», no
 «nunca»: el momento correcto para fijarlo es cuando exista infraestructura real sobre la que fijarlo.
+*(Revisada el 2026-10-19 en RD-123: con el primer despliegue se acepta seguir sin backups mientras el servidor
+corra con el `api-general` simulado, y se fija revisarlo antes de conectar el real. El real se conectó el
+2026-10-26 sin backups: queda abierto en RD-124.)*
 
 ---
 

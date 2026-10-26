@@ -1,6 +1,6 @@
 # Matriz de trazabilidad ítem → evidencia (T048)
 
-**Fecha**: 2026-09-28 · **Rama**: `001-recomendaciones-precomputadas`
+**Fecha**: 2026-09-28 · **Actualizada**: 2026-10-19 (DoD al día tras T046, T077 y la revisión B7) · **Rama**: `001-recomendaciones-precomputadas`
 
 Cada ítem de los dos checklists (30 de `requirements-contracts.md` y 46 de
 `requirements-clarify-2026-09-14.md`), cada invariante transversal, cada Success Criterion y cada deuda del
@@ -171,10 +171,10 @@ Lo que no depende de este repositorio queda `[ ]` con su motivo. No se marca por
 | Configuración trazable, `config_version` en ambas claves, `v1.yaml` valida | [x] | `tests/unit/test_cache_keys.py::test_config_version_is_in_both_fresh_and_stale_keys`<br>`tests/unit/test_config_loader.py::test_v1_loads_with_decided_values` |
 | SC-001 verificado | [x] | `docs/validation/performance-report.md` |
 | Métricas de observabilidad declaradas y emitidas | [x] | `tests/integration/test_metrics.py::test_registry_declares_every_required_metric`<br>`tests/integration/test_metrics.py::test_worker_emits_dlq_and_queue_depth` |
-| Alertas probadas induciendo su condición, umbrales justificados por escrito | [x] | `tests/integration/test_alerts.py::test_promtool_every_alert_fires_on_its_condition_and_clears`<br>`tests/integration/test_alerts.py::test_every_alert_has_justified_threshold_owner_and_runbook_entry` — la **revisión humana** de las justificaciones (T042) sigue pendiente |
-| Ejecución de prueba del runbook registrada | [ ] | `docs/validation/runbook-dry-run.md` es la plantilla: la ejecución la hace alguien ajeno a la feature (T046) |
-| Documento de campos requeridos publicado | [ ] | Enviado a `api-general` para su revisión el 2026-09-29 (`docs/contracts/required-fields.md`); falta su respuesta |
-| Ningún FR carece de tarea | [x] | `docs/validation/fr-coverage.md` (167 de 167; 34 por contenido, con su test)<br>`tests/contract/test_fr_coverage.py::test_every_requirement_of_the_spec_has_a_row_with_a_task` |
-| Constitución v1.1.1 aprobada por PR | [x] | PR #77 (de albanofazzito), revisión APPROVED de HingusPingus del 2026-09-28, registrada después del merge; asentado en `specs/001-recomendaciones-precomputadas/data-model.md` (RD-112) |
+| Alertas probadas induciendo su condición, umbrales justificados por escrito | [x] | `tests/integration/test_alerts.py::test_promtool_every_alert_fires_on_its_condition_and_clears`<br>`tests/integration/test_alerts.py::test_every_alert_has_justified_threshold_owner_and_runbook_entry`<br>`docs/validation/alert-threshold-review.md` — revisión humana B7 de las 28 justificaciones, cerrada el 2026-10-05 |
+| Ejecución de prueba del runbook registrada | [x] | `docs/validation/runbook-dry-run.md` — ejecutada el 2026-10-19 (T046), sin bloqueos informados y con los dos apartamientos que registra el documento |
+| Documento de campos requeridos publicado | [x] | `docs/contracts/required-fields.md` — revisado por `api-general`, cuyo `approval.md` (`f8a6180`, líneas 134–150) registra que RD-118 resolvió sus observaciones |
+| Ningún FR carece de tarea | [x] | `docs/validation/fr-coverage.md` (169 de 169; 34 por contenido, con su test)<br>`tests/contract/test_fr_coverage.py::test_every_requirement_of_the_spec_has_a_row_with_a_task` |
+| Constitución aprobada por PR | [x] | v1.1.1: PR #77 (de albanofazzito), revisión APPROVED de HingusPingus del 2026-09-28, registrada después del merge (RD-112). v1.2.0: PR #96, revisión APPROVED de albanofazzito del 2026-10-06 (RD-117). Asentado en `specs/001-recomendaciones-precomputadas/data-model.md` |
 | `event_redelivery_window_hours` copiado del broker real | [x] | `.env.example` (24 h, `RABBITMQ_MESSAGE_TTL_MS` del broker de `notificaciones`)<br>`tests/integration/test_topology.py::test_every_queue_is_quorum_and_the_main_one_carries_ttl_delivery_limit_and_dead_letter`<br>`tests/integration/test_topology.py::test_message_never_consumed_expires_into_our_dead_letter_queue` |
-| Evento de baja publicado por `api-general` | [ ] | Nombre y schema acordados (RD-113, `specs/001-recomendaciones-precomputadas/contracts/usuario-eliminado.schema.json`); fecha y checkpoint de entrega a la espera de `api-general` (`docs/contracts/checkpoint-baja.md`) |
+| Evento de baja publicado por `api-general` | [ ] | Nombre y schema acordados (RD-113, `specs/001-recomendaciones-precomputadas/contracts/usuario-eliminado.schema.json`, copia literal). Checkpoint de entrega resuelto (RD-115, RD-117; T077 fusionada). Falta que `api-general` lo publique: al 2026-10-19 su schema dice `aprobacion-reportada-no-publicada`. Es lo único que impide cerrar T048 |
