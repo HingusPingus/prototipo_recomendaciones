@@ -20,3 +20,16 @@ def run() -> None:
     services = build_services(settings)
     start_http_server(settings.metrics_port, registry=services.metrics.registry)  # puerto propio, no una ruta (FR-060)
     uvicorn.run(create_app(settings, services), host=settings.api_host, port=settings.api_port)
+
+
+def run_with_migrations() -> None:
+    """`reco-api-con-migraciones`: aplica las migraciones pendientes y arranca la API (RD-124).
+
+    Es el Run Command de la Application `reco-api` en Dokploy, que separa ese campo por espacios sin respetar
+    comillas: no admite `sh -c "alembic upgrade head && reco-api"`. Si una migración falla, alembic termina el
+    proceso y la API no arranca sobre un esquema a medias.
+    """
+    from alembic.config import main as alembic
+
+    alembic(argv=["upgrade", "head"])
+    run()

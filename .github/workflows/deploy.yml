@@ -2,7 +2,8 @@
 #
 # Arranca cuando el workflow `ci` termina sobre un push a `main`, y solo si terminó en verde: así ningún gate se
 # saltea para desplegar (Principio VI: un contract test roto bloquea el deploy). Construye la imagen del commit
-# que pasó el CI, la publica en ghcr.io y le pide a Dokploy que redespliegue el servicio Compose, que la descarga.
+# que pasó el CI, la publica en ghcr.io y le pide a Dokploy que redespliegue las Applications `reco-api` y
+# `reco-worker`, que la descargan.
 #
 # GitHub solo dispara `workflow_run` si este archivo está en la rama por defecto (`main`). Las condiciones `if:` de
 # este archivo no debilitan ningún gate: los gates viven en `ci.yml`, y `tests/unit/test_deploy.py` fija estas.
@@ -24,7 +25,7 @@ permissions:
   packages: write
 
 env:
-  # Debe coincidir con la imagen de docker-compose.dokploy.yml (lo verifica tests/unit/test_deploy.py).
+  # Es la imagen que descargan las Applications de Dokploy (lo verifica tests/unit/test_deploy.py).
   IMAGE: ghcr.io/hinguspingus/recomendaciones
 
 jobs:
@@ -60,15 +61,23 @@ jobs:
     runs-on: ubuntu-latest
     needs: image
     steps:
-      - name: pedir el deploy del servicio Compose
+      - name: pedir el deploy de las Applications
         env:
           DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
-          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          DOKPLOY_API_APPLICATION_ID: ${{ secrets.DOKPLOY_API_APPLICATION_ID }}
+          DOKPLOY_WORKER_APPLICATION_ID: ${{ secrets.DOKPLOY_WORKER_APPLICATION_ID }}
         run: |
-          curl --fail-with-body --silent --show-error --max-time 60 \
-            -X POST "${DOKPLOY_URL%/}/api/compose.deploy" \
-            -H "x-api-key: ${DOKPLOY_API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d "{\"composeId\": \"${DOKPLOY_COMPOSE_ID}\", \"title\": \"main ${SHA:0:7}\"}"
+          : "${DOKPLOY_URL:?falta el secret DOKPLOY_URL}" "${DOKPLOY_API_KEY:?falta el secret DOKPLOY_API_KEY}"
+          : "${DOKPLOY_API_APPLICATION_ID:?falta el secret DOKPLOY_API_APPLICATION_ID}"
+          : "${DOKPLOY_WORKER_APPLICATION_ID:?falta el secret DOKPLOY_WORKER_APPLICATION_ID}"
+          deploy() {
+            curl --fail-with-body --silent --show-error --max-time 60 \
+              -X POST "${DOKPLOY_URL%/}/api/application.deploy" \
+              -H "x-api-key: ${DOKPLOY_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "{\"applicationId\": \"$1\"}"
+          }
+          # Primero la API, que aplica las migraciones al arrancar (reco-api-con-migraciones); después el worker.
+          deploy "${DOKPLOY_API_APPLICATION_ID}"
+          deploy "${DOKPLOY_WORKER_APPLICATION_ID}"

@@ -106,5 +106,5 @@ rm .env.integracion
 ## Lo que no cubre
 
 - **La baja de cuenta** (`usuario.eliminado`) y la consulta de su recepción: la spec 007 las deja fuera.
-- **El servidor de Dokploy**: allá el broker es el de `notificaciones` (ver
-  [despliegue.md → «Pasar al api-general real»](despliegue.md#pasar-al-api-general-real)).
+- **El servidor de Dokploy**: allá el broker es el de `notificaciones` y los servicios son Applications (ver
+  [despliegue.md](despliegue.md#qué-corre-en-el-servidor)).
