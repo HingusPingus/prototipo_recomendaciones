@@ -9,6 +9,7 @@ bypass.
 - Arquitectura: [`docs/architecture.md`](docs/architecture.md)
 - Operación y alertas: [`docs/runbook.md`](docs/runbook.md), [`ops/alerts.yaml`](ops/alerts.yaml)
 - Despliegue en Dokploy: [`docs/despliegue.md`](docs/despliegue.md)
+- Integración local con el `api-general` real: [`docs/integracion-local.md`](docs/integracion-local.md)
 - Lo que se necesita de `api-general`: [`docs/contracts/required-fields.md`](docs/contracts/required-fields.md)
 - Contratos (copias derivadas; los custodia `api-general`):
   [`specs/001-recomendaciones-precomputadas/contracts/`](specs/001-recomendaciones-precomputadas/contracts/)
