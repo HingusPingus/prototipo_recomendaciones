@@ -85,6 +85,43 @@ def test_state_table(env) -> None:  # noqa: ANN001
     assert fb.result_type is ResultType.FALLBACK and fb.stale_available is False
 
 
+def test_fresh_list_emptied_by_exclusions_requests_recompute_once(env) -> None:  # noqa: ANN001
+    """RD-125: la lista vigente que las exclusiones vacían pide recálculo; sin eso queda vacía hasta vencer (24 h)."""
+    service, repo, source, redis_client = env
+    user = uuid.uuid4()
+    source.add(user, excluded={uuid.UUID(int=1), uuid.UUID(int=2)})
+    repo.write_personalized(_entry(user, _items(1, 2)))
+
+    first = service.read(user, Module.PELICULAS, top_n=10)
+    second = service.read(user, Module.PELICULAS, top_n=10)
+
+    assert first == second  # FR-038: la señal no cambia la respuesta
+    assert first.result_type is ResultType.EMPTY_NO_CANDIDATES
+    requests = [fields for _id, fields in redis_client.xrange(keys.RECOMPUTE_STREAM)]
+    assert requests == [{"user_id": str(user), "module": "peliculas", "reason": "exhausted"}]  # una por ventana (FR-035)
+
+
+def test_fresh_list_reduced_but_not_empty_does_not_request_recompute(env) -> None:  # noqa: ANN001
+    service, repo, source, redis_client = env
+    user = uuid.uuid4()
+    source.add(user, excluded={uuid.UUID(int=1)})
+    repo.write_personalized(_entry(user, _items(1, 2)))
+
+    assert service.read(user, Module.PELICULAS, top_n=10).result_type is ResultType.PERSONALIZED
+    assert _stream_len(redis_client) == 0
+
+
+def test_fresh_list_computed_empty_does_not_request_recompute(env) -> None:  # noqa: ANN001
+    """Calculada vacía: recalcular no cambia nada hasta que lleguen ítems o señales nuevas."""
+    service, repo, source, redis_client = env
+    user = uuid.uuid4()
+    source.add(user)
+    repo.write_personalized(_entry(user, ()))
+
+    assert service.read(user, Module.PELICULAS, top_n=10).result_type is ResultType.EMPTY_NO_CANDIDATES
+    assert _stream_len(redis_client) == 0
+
+
 def test_fallback_precedes_stale_and_signals_it(env) -> None:  # noqa: ANN001
     service, repo, source, _ = env
     user = uuid.uuid4()
