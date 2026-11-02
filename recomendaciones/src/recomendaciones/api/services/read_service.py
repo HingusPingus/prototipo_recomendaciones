@@ -9,7 +9,8 @@ de resultado. Orden de la solicitud:
 2. Precondición de FR-088: módulo sin declaración ⟹ rechazo, **antes** de toda precedencia (T055).
 3. Resolución del resultado y precedencia estricta de FR-056, evaluada sobre la lista **posterior a
    las guardas** (RD-42): pendiente → sin candidatos → respaldo → obsoleto → vigente. Todo miss de
-   resultado solicita recálculo por `recompute:requests` con supresión (RD-100).
+   resultado solicita recálculo por `recompute:requests` con supresión (RD-100), y también una lista
+   vigente que las guardas vacían (RD-125).
 4. Guardas acotadas sobre ≤ `top_n_max`/`fallback_stored_size` ítems ya ordenados: comparación
    ordinal, pertenencia a exclusiones y diferencia contra `retired:` (FR-033d, §4.2, §4.4). Sin
    similitud, sin recomputar scores, sin reordenar: la lista reducida se sirve tal cual (FR-075).
@@ -146,7 +147,11 @@ class ReadService:
             snapshot = fresh.entry.max_age_ordinal
             if snapshot is not None and snapshot < filters.max_age_ordinal:
                 self._signal(user_id, module, "snapshot")  # seguro pero conservador: servir y recalcular
-            return self._serve(fresh.entry, ResultType.PERSONALIZED, filters, retired, top_n)
+            result = self._serve(fresh.entry, ResultType.PERSONALIZED, filters, retired, top_n)
+            if not result.items and fresh.entry.items:
+                # Vaciada por las guardas: sin señal, la vacía seguiría vigente hasta vencer (RD-125)
+                self._signal(user_id, module, "exhausted")
+            return result
 
         # Miss del vigente: casos 1 a 4 de FR-056. Se solicita recálculo (FR-035, RD-100).
         self._signal(user_id, module, "miss")

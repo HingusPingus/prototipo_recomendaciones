@@ -1,6 +1,7 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
-**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19; riesgos aceptados del despliegue, RD-123, 2026-10-19; servidor en Applications con el `api-general` real, RD-124, 2026-10-26) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+**Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19; riesgos aceptados del despliegue, RD-123, 2026-10-19; servidor en Applications con el `api-general` real, RD-124, 2026-10-26; recálculo sin desfase con los eventos
+apagados, RD-125, 2026-11-02) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4874,6 +4875,42 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-125 — Las decisiones rehacen la lista aunque los eventos estén apagados
+
+**Fecha**: 2026-11-02 · **Origen**: reporte de Frontend: un usuario que decidió sobre todas sus recomendaciones de
+películas recibe `empty_no_candidates` aunque el catálogo tenga muchas que no vio, y no cambia aunque siga decidiendo
+· **Tipo**: corrección de comportamiento; FR-035 y FR-080a precisados
+
+**Contexto**: con los eventos apagados (RD-124), las interacciones llegan solo por la sincronización. La
+sincronización escribe las señales y el resolutor actualiza las exclusiones, pero el umbral de FR-080a solo lo
+evaluaba el worker al recibir un evento. Resultado: ninguna decisión rehacía una lista vigente, que solo se
+recalculaba al vencer (`RECO_TTL_FRESH_SECONDS`, 24 h). Además, la lectura que encuentra la lista vigente vaciada por
+las guardas responde `empty_no_candidates` (RD-42) sin pedir recálculo: solo lo pide un miss o el instantáneo etario.
+Aun con eventos, una lista de menos ítems que el umbral se vacía antes de alcanzarlo y queda igual de trabada.
+
+**Decisiones**:
+1. **La lectura pide recálculo cuando las guardas vacían un top-N vigente** (`reason = 'exhausted'`). La respuesta
+   no cambia (`empty_no_candidates`, RD-42, FR-038); la supresión de RD-100 limita a una solicitud por (usuario,
+   módulo) y ventana. Un top-N calculado vacío no se señaliza.
+2. **La sincronización evalúa el umbral de FR-080a** para cada (usuario, módulo) con señales nuevas de la corrida,
+   con el mismo conteo derivado que el worker (`InteractionTrigger.reached`). Al alcanzarlo invalida la lista
+   vigente, Redis primero, y pide el recálculo (`reason = 'sync_signals'`). Lo hace después de confirmar: el conteo
+   lee lo ya escrito. Las señales que ya llegaron por evento no se recuentan, porque la sincronización no las
+   vuelve a insertar.
+3. **Encender los eventos sigue pendiente** (`docs/despliegue.md`, «Eventos»): baja de 15 minutos a segundos el
+   tiempo hasta que una decisión llega. 1 y 2 siguen siendo necesarios con eventos: 1 cubre las listas más cortas
+   que el umbral y 2, los eventos que se atrasan o se pierden.
+
+**Alternativas descartadas**: responder `empty_pending` cuando la lista se vacía (propuesta del reporte). Cambia el
+significado publicado de `empty_no_candidates` (RD-42, `endpoints-front.md`) y no hace falta: la próxima lectura
+trae la lista recalculada.
+
+**Constitución**: la API no calcula; emite una solicitud asíncrona y reconstruible, como ante un miss (Principio
+III, Restricciones Técnicas). La sincronización solo invalida la entrada afectada y pide el recálculo, como los
+procesos batch; no escribe fuera de la DB Recomendaciones ni de su caché (Principio IV).
+
+---
 
 ### RD-124 — El servidor pasa a Applications de Dokploy y al `api-general` real
 

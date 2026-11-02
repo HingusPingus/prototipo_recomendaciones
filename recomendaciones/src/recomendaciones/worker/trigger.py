@@ -43,9 +43,13 @@ class InteractionTrigger:
         with self._factory() as s:
             return int(s.scalar(_COUNT_SQL, {"user": user_id, "module": module, "threshold": self._threshold}))
 
-    def should_recompute(self, event: ActualizarEvent) -> bool:
-        if self.pending(event.user_id, event.module.value) < self._threshold:
+    def reached(self, user_id, module: str) -> bool:  # noqa: ANN001
+        """El umbral del par, sin importar por dónde llegaron las señales: evento o sincronización (RD-125)."""
+        if self.pending(user_id, module) < self._threshold:
             return False
         if self._cache is not None:  # mismo acto que la causa, Redis primero
-            delete_user_scope(self._cache, (f"reco:v*:{event.user_id}:{event.module.value}",))
+            delete_user_scope(self._cache, (f"reco:v*:{user_id}:{module}",))
         return True
+
+    def should_recompute(self, event: ActualizarEvent) -> bool:
+        return self.reached(event.user_id, event.module.value)

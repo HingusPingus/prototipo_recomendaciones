@@ -15,7 +15,7 @@ from recomendaciones.shared.domain import Module
 from recomendaciones.storage.cache import keys
 from recomendaciones.storage.cache.client import CacheClient
 
-REASONS = ("miss", "declaration", "warmup", "age_threshold", "snapshot", "opposite_retry", "signal")
+REASONS = ("miss", "declaration", "warmup", "age_threshold", "snapshot", "opposite_retry", "signal", "exhausted", "sync_signals")
 
 
 class RecomputeSignaler(Protocol):
