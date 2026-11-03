@@ -4898,7 +4898,7 @@ el usuario de `api-general` en el vhost del entorno.
 
 **Consecuencia**: las decisiones llegan en segundos; la sincronización queda como respaldo y sigue evaluando el
 umbral (RD-125). Las decisiones de una cuenta nueva, anteriores a su primera sincronización, siguen tardando hasta
-15 minutos.
+15 minutos. Con `usuario.eliminado` publicado y emitido se completa la DoD y se cierra T048.
 
 ---
 
