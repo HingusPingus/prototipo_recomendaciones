@@ -199,9 +199,29 @@ Lo mínimo es un backup diario de Postgres a un destino externo y alguien que re
 
 `api-general` todavía no publica eventos (`RECOMMENDATIONS_OUTBOX_ENABLED=false`): las interacciones y las bajas
 llegan con la sincronización cada 15 minutos, no al instante. El worker ya escucha en el broker de `notificaciones`.
-Para encenderlos, `api-general` se conecta al mismo broker y vhost, se corre la prueba de humo de
-[`migracion-v3.md`](contracts/migracion-v3.md) («Cómo lo verificamos») junto con `notificaciones` y `api-general`,
-y recién entonces `api-general` activa el outbox v3, con el v2 apagado.
+Mientras tanto, la sincronización evalúa el umbral de recálculo con las señales que trae, y la lectura que encuentra
+la lista vaciada pide el recálculo (RD-125): las decisiones rehacen la lista con hasta 15 minutos de atraso.
+
+Para encenderlos, en este orden:
+
+1. **`reco-worker` *running***. Al arrancar declara los exchanges `recomendacion.actualizar.v3` y `usuario.eliminado`
+   con sus colas. Confirmarlo en la consola de RabbitMQ de `notificaciones`, en el vhost de este servicio.
+2. **Un usuario de RabbitMQ para `api-general`** en ese vhost, con los permisos de su guía
+   (`docs/operations/recommendation-outbox-routing.md` de `api-general`). Lo crea quien opera el broker.
+3. **Variables en la Application `api-general`**: `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`,
+   `SPRING_RABBITMQ_PASSWORD`, `SPRING_RABBITMQ_VIRTUALHOST`,
+   `RECOMMENDATIONS_OUTBOX_V3_EXCHANGE=recomendacion.actualizar.v3`,
+   `RECOMMENDATIONS_OUTBOX_V3_ROUTING_KEY=recomendacion.actualizar.v3`,
+   `RECOMMENDATIONS_OUTBOX_USER_DELETED_EXCHANGE=usuario.eliminado`,
+   `RECOMMENDATIONS_OUTBOX_USER_DELETED_ROUTING_KEY=usuario.eliminado` y `RECOMMENDATIONS_OUTBOX_V2_ENABLED=false`.
+   Todavía **sin** activar el outbox.
+4. **Activar**: `RECOMMENDATIONS_OUTBOX_ENABLED=true` y redeploy de `api-general`.
+5. **Prueba de humo** de [`migracion-v3.md`](contracts/migracion-v3.md) («Cómo lo verificamos»): una interacción
+   produce **un** mensaje en nuestra cola, se procesa y la DLQ queda en cero. Si falla, volver a `false`: los eventos
+   quedan en el outbox de `api-general` y se reintentan, no se pierden.
+
+Con eventos, una decisión llega en unos 5 segundos (el `RECOMMENDATIONS_OUTBOX_POLL_MS` de `api-general`) y la lista se
+rehace al alcanzar `RECO_INTERACTION_RECALC_THRESHOLD` decisiones en el módulo.
 
 ## Volver a una versión anterior
 

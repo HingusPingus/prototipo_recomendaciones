@@ -13,7 +13,7 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
-  RD-1→RD-123 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-125 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **169 requisitos definidos** *(167 hasta FR-095b y FR-095c, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
@@ -3167,3 +3167,41 @@ no hay recepción. Responder exige leer `user_suppressions` en Postgres desde un
 
 **🔴 Paso 1 — Rojo**: `tests/contract/test_deletion_receipt.py`, el gate y la conformidad (commit `31e406b`).
 **🟢 Paso 2 — Verde**: commit `c7eec50`.
+
+---
+
+## Phase 7: Convergence
+
+> *Agregada el 2026-11-02, con el formato de `/speckit-converge`, después de precisar FR-035 y FR-080a (RD-125) por
+> un reporte de Frontend. Solo se **agrega**. T078 y T079 se implementaron en este pase con commit rojo antes del verde.*
+
+- [X] T078 [TDD] Pedir recálculo cuando las guardas vacían un top-N vigente, en `src/recomendaciones/api/services/read_service.py` per FR-035, RD-125 (contradicts)
+- [X] T079 [TDD] Evaluar el umbral de FR-080a en la sincronización para cada (usuario, módulo) con señales nuevas, en `src/recomendaciones/transformer/pipeline.py` per FR-080a, RD-125 (missing)
+
+### T078 [TDD] — Recálculo de la lista vigente vaciada por las guardas
+
+**Requisitos**: FR-035, FR-038, RD-42, RD-100, RD-125
+
+**Archivos**: `src/recomendaciones/api/services/read_service.py`, `src/recomendaciones/storage/cache/recompute.py`
+
+**Criterios de aceptación**:
+- [X] Vigente vaciada por las guardas ⟹ `empty_no_candidates` y una solicitud `exhausted` por ventana de supresión
+- [X] La señal no cambia la respuesta: dos lecturas seguidas son idénticas (FR-038)
+- [X] Vigente reducida pero no vacía, o calculada vacía ⟹ sin solicitud
+
+### T079 [TDD] — Umbral de FR-080a evaluado por la sincronización
+
+**Requisitos**: FR-080, FR-080a, FR-080c, RD-104, RD-125
+
+**Archivos**: `src/recomendaciones/transformer/pipeline.py`, `src/recomendaciones/transformer/runtime.py`,
+`src/recomendaciones/worker/trigger.py`
+
+**Criterios de aceptación**:
+- [X] Alcanzar el umbral con señales de la corrida invalida la lista vigente del par y pide `sync_signals`
+- [X] Por debajo del umbral no se toca la lista ni se pide nada
+- [X] El conteo es por (usuario, módulo): solo se recalcula el módulo que lo alcanzó
+- [X] Una corrida sin señales nuevas no evalúa nada: lo ya recibido no se recuenta
+- [X] Redis caído después de confirmar no revierte la corrida
+
+**🔴 Paso 1 — Rojo**: `tests/integration/test_cache_miss.py` y `tests/integration/test_sync_recalculo.py`.
+**🟢 Paso 2 — Verde**: este mismo PR.

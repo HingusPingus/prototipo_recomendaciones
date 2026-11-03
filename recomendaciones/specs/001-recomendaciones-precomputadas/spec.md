@@ -1078,6 +1078,10 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
 - **FR-035**: Ante cualquier respuesta a una solicitud sin top-N vigente, el servicio MUST señalizar el recálculo por vía
   asíncrona, con protección contra señalizaciones redundantes para el mismo usuario y módulo dentro
   de una ventana acordada.
+  Un top-N vigente que las guardas **vacían** cuenta como sin top-N servible: se responde
+  `empty_no_candidates` (RD-42) y MUST señalizarse el recálculo igual. Sin la señal, la lista vacía seguía vigente
+  hasta vencer aunque el catálogo tuviera candidatos. Un top-N **calculado** vacío no se señaliza: recalcularlo no
+  cambia nada hasta que lleguen ítems o señales nuevas (RD-125).
 - **FR-036**: Un resultado obsoleto MUST reevaluarse contra los filtros obligatorios vigentes antes
   de servirse; MUST NOT exponer ítems que hoy resulten no aptos.
   La reevaluación MUST incluir la **vigencia del ítem**, no solo la aptitud etaria y las exclusiones.
@@ -1358,6 +1362,8 @@ lecturas, recálculos exitosos y fallidos, y una corrida de sincronización.
   y el opuesto solo si corresponde propagar (FR-010a). El valor inicial de ese umbral es **10
   interacciones**. El conteo se **deriva** de las señales recibidas desde el último cálculo del perfil de
   ese módulo y no se almacena; el reinicio es consecuencia de recalcular (RD-104).
+  El umbral MUST evaluarse por **cualquier** vía por la que lleguen las señales: el worker al recibir un evento y la
+  sincronización al materializar señales nuevas, para cada (usuario, módulo) que las recibió (RD-125).
 - **FR-069**: Un evento duplicado que llegue **después** de expirar su marca de idempotencia MUST
   poder reprocesarse sin corromper el estado: el resultado MUST ser equivalente al ya existente.
 
