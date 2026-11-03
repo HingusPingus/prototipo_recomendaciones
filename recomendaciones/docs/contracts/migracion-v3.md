@@ -106,6 +106,12 @@ Siguiendo TDD: primero los tests, en un commit propio, y después la implementac
 
 ## Cómo lo verificamos
 
+> *Verificado en el servidor el 2026-11-03 (RD-126)*: al encender el outbox, `api-general` publicó los 342 eventos
+> acumulados y los 342 quedaron `PUBLICADO`. El worker los procesó sin mandar ninguno a la DLQ: los ya sincronizados no
+> se duplicaron y las dos bajas acumuladas se suprimieron. Una decisión nueva de un usuario ya sincronizado quedó en
+> `user_signals` con `source = evento` en segundos. Hubo una sola descartada, `skipped_not_materialized`: la de una
+> cuenta que todavía no había llegado por la sincronización.
+
 En staging, con la cola del worker ligada al exchange nuevo:
 
 1. Registrar una interacción en `api-general`: llega **un** mensaje a nuestra cola, se procesa y la DLQ

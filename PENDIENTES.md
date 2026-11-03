@@ -12,7 +12,7 @@ El sistema completo corre en Dokploy como una **prueba** (no va a producción po
 - **`api-general`** (`recome-api-general`): emite y valida el JWT de usuario (`/auth/signup`, `/auth/login`),
   contraseñas con BCrypt y mínimo de 8 caracteres. El registro público crea `USUARIO_FINAL`.
 - **recomendaciones** (este repo): `reco-api` y `reco-worker`, conectados al `api-general` **real** por la
-  sincronización REST cada 15 minutos, y al RabbitMQ de `notificaciones`. Ya no hay `api-general` simulado (RD-124).
+  sincronización REST cada 5 minutos, y al RabbitMQ de `notificaciones`. Ya no hay `api-general` simulado (RD-124).
 
 Todo son *Applications* de Dokploy con proveedor Docker que descargan imágenes privadas de `ghcr.io`, más servicios
 *Database* para Postgres y Redis. Cada merge a `main` que pasa el CI publica la imagen y redespliega solo
@@ -46,12 +46,9 @@ Todo son *Applications* de Dokploy con proveedor Docker que descargan imágenes 
 - [ ] **Catálogo en `api-general`.** Arranca vacío: la sincronización corre bien, pero con 0 ítems, así que no hay
       nada que recomendar. Hay que cargarlo con sus importadores (TMDB y Steam) o por su API de operador, con al
       menos 5 tags elegibles por módulo para poder declarar gustos.
-- [ ] **Eventos en tiempo real.** `api-general` tiene el outbox apagado: las interacciones llegan cada 15 minutos con
-      la sincronización. Para encenderlo:
-      1. que `api-general` se conecte al broker de `notificaciones` (`SPRING_RABBITMQ_*`, con su vhost);
-      2. correr la prueba de humo de
-         [`migracion-v3.md`](recomendaciones/docs/contracts/migracion-v3.md);
-      3. activar el outbox v3 con el v2 apagado.
+- [X] **Eventos en tiempo real.** Encendidos y verificados el 2026-11-03 (RD-126): las decisiones llegan en segundos
+      y la sincronización queda como respaldo. Detalle en
+      [`docs/despliegue.md`](recomendaciones/docs/despliegue.md), «Eventos».
 
 ### Tareas de la spec 001
 

@@ -13,7 +13,7 @@ producción**)
 
 **Fuentes de verdad** *(recontadas el 2026-09-27; cada cifra se obtiene con un `grep` sobre el archivo)*:
 - [**data-model.md**](./data-model.md) — **autoritativo en la capa de datos**: 19 tablas en §2 (la 19.ª, `process_runs`, por T066),
-  RD-1→RD-125 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
+  RD-1→RD-127 en §11, DI-1→DI-29 (**34** contando `DI-2a'`…`DI-2e`) en §6, CR-1→CR-19 en §10.
   *Ante discrepancia con cualquier otro documento, manda éste.*
 - [spec.md](./spec.md) — **169 requisitos definidos** *(167 hasta FR-095b y FR-095c, 2026-10-05)* (FR-001→FR-096, con sufijos y huecos
   declarados) · **31** criterios de éxito · **53** entradas de clarificación en **6** sesiones, más los
@@ -293,7 +293,7 @@ pertenecer al Milestone 11)*:
 - [X] T044 Suite de casos críticos obligatorios en `tests/integration/test_critical_scenarios.py`
 - [X] T045 Pipeline de CI con gates bloqueantes en `.github/workflows/ci.yml`
 - [X] T047 [P] Documento de campos requeridos a `api-general` en `docs/contracts/required-fields.md`
-- [ ] T048 Validación final contra el checklist y DoD en `docs/validation/traceability-matrix.md`
+- [X] T048 Validación final contra el checklist y DoD en `docs/validation/traceability-matrix.md`
 - [X] T050 [P] [US1] Pruebas de carga y verificación de SC-001 en `tests/performance/test_read_latency.py`
 - [X] T058 Supresión verificada con aborto del recálculo en curso en `src/recomendaciones/worker/suppression.py` (TDD)
 - [X] T059 Verificación ejecutable de supresión, observador y escalamiento (TDD)
@@ -1989,7 +1989,7 @@ que reconstruir el razonamiento desde cero.
 - [X] Los cuatro invariantes transversales (INV-1..4) tienen su test identificado por nombre
 - [X] Todos los Success Criteria de Fase 1 y 2 verificados, con su evidencia
 - [X] Las cuatro deudas del prototipo cerradas, cada una con la tarea y el test que lo demuestra
-- [ ] La DoD de abajo está completa
+- [X] La DoD de abajo está completa *(2026-11-03, con el evento de baja publicado y emitido, RD-126)*
 
 **Tests**: `tests/contract/test_traceability.py` — falla si la matriz referencia un test que no
 existe, si un ítem del checklist no aparece en la matriz, o si un ítem marcado no tiene evidencia.
@@ -2762,10 +2762,11 @@ desde el día 1 y escalar DEP-1 como bloqueante inmediato (recomendación D1 del
 - [X] Valores cargados: `popularity_window_days` = 90, `emergent_evidence_threshold` = 20,
       `diversity_max_cluster_share` = 0,4, `recompute_requests_maxlen` = 100 000 (RD-108), y
       `event_redelivery_window_hours` copiado del broker real (RD-110)
-- [ ] Evento de baja de cuenta publicado por `api-general` (DEP-12, CR-19): sin él, T058 no tiene disparo —
-      *pendiente: nombre y schema acordados (RD-113); checkpoint de entrega resuelto (RD-115, RD-117; T077
-      fusionada). Al 2026-10-19 `api-general` rotula el schema `aprobacion-reportada-no-publicada`, a la
-      espera de registrar la constancia de `notificaciones` que ya recibió. Es lo único que impide cerrar T048*
+- [X] Evento de baja de cuenta publicado por `api-general` (DEP-12, CR-19): sin él, T058 no tiene disparo —
+      *contrato `publicado-en-main` en `api-general` desde el 2026-10-26 (commit `41976a9`; la copia de este
+      repositorio se resincronizó el 2026-11-03), y **emitido en el servidor** desde que se encendieron los
+      eventos: el worker suprimió las dos bajas acumuladas (RD-126). Nombre y schema acordados (RD-113);
+      checkpoint de entrega resuelto (RD-115, RD-117; T077 fusionada)*
 - [X] Decisiones abiertas: **ninguna pendiente**. `plan.md` §8 declara «Ninguna bloqueante» y
       NC-1…NC-20 **todos cerrados** (`data-model.md` §12). La lista «D1, D2, D3, D5, D6, D7, D8» que
       figuraba aquí quedó obsoleta y se retira: un DoD que exige resolver decisiones ya resueltas

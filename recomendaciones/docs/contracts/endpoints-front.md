@@ -145,8 +145,8 @@ Sin la fecha o la región, nuestro servicio rechaza al usuario en la ingesta y n
 ## Un punto de nuestro lado: la demora del alta
 
 Un usuario recién creado no existe para nuestro servicio hasta la siguiente sincronización. Mientras tanto, los
-puntos 1 y 2 responden `unknown_user`. Para acotar esa espera, la sincronización corre **cada 15 minutos** (decidido el
-2026-10-05): alguien que se registra puede declarar sus gustos en ese plazo. Lo dejamos escrito para que el front
+puntos 1 y 2 responden `unknown_user`. Para acotar esa espera, la sincronización corre **cada 5 minutos** (desde el
+2026-11-03, RD-127; antes cada 15): alguien que se registra puede declarar sus gustos en ese plazo. Lo dejamos escrito para que el front
 muestre el estado «perfil en preparación» en vez de un error.
 
 ## Cómo lo verificamos

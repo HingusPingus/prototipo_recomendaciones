@@ -2,14 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.recome.internal/events/usuario.eliminado/1.0.0",
   "title": "usuario.eliminado",
-  "description": "Contrato local no publicado formalmente de nuevo evento de baja lógica (aditivo; no reemplaza otro evento vigente identificado). Notificaciones reportó aprobación de su exchange fanout durable y del schema 1.0.0 el 2026-10-06; faltan adjuntar la respuesta primaria, firmante y canal. La fecha de publicación y el límite/checkpoint de entrega son acuerdos operativos aún no registrados.",
+  "description": "Contrato de nuevo evento de baja lógica (aditivo; no reemplaza otro evento vigente identificado), cuya publicación en main fue autorizada el 2026-10-26. El solicitante confirma que Notificaciones dio verbalmente la aprobación de la topología y contrato ya reportada el 2026-10-06 y autoriza continuar sin constancia escrita; T006 se cierra administrativamente por esa excepción explícita, sin inventar evidencia primaria. El estado publicado-en-main es efectivo tras el push verificado. Publicar el contrato no activa el outbox: la emisión en un entorno compartido sigue condicionada a topología desplegada, smoke de entrega y endpoint de recibos disponible (T069/T056).",
   "x-change-classification": "compatible-additive-new-event",
   "x-change-reason": "Comunicar explícitamente la baja lógica para que el consumidor suprima datos, sin inferirla a partir de ausencias en sincronizaciones.",
   "x-event-type": "usuario.eliminado",
   "x-event-version": "1.0.0",
   "x-contract-origin": {
-    "status": "aprobacion-reportada-no-publicada",
+    "status": "publicado-en-main",
     "drafted": "2026-09-28",
+    "published": "2026-10-26",
+    "approval-reported": "2026-10-06",
+    "approval-confirmation": {
+      "form": "verbal",
+      "confirmed-by": "solicitante",
+      "confirmed-on": "2026-10-26",
+      "written-primary-evidence": false,
+      "decision": "aceptada-por-excepcion-explicita"
+    },
     "schema_version": "1.0.0"
   },
   "x-amqp-transport": {

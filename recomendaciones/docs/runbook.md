@@ -15,7 +15,7 @@ causa está en el origen de datos o en un contrato) o de `notificaciones` (si es
 ## Alertas
 
 ### CatalogSyncStale
-**Qué significa**: no hubo sincronización exitosa en más de 1 h (unas cuatro corridas, que van cada 15 minutos); altas y retiros del catálogo no se
+**Qué significa**: no hubo sincronización exitosa en más de 1 h (unas doce corridas, que van cada 5 minutos); altas y retiros del catálogo no se
 reflejan.
 **Primer paso**: `SELECT id, status, failure_reason, started_at FROM sync_runs ORDER BY id DESC LIMIT 5;`
 — si hay `failed`, leer `failure_reason`; si la última está `running` sin `finished_at`, la corrida se
@@ -47,7 +47,7 @@ del último `reco-batch popularity`.
 cumplen años quedan sub-permitidos (degradación conservadora, no incidente de seguridad).
 **Primer paso**: revisar el log y el estado del CronJob del refresco etario.
 **Acción**: ejecutarlo manualmente (`reco-batch age-refresh`; es idempotente) e investigar la causa. La
-sincronización (cada 15 minutos) también corrige el ordinal de quien ya cruzó el umbral, de modo que un día
+sincronización (cada 5 minutos) también corrige el ordinal de quien ya cruzó el umbral, de modo que un día
 perdido se repara solo en la corrida siguiente de cualquiera de los dos.
 
 ### VectorRecomputeLag
@@ -401,7 +401,7 @@ pendientes (FR-091) y se reprocesan siempre.
 
 | Job | Frecuencia | Qué hace | Si falla |
 |---|---|---|---|
-| `reco-transformer` | cada 15 minutos (decidido el 2026-10-05) | sincroniza y regenera vocabulario | [CatalogSyncStale](#catalogsyncstale) |
+| `reco-transformer` | cada 5 minutos (desde el 2026-11-03, RD-127; antes cada 15, decidido el 2026-10-05) | sincroniza y regenera vocabulario | [CatalogSyncStale](#catalogsyncstale) |
 | `reco-batch popularity` | diaria | Wilson por ventana, promociones | [PopularityStale](#popularitystale) |
 | `reco-batch fallback` | tras `popularity`, y cada `TTL_FALLBACK` | top-N de respaldo | [HitRateDrop](#hitratedrop) |
 | `reco-batch age-refresh` | diaria, fuera de pico | cruces de umbral etario y escala no compatible | [AgeRefreshStale](#agerefreshstale) |
