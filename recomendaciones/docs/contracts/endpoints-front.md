@@ -65,6 +65,10 @@ imagen, `age_rating` y el identificador que usa en el resto de sus rutas, ver pu
 | `empty_pending` | Se está calculando | «Estamos preparando tus recomendaciones»; reintentar en unos segundos |
 | `empty_no_candidates` | No hay ítems aptos para este usuario | Estado vacío; no es un error |
 
+Si `empty_no_candidates` aparece porque el usuario ya decidió sobre toda su lista, el servicio pide el recálculo en
+esa misma lectura: la siguiente, unos segundos después, trae la lista nueva. Volver a pedir las recomendaciones
+después de cada decisión alcanza (RD-125).
+
 **Errores** que devolvemos y cómo traducirlos:
 
 | Nuestro | Código | Qué significa | Propuesta para el front |

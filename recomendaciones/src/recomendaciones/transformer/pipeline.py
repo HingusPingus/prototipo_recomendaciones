@@ -21,6 +21,9 @@ Una corrida:
    - Actividad: deduplicación por `origin_interaction_id` con la comparación de §7.10.
    - Una corrección de `birth_date` que cambia el ordinal invalida los resultados del usuario en el mismo
      acto, Redis primero (DI-2c, FR-080c).
+4. Después de confirmar, evalúa el umbral de FR-080a para cada (usuario, módulo) con señales nuevas, igual que el
+   worker por evento: al alcanzarlo invalida la lista vigente y pide el recálculo por `recompute:requests` (RD-125).
+   Con los eventos apagados es el único camino por el que las decisiones rehacen una lista antes de que venza.
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ from recomendaciones.shared.errors import CacheUnavailable, UpstreamError
 from recomendaciones.storage.cache import keys
 from recomendaciones.storage.cache.client import CacheClient, delete_user_scope
 from recomendaciones.storage.cache.filters import FiltersCache
+from recomendaciones.storage.cache.recompute import RecomputeSignaler
 from recomendaciones.storage.db.exclusions import ExclusionResolver, ResolveResult
 from recomendaciones.storage.db.models import Item, ItemTag, SyncRun, Tag, User, UserSignal, UserSuppression
 from recomendaciones.storage.db.session import SessionFactory
@@ -65,6 +69,7 @@ class SyncReport:
     counts: dict[str, int] = field(default_factory=dict)
     retired: int = 0
     rejected_users: int = 0
+    recompute_requested: int = 0
 
 
 @dataclass
@@ -90,6 +95,8 @@ class SyncPipeline:
         volume_delta_ratio: float,
         redelivery_window_hours: int,
         today: Callable[[], date] = lambda: datetime.now(UTC).date(),
+        interactions_reached: Callable[[uuid.UUID, str], bool] | None = None,
+        signaler: RecomputeSignaler | None = None,
     ) -> None:
         self._factory = factory
         self._client = client
@@ -100,6 +107,8 @@ class SyncPipeline:
         self._ratio = volume_delta_ratio
         self._window = timedelta(hours=redelivery_window_hours)
         self._today = today
+        self._interactions_reached = interactions_reached  # InteractionTrigger.reached: conteo e invalidación
+        self._signaler = signaler
         self._resolver = ExclusionResolver(filters.invalidate)
 
     # --- bitácora ----------------------------------------------------------------------------
@@ -223,7 +232,7 @@ class SyncPipeline:
             with self._factory.begin() as s:
                 changed_age = self._write_users(s, plan.users)
                 retired, retired_modules = self._write_items(s, plan.items)
-                affected = self._write_activity(s, plan.activity)
+                affected, new_signals = self._write_activity(s, plan.activity)
                 resolved = self._resolver.resolve(s, affected)
                 for user_id in sorted(changed_age, key=str):  # Redis primero (FR-080c)
                     delete_user_scope(self._cache, keys.user_scoped_patterns(user_id))
@@ -238,7 +247,25 @@ class SyncPipeline:
             return SyncReport(run_id, "failed", failure, counts)
         self._after_commit(resolved, changed_age)
         self._reinvalidate_retired(run_id, retired_modules)
-        return SyncReport(run_id, status, reason, counts, retired, len(plan.violations))
+        requested = self._request_recomputes(new_signals)
+        return SyncReport(run_id, status, reason, counts, retired, len(plan.violations), requested)
+
+    def _request_recomputes(self, new_signals: set[tuple[uuid.UUID, str]]) -> int:
+        """FR-080a con las señales de esta corrida (RD-125). Después de confirmar: el conteo lee lo ya escrito.
+
+        Si Redis falla acá, la corrida no se revierte —los datos ya están— y no se reintenta: la lista vieja vence
+        sola, y la lectura que la encuentre vaciada también pide el recálculo.
+        """
+        if self._interactions_reached is None or self._signaler is None:
+            return 0
+        requested = 0
+        try:
+            for user_id, module in sorted(new_signals, key=lambda pair: (str(pair[0]), pair[1])):
+                if self._interactions_reached(user_id, module):
+                    requested += self._signaler.request(user_id, Module(module), "sync_signals")
+        except CacheUnavailable:
+            log.warning("Redis no disponible al pedir recálculos tras la sincronización", extra={"requested": requested})
+        return requested
 
     def _invalidate_retired(self, modules: set[str]) -> None:
         if modules:
@@ -361,10 +388,12 @@ class SyncPipeline:
             retired_modules |= {Module(m).value for m in s.scalars(sa.select(Item.module).where(Item.id.in_(absent)).distinct())}
         return retired, retired_modules
 
-    def _write_activity(self, s: Session, rows: list[dict[str, Any]]) -> set[uuid.UUID]:
+    def _write_activity(self, s: Session, rows: list[dict[str, Any]]) -> tuple[set[uuid.UUID], set[tuple[uuid.UUID, str]]]:
+        """-> usuarios afectados (para el resolutor) y pares (usuario, módulo) con señales nuevas (para FR-080a)."""
         users = set(s.scalars(sa.select(User.id)))
-        items = set(s.scalars(sa.select(Item.id)))
+        items = {item_id: str(module) for item_id, module in s.execute(sa.select(Item.id, Item.module))}
         affected: set[uuid.UUID] = set()
+        new_signals: set[tuple[uuid.UUID, str]] = set()
         now = datetime.now(UTC)
         for row in rows:
             try:
@@ -400,4 +429,5 @@ class SyncPipeline:
                 continue
             self._metrics.observe("signal_ingest_lag_seconds", max((now - occurred).total_seconds(), 0.0), source="sync")
             affected.add(user_id)
-        return affected
+            new_signals.add((user_id, items[item_id]))
+        return affected, new_signals
