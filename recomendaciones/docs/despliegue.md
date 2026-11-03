@@ -119,7 +119,7 @@ entrada por fila. Las horas son las del servidor (normalmente UTC).
 
 | Nombre | Cron | Comando |
 |---|---|---|
-| sincronización | `*/15 * * * *` | `reco-transformer` |
+| sincronización | `*/5 * * * *` | `reco-transformer` |
 | popularidad y respaldo | `0 3 * * *` | `reco-batch popularity && reco-batch fallback` |
 | respaldo | `0 */6 * * *` | `reco-batch fallback` |
 | refresco etario | `30 3 * * *` | `reco-batch age-refresh` |
@@ -200,12 +200,12 @@ Lo mínimo es un backup diario de Postgres a un destino externo y alguien que re
 **Encendidos desde el 2026-11-03** (RD-126). `api-general` publica `recomendacion.actualizar.v3` y `usuario.eliminado`
 en el broker de `notificaciones`, en el vhost de este entorno, y el worker los consume. Una decisión llega en unos
 segundos: `api-general` revisa su outbox cada 5 segundos (`RECOMMENDATIONS_OUTBOX_POLL_MS`). La lista se rehace al
-alcanzar `RECO_INTERACTION_RECALC_THRESHOLD` decisiones en el módulo. La sincronización cada 15 minutos sigue como
+alcanzar `RECO_INTERACTION_RECALC_THRESHOLD` decisiones en el módulo. La sincronización cada 5 minutos sigue como
 respaldo: trae lo que un evento no pudo registrar y también evalúa el umbral (RD-125).
 
 **Caso conocido**: el worker descarta como `skipped_not_materialized` la decisión de un usuario o sobre un ítem que
 todavía no llegó por la sincronización (una cuenta recién creada, o que acaba de completar su perfil). Esa decisión
-entra con la sincronización siguiente, hasta 15 minutos después. Desde entonces, las de ese usuario llegan por evento.
+entra con la sincronización siguiente, hasta 5 minutos después. Desde entonces, las de ese usuario llegan por evento.
 
 **Cómo se encendieron**, en este orden:
 

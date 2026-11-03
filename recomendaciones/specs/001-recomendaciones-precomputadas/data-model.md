@@ -1,7 +1,7 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
 **Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19; riesgos aceptados del despliegue, RD-123, 2026-10-19; servidor en Applications con el `api-general` real, RD-124, 2026-10-26; recálculo sin desfase con los eventos
-apagados, RD-125, 2026-11-02; eventos encendidos en el servidor, RD-126, 2026-11-03) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+apagados, RD-125, 2026-11-02; eventos encendidos en el servidor, RD-126, 2026-11-03; sincronización cada 5 minutos, RD-127, 2026-11-03) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4875,6 +4875,24 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-127 — La sincronización pasa a correr cada 5 minutos
+
+**Fecha**: 2026-11-03 · **Origen**: decisión del equipo tras RD-126 · **Tipo**: operación
+
+**Contexto**: con los eventos encendidos, la sincronización quedó como respaldo, pero sigue siendo la única vía para
+las decisiones de una cuenta nueva antes de su primera corrida (el worker las descarta como
+`skipped_not_materialized`) y para que un usuario recién registrado exista en este servicio (`unknown_user`). Cada
+corrida dura alrededor de un segundo.
+
+**Decisión**: la Schedule «sincronización» de `reco-worker` corre `*/5 * * * *` en vez de `*/15 * * * *`. Reemplaza la
+frecuencia decidida el 2026-10-05.
+
+**Consecuencias**: la espera de una cuenta nueva baja de 15 a 5 minutos. `api-general` recibe el triple de consultas
+de sincronización, que son livianas. `CatalogSyncStale` no cambia: sigue en una hora sin corrida exitosa, ahora unas
+doce corridas.
+
+---
 
 ### RD-126 — Eventos encendidos en el servidor
 
