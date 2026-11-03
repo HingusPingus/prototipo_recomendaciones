@@ -197,31 +197,46 @@ Lo mínimo es un backup diario de Postgres a un destino externo y alguien que re
 
 ## Eventos
 
-`api-general` todavía no publica eventos (`RECOMMENDATIONS_OUTBOX_ENABLED=false`): las interacciones y las bajas
-llegan con la sincronización cada 15 minutos, no al instante. El worker ya escucha en el broker de `notificaciones`.
-Mientras tanto, la sincronización evalúa el umbral de recálculo con las señales que trae, y la lectura que encuentra
-la lista vaciada pide el recálculo (RD-125): las decisiones rehacen la lista con hasta 15 minutos de atraso.
+**Encendidos desde el 2026-11-03** (RD-126). `api-general` publica `recomendacion.actualizar.v3` y `usuario.eliminado`
+en el broker de `notificaciones`, en el vhost de este entorno, y el worker los consume. Una decisión llega en unos
+segundos: `api-general` revisa su outbox cada 5 segundos (`RECOMMENDATIONS_OUTBOX_POLL_MS`). La lista se rehace al
+alcanzar `RECO_INTERACTION_RECALC_THRESHOLD` decisiones en el módulo. La sincronización cada 15 minutos sigue como
+respaldo: trae lo que un evento no pudo registrar y también evalúa el umbral (RD-125).
 
-Para encenderlos, en este orden:
+**Caso conocido**: el worker descarta como `skipped_not_materialized` la decisión de un usuario o sobre un ítem que
+todavía no llegó por la sincronización (una cuenta recién creada, o que acaba de completar su perfil). Esa decisión
+entra con la sincronización siguiente, hasta 15 minutos después. Desde entonces, las de ese usuario llegan por evento.
+
+**Cómo se encendieron**, en este orden:
 
 1. **`reco-worker` *running***. Al arrancar declara los exchanges `recomendacion.actualizar.v3` y `usuario.eliminado`
-   con sus colas. Confirmarlo en la consola de RabbitMQ de `notificaciones`, en el vhost de este servicio.
+   con sus colas. Quien opera el broker lo confirma en la consola de RabbitMQ.
 2. **Un usuario de RabbitMQ para `api-general`** en ese vhost, con los permisos de su guía
-   (`docs/operations/recommendation-outbox-routing.md` de `api-general`). Lo crea quien opera el broker.
-3. **Variables en la Application `api-general`**: `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_USERNAME`,
-   `SPRING_RABBITMQ_PASSWORD`, `SPRING_RABBITMQ_VIRTUALHOST`,
+   (`docs/operations/recommendation-outbox-routing.md` de `api-general`). Lo crea quien opera el broker y carga la
+   contraseña como secreto de la Application.
+3. **Variables en la Application `api-general`**: `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_PORT`,
+   `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD`, `SPRING_RABBITMQ_VIRTUALHOST`,
    `RECOMMENDATIONS_OUTBOX_V3_EXCHANGE=recomendacion.actualizar.v3`,
    `RECOMMENDATIONS_OUTBOX_V3_ROUTING_KEY=recomendacion.actualizar.v3`,
    `RECOMMENDATIONS_OUTBOX_USER_DELETED_EXCHANGE=usuario.eliminado`,
    `RECOMMENDATIONS_OUTBOX_USER_DELETED_ROUTING_KEY=usuario.eliminado` y `RECOMMENDATIONS_OUTBOX_V2_ENABLED=false`.
-   Todavía **sin** activar el outbox.
-4. **Activar**: `RECOMMENDATIONS_OUTBOX_ENABLED=true` y redeploy de `api-general`.
-5. **Prueba de humo** de [`migracion-v3.md`](contracts/migracion-v3.md) («Cómo lo verificamos»): una interacción
-   produce **un** mensaje en nuestra cola, se procesa y la DLQ queda en cero. Si falla, volver a `false`: los eventos
-   quedan en el outbox de `api-general` y se reintentan, no se pierden.
+4. **Activar**: `RECOMMENDATIONS_OUTBOX_ENABLED=true` y redeploy de `api-general`. `api-general` guarda un evento por
+   decisión aunque el outbox esté apagado: al encenderlo publica todo lo acumulado. Lo que ya había llegado por la
+   sincronización, el worker lo reconoce por `origin_interaction_id` y no lo duplica.
+5. **Prueba de humo** de [`migracion-v3.md`](contracts/migracion-v3.md) («Cómo lo verificamos»).
 
-Con eventos, una decisión llega en unos 5 segundos (el `RECOMMENDATIONS_OUTBOX_POLL_MS` de `api-general`) y la lista se
-rehace al alcanzar `RECO_INTERACTION_RECALC_THRESHOLD` decisiones en el módulo.
+**Cómo comprobar que siguen funcionando**, en `reco-postgres` (`psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"`):
+
+```sql
+-- la última decisión de un usuario ya sincronizado tiene que tener source = evento
+SELECT source, received_at FROM user_signals ORDER BY received_at DESC LIMIT 3;
+-- lo que hizo el worker con los eventos recientes
+SELECT result, count(*), max(processed_at) FROM processed_events
+WHERE processed_at > now() - interval '6 hours' GROUP BY result;
+```
+
+**Para apagarlos**: `RECOMMENDATIONS_OUTBOX_ENABLED=false` y redeploy de `api-general`. Los eventos quedan en su outbox
+y se publican al volver a encenderlo; mientras tanto, todo llega con la sincronización.
 
 ## Volver a una versión anterior
 
