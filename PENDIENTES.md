@@ -12,7 +12,7 @@ El sistema completo corre en Dokploy como una **prueba** (no va a producción po
 - **`api-general`** (`recome-api-general`): emite y valida el JWT de usuario (`/auth/signup`, `/auth/login`),
   contraseñas con BCrypt y mínimo de 8 caracteres. El registro público crea `USUARIO_FINAL`.
 - **recomendaciones** (este repo): `reco-api` y `reco-worker`, conectados al `api-general` **real** por la
-  sincronización REST cada 15 minutos, y al RabbitMQ de `notificaciones`. Ya no hay `api-general` simulado (RD-124).
+  sincronización REST cada 5 minutos, y al RabbitMQ de `notificaciones`. Ya no hay `api-general` simulado (RD-124).
 
 Todo son *Applications* de Dokploy con proveedor Docker que descargan imágenes privadas de `ghcr.io`, más servicios
 *Database* para Postgres y Redis. Cada merge a `main` que pasa el CI publica la imagen y redespliega solo
