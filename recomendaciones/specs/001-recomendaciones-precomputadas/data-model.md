@@ -1,7 +1,7 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
 **Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19; riesgos aceptados del despliegue, RD-123, 2026-10-19; servidor en Applications con el `api-general` real, RD-124, 2026-10-26; recálculo sin desfase con los eventos
-apagados, RD-125, 2026-11-02) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+apagados, RD-125, 2026-11-02; eventos encendidos en el servidor, RD-126, 2026-11-03) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4875,6 +4875,32 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-126 — Eventos encendidos en el servidor
+
+**Fecha**: 2026-11-03 · **Origen**: prueba de humo de `migracion-v3.md` con `api-general` y `notificaciones` ·
+**Tipo**: operación; cierra la condición de RD-124, decisión 3
+
+**Contexto**: RD-124 dejó los eventos apagados en `api-general` hasta pasar la prueba de humo. `notificaciones`
+confirmó la topología que declara el worker (dos exchanges fanout durables, colas quorum con reintento y DLQ) y creó
+el usuario de `api-general` en el vhost del entorno.
+
+**Decisión**: `api-general` publica `recomendacion.actualizar.v3` y `usuario.eliminado`, con el v2 apagado.
+
+**Verificación**:
+1. Al encender, `api-general` publicó los 342 eventos acumulados en su outbox desde el 2026-10-29, y todos quedaron
+   `PUBLICADO`. Guarda un evento por decisión aunque el outbox esté apagado.
+2. El worker los procesó sin mandar ninguno a la DLQ: 298 `signal_recorded` (incluye los ya sincronizados, que no
+   se duplicaron), 43 recálculos y 2 bajas suprimidas.
+3. El primer evento de la prueba se descartó como `skipped_not_materialized`: era de una cuenta que todavía no había
+   llegado por la sincronización. Lo trajo la corrida siguiente.
+4. Una decisión del mismo usuario, ya sincronizado, quedó en `user_signals` con `source = evento` en segundos.
+
+**Consecuencia**: las decisiones llegan en segundos; la sincronización queda como respaldo y sigue evaluando el
+umbral (RD-125). Las decisiones de una cuenta nueva, anteriores a su primera sincronización, siguen tardando hasta
+15 minutos.
+
+---
 
 ### RD-125 — Las decisiones rehacen la lista aunque los eventos estén apagados
 
