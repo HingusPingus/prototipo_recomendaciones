@@ -20,13 +20,23 @@ from recomendaciones.storage.cache.recompute import RecomputeSignaler
 from recomendaciones.storage.db.declarations import DeclarationRepository
 from recomendaciones.storage.db.session import SessionFactory
 
+_MAX_TAGS_EN_MENSAJE = 10
+_MAX_LARGO_TAG_EN_MENSAJE = 60
+
+
+def _resumen(tags: list[str]) -> str:
+    """Los primeros tags rechazados, recortados: el mensaje de error no repite una entrada arbitrariamente grande."""
+    shown = [t if len(t) <= _MAX_LARGO_TAG_EN_MENSAJE else t[:_MAX_LARGO_TAG_EN_MENSAJE] + "…" for t in tags[:_MAX_TAGS_EN_MENSAJE]]
+    rest = len(tags) - len(shown)
+    return ", ".join(shown) + (f" y {rest} más" if rest else "")
+
 
 def validate_declaration(tags: Iterable[str], *, declarable: frozenset[str], minimum: int) -> tuple[str, ...]:
     """Tags propios válidos, ordenados. Mínimo `declared_tags_min`, sin máximo (FR-083); solo vocabulario vigente (DEP-10)."""
     own = set(tags)
     unknown = sorted(own - declarable)
     if unknown:
-        raise InvalidRequest(f"tags fuera del vocabulario vigente del módulo: {', '.join(unknown)}")
+        raise InvalidRequest(f"tags fuera del vocabulario vigente del módulo: {_resumen(unknown)}")
     if len(own) < minimum:
         raise InvalidRequest(f"la declaración exige al menos {minimum} tags propios distintos (FR-083)")
     return tuple(sorted(own))
