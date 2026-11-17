@@ -29,3 +29,15 @@ def test_only_current_vocabulary_is_acceptable() -> None:
 def test_duplicates_count_once() -> None:
     with pytest.raises(InvalidRequest):
         validate_declaration(["tag1", "tag1", "tag2", "tag3", "tag4"], declarable=VOCAB, minimum=5)
+
+
+def test_el_mensaje_de_tags_desconocidos_queda_acotado() -> None:
+    from recomendaciones.api.services.declaracion import validate_declaration
+    from recomendaciones.shared.errors import InvalidRequest
+
+    tags = ["x" * 10_000] + [f"t{i}" for i in range(500)]
+    with pytest.raises(InvalidRequest) as error:
+        validate_declaration(tags, declarable=frozenset({"drama"}), minimum=5)
+    message = str(error.value)
+    assert len(message) < 400
+    assert "y 491 más" in message

@@ -1,0 +1,61 @@
+# S6 del plan de pruebas: vulnerabilidades de las dependencias de Python, secretos en el historial y el Dockerfile.
+#
+# Las herramientas corren como imágenes fijadas por digest o versiones exactas, no como actions de terceros: en marzo
+# de 2026 se reescribieron los tags de trivy-action y setup-trivy (CVE-2026-33634) y quien los usaba por tag ejecutó
+# código ajeno con los secretos del CI. Para actualizar una herramienta, cambiar el digest a mano después de revisarlo.
+#
+# .gitleaks-baseline.json lista falsos positivos ya revisados (claves de prueba y de la demo, ejemplos de curl); los
+# valores están redactados. Solo falla lo nuevo.
+name: seguridad
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  schedule:
+    - cron: '0 9 * * 1' # los lunes: avisa de vulnerabilidades nuevas aunque nadie toque el código
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS: zricethezav/gitleaks@sha256:2bcceac45179b3a91bff11a824d0fb952585b429e54fc928728b1d4d5c3e5176 # v8.24.0
+  HADOLINT: hadolint/hadolint@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e # v2.12.0
+
+jobs:
+  dependencias:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: recomendaciones
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      # Las dependencias no están fijadas: se audita exactamente lo que se instala hoy, sin las de desarrollo.
+      - name: dependencias de la aplicación
+        run: python -m venv /tmp/app && /tmp/app/bin/pip install --quiet -e .
+      - name: pip-audit
+        run: |
+          python -m venv /tmp/auditor && /tmp/auditor/bin/pip install --quiet pip-audit==2.9.0
+          /tmp/app/bin/pip freeze --exclude-editable > /tmp/requisitos.txt
+          /tmp/auditor/bin/pip-audit -r /tmp/requisitos.txt --no-deps --progress-spinner off
+
+  secretos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # todo el historial: un secreto borrado en un commit posterior sigue publicado
+      - name: gitleaks
+        run: >
+          docker run --rm -v "$PWD:/repo"
+          -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*'
+          "$GITLEAKS" git /repo --no-banner --redact --baseline-path /repo/.gitleaks-baseline.json
+
+  dockerfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: hadolint
+        run: docker run --rm -i "$HADOLINT" hadolint --failure-threshold error - < recomendaciones/Dockerfile
