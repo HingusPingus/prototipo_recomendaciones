@@ -5,6 +5,9 @@ from __future__ import annotations
 import io
 import json
 import logging
+import uuid
+
+import pytest
 
 from recomendaciones.observability.logging import JsonFormatter, configure_logging, correlation_scope
 from recomendaciones.shared.domain import Module
@@ -81,3 +84,31 @@ def test_api_generates_a_correlation_id_when_absent(api, valid_env) -> None:  # 
     client, _ = api
     response = client.get("/internal/v1/recommendations/not-a-uuid", params={"module": "peliculas"}, headers=auth(valid_env))
     assert response.headers.get("X-Correlation-ID")
+
+
+@pytest.mark.parametrize(
+    "valor",
+    ["x" * 10_000, "abc def", "<script>alert(1)</script>", "abc\tdef"],
+    ids=["10k", "espacio", "html", "tab"],
+)
+def test_un_x_correlation_id_invalido_no_vuelve_en_la_respuesta(api, valid_env, valor) -> None:  # noqa: ANN001
+    """S5 del plan de pruebas: el valor de afuera que no tiene la forma de api-general se reemplaza por uno generado."""
+    client, _ = api
+    response = client.get(
+        f"/internal/v1/recommendations/{uuid.uuid4()}",
+        params={"module": "peliculas"},
+        headers={**auth(valid_env), "X-Correlation-ID": valor},
+    )
+    devuelto = response.headers["X-Correlation-ID"]
+    assert devuelto != valor
+    assert len(devuelto) == 32 and devuelto.isalnum()
+
+
+def test_un_x_correlation_id_valido_vuelve_igual(api, valid_env) -> None:  # noqa: ANN001
+    client, _ = api
+    response = client.get(
+        f"/internal/v1/recommendations/{uuid.uuid4()}",
+        params={"module": "peliculas"},
+        headers={**auth(valid_env), "X-Correlation-ID": "req-1234.abc:XYZ_9"},
+    )
+    assert response.headers["X-Correlation-ID"] == "req-1234.abc:XYZ_9"

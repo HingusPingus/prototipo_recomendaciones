@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
+import re
 import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
@@ -22,6 +23,8 @@ _correlation: contextvars.ContextVar[str | None] = contextvars.ContextVar("corre
 
 _RESERVED = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime"}
 _MASK = "***"
+# Misma forma que acepta api-general: un valor que llega de afuera y no la cumple se reemplaza por uno generado.
+_VALID_CORRELATION_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}")
 
 
 def current_correlation_id() -> str | None:
@@ -34,7 +37,8 @@ def new_correlation_id() -> str:
 
 @contextmanager
 def correlation_scope(value: str | None) -> Iterator[str]:
-    token = _correlation.set(value or new_correlation_id())
+    valid = value is not None and _VALID_CORRELATION_ID.fullmatch(value) is not None
+    token = _correlation.set(value if valid else new_correlation_id())
     try:
         yield _correlation.get()  # type: ignore[misc]
     finally:
