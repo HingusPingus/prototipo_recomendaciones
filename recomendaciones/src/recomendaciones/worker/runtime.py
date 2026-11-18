@@ -88,6 +88,28 @@ def build_suppression_consumer(runtime: Runtime) -> EventConsumer:
     )
 
 
+async def refrescar_metricas_periodicas(runtime: Runtime, process_state: ProcessMetricsState, events, suppressions) -> None:  # noqa: ANN001
+    """Métricas de proceso, sincronización, supresiones y profundidad de colas (T066, SC-014, FR-043, FR-095a).
+
+    Son observabilidad: si la base o el broker no responden (p. ej. RabbitMQ reiniciándose mientras la conexión robusta
+    se reconecta), la medición se saltea y se reintenta en la próxima vuelta. Antes la excepción terminaba el proceso y
+    el worker dejaba de consumir aunque el broker volviera.
+    """
+    try:
+        with runtime.factory() as s:
+            await asyncio.to_thread(refresh_process_metrics, s, runtime.metrics, process_state)  # T066
+            await asyncio.to_thread(refresh_sync_metrics, s, runtime.metrics)
+            await asyncio.to_thread(refresh_suppression_metrics, s, runtime.metrics)  # FR-095a: observador
+    except Exception:  # noqa: BLE001 — una métrica nunca tumba el worker
+        log.warning("no se pudieron refrescar las métricas de proceso; se reintenta en la próxima vuelta", exc_info=True)
+    for consumer, topology in ((events, actualizar_topology()), (suppressions, eliminado_topology())):
+        try:
+            runtime.metrics.set("reco_queue_depth", await consumer.queue_depth(), queue=topology.queue)
+            runtime.metrics.set("reco_dead_letter_depth", await consumer.dead_letter_depth(), queue=topology.dead_letter_queue)
+        except Exception:  # noqa: BLE001 — la conexión robusta se reconecta sola; se mide en la próxima vuelta
+            log.warning("no se pudo medir la cola %s; se reintenta en la próxima vuelta", topology.queue)
+
+
 async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> None:
     runtime = build_runtime(settings, "worker")
     process_state = ProcessMetricsState()
@@ -121,13 +143,7 @@ async def serve(settings: Settings, *, stop: asyncio.Event | None = None) -> Non
         while not stop.is_set():
             if loop.time() - last_refresh > 30:  # SC-014: la frescura se expone aunque el Data Transformer no corra
                 last_refresh = loop.time()
-                with runtime.factory() as s:
-                    await asyncio.to_thread(refresh_process_metrics, s, runtime.metrics, process_state)  # T066
-                    await asyncio.to_thread(refresh_sync_metrics, s, runtime.metrics)
-                    await asyncio.to_thread(refresh_suppression_metrics, s, runtime.metrics)  # FR-095a: observador
-                for consumer, topology in ((events, actualizar_topology()), (suppressions, eliminado_topology())):
-                    runtime.metrics.set("reco_queue_depth", await consumer.queue_depth(), queue=topology.queue)
-                    runtime.metrics.set("reco_dead_letter_depth", await consumer.dead_letter_depth(), queue=topology.dead_letter_queue)
+                await refrescar_metricas_periodicas(runtime, process_state, events, suppressions)
             try:
                 handled = await asyncio.to_thread(requests.poll_once)
                 backoff = 0.1
