@@ -61,6 +61,10 @@ SPECS: dict[str, MetricSpec] = {
     "catalog_retired_total": MetricSpec("gauge", (), "Ítems retirados (panel, sin umbral)"),
     "projection_field_anomalies_total": MetricSpec("counter", ("field", "reason"), "Anomalías de proyección (§7.8)"),
     "retired_set_size": MetricSpec("gauge", ("module",), "Tamaño del set retired: (§4.4)"),
+    # --- Alta rápida de usuarios: `reco-sync-usuarios` (RD-128) -------------------------------------
+    "reco_new_users_materialized_total": MetricSpec("counter", (), "Usuarios nuevos materializados entre sincronizaciones"),
+    "reco_new_users_sync_failures_total": MetricSpec("counter", (), "Vueltas sin api-general disponible"),
+    "reco_new_users_sync_last_success_timestamp": MetricSpec("gauge", (), "Última vuelta exitosa de reco-sync-usuarios"),
     # --- Vocabulario y vectores (T030) ------------------------------------------------------------
     "vector_recompute_lag_seconds": MetricSpec("gauge", (), "Antigüedad del ítem vigente más viejo sin vector bajo la versión activa (§7.9, T070)"),
     "vocab_transition_progress": MetricSpec("gauge", (), "Vectores de la versión entrante / esperados (§7.9)"),

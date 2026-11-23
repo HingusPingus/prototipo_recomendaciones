@@ -34,7 +34,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 import sqlalchemy as sa
@@ -459,3 +459,65 @@ class SyncPipeline:
             affected.add(user_id)
             new_signals.add((user_id, items[item_id]))
         return affected, new_signals
+
+
+@dataclass(frozen=True)
+class NewUsersReport:
+    """Resultado de una vuelta de `reco-sync-usuarios` (RD-128)."""
+
+    status: Literal["inserted", "none", "busy", "failed"]
+    inserted: int = 0
+    reason: str | None = None
+
+
+class NewUserMaterializer:
+    """Materializa **solo** los usuarios que todavía no existen: el camino de `reco-sync-usuarios` (RD-128).
+
+    Una cuenta nueva no puede declarar gustos ni recibir recomendaciones hasta existir en `users`; esperar a la
+    sincronización completa son hasta 5 minutos. Este camino lista los usuarios y **solo inserta** los que faltan, con
+    la misma fila que insertaría la sincronización completa. No actualiza usuarios existentes, no cuenta violaciones de
+    contrato y no escribe `sync_runs` ni `process_runs`: todo eso sigue siendo de la sincronización completa. Respeta
+    las lápidas (FR-091b) y toma el lock de escritura de usuarios **sin esperar**: si lo tiene la corrida completa, esta
+    vuelta se saltea y la siguiente lo reintenta.
+    """
+
+    def __init__(
+        self,
+        factory: SessionFactory,
+        client: ApiGeneralClient,
+        config: EngineConfig,
+        metrics: Metrics,
+        *,
+        today: Callable[[], date] = lambda: datetime.now(UTC).date(),
+    ) -> None:
+        self._factory = factory
+        self._client = client
+        self._cfg = config
+        self._metrics = metrics
+        self._today = today
+
+    def run_once(self) -> NewUsersReport:
+        try:
+            listing = self._client.list_users()
+        except UpstreamError as exc:
+            self._metrics.inc("reco_new_users_sync_failures_total")
+            return NewUsersReport("failed", reason=exc.message)
+        valid, _, _ = split_users(listing.rows)  # los inválidos los reporta la sincronización completa
+        with self._factory.begin() as s:
+            if not lock_user_writes(s, wait=False):
+                return NewUsersReport("busy")
+            known = set(s.scalars(sa.select(User.id))) | set(s.scalars(sa.select(UserSuppression.user_id)))
+            today = self._today()
+            rows = [
+                new_user_values(row.id, row.birth, row.region, today, self._cfg)
+                for row in valid.itertuples(index=False)
+                if row.id not in known
+            ]
+            inserted = 0
+            if rows:
+                stmt = insert(User).values(rows).on_conflict_do_nothing(index_elements=[User.id])
+                inserted = s.execute(stmt).rowcount
+        if inserted:
+            self._metrics.inc("reco_new_users_materialized_total", inserted)
+        self._metrics.set("reco_new_users_sync_last_success_timestamp", time.time())
+        return NewUsersReport("inserted", inserted) if inserted else NewUsersReport("none")
