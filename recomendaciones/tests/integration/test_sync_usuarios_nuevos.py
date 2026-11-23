@@ -197,3 +197,20 @@ def test_full_sync_after_fast_path_has_no_duplicate(db_factory, redis_client) ->
     report = _full_sync(db_factory, redis_client, double).run()
     assert report.status == "success"
     assert sorted(row[0] for row in _rows(db_factory)) == sorted(users)
+
+
+# --- el proceso `reco-sync-usuarios` -----------------------------------------------------------------------------
+def test_serve_materializes_a_new_user(db_factory, redis_client, valid_env) -> None:  # noqa: ANN001
+    from recomendaciones.bootstrap import build_runtime
+    from recomendaciones.config.settings import load_settings
+    from recomendaciones.transformer.usuarios_continuo import serve
+
+    settings = load_settings()
+    runtime = build_runtime(settings, "sync-usuarios", factory=db_factory, cache=CacheClient(redis_client))
+    assert type(runtime.metrics) is Metrics  # proceso largo: RecordingMetrics acumularía cada observación
+    double = _double_with_catalog()
+    user = double.add_user()
+    stop = threading.Event()
+    stop.set()  # una sola vuelta
+    serve(settings, stop=stop, transport=double.transport(), runtime=runtime)
+    assert [row[0] for row in _rows(db_factory)] == [user]

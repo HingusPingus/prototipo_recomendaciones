@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     metrics_port: int = 9100
     health_port: int = 8081  # worker: salud por HTTP propio (T041)
+    # reco-sync-usuarios: cada cuánto busca usuarios nuevos (RD-128). Con default: no es de FR-068, y sin él reco-api y
+    # reco-worker no arrancarían con un Environment que no la declare.
+    sync_users_interval_seconds: float = Field(default=10.0, gt=0)
 
     @model_validator(mode="after")
     def _check_consistency(self) -> Settings:
