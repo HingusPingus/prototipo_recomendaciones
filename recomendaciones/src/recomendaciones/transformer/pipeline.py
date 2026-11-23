@@ -60,6 +60,48 @@ from recomendaciones.transformer.regions import is_valid_region
 log = logging.getLogger(__name__)
 MODULES = ("peliculas", "juegos")
 
+# Advisory lock de escritura de `users` (RD-128). Lo toman la sincronización completa y `reco-sync-usuarios` antes de
+# escribir: sin él, los dos podrían insertar el mismo usuario nuevo a la vez y la corrida completa fallaría entera.
+USERS_WRITE_LOCK_KEY = 0x52455553  # "REUS"; distinta de la del registro de configuración (0x5245434F)
+
+
+def lock_user_writes(s: Session, *, wait: bool) -> bool:
+    """Toma el lock de escritura de usuarios hasta el fin de la transacción de `s`.
+
+    `wait=True` espera a que se libere y devuelve `True`; `wait=False` no espera y devuelve si lo obtuvo.
+    """
+    if wait:
+        s.execute(sa.text("SELECT pg_advisory_xact_lock(:k)"), {"k": USERS_WRITE_LOCK_KEY})
+        return True
+    return bool(s.scalar(sa.text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": USERS_WRITE_LOCK_KEY}))
+
+
+def split_users(rows: list[dict[str, Any]]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Separa el listado de usuarios en `(válidos, sin birth_date, sin region ISO válida)` (CR-1, CR-5).
+
+    Los válidos traen `id` como `uuid.UUID`, `birth` como `date` y `region`. Un usuario puede estar en los dos rechazos.
+    """
+    frame = pd.DataFrame(rows, columns=["id", "birth_date", "region"])
+    frame["birth"] = pd.to_datetime(frame["birth_date"], errors="coerce", format="%Y-%m-%d").dt.date
+    missing_birth = frame["birth"].isna()
+    bad_region = ~frame["region"].map(is_valid_region).astype(bool)
+    valid = frame[~missing_birth & ~bad_region].copy()
+    valid["id"] = valid["id"].map(uuid.UUID)
+    return valid, frame[missing_birth], frame[bad_region]
+
+
+def new_user_values(user_id: uuid.UUID, birth: date, region: str, today: date, cfg: EngineConfig) -> dict[str, Any]:
+    """La fila de un usuario que se materializa por primera vez: la misma por cualquiera de los dos caminos."""
+    return {
+        "id": user_id,
+        "birth_date": birth,
+        "max_age_ordinal": derive_max_age_ordinal(birth, today, cfg),
+        "age_config_version": cfg.config_version,
+        "age_derived_at": sa.func.now(),
+        "region": region,
+        "synced_at": sa.func.now(),
+    }
+
 
 @dataclass
 class SyncReport:
@@ -146,21 +188,16 @@ class SyncPipeline:
 
     # --- validación (pandas: transformación del Data Transformer, constitución) ---------------
     def _validate_users(self, rows: list[dict[str, Any]], run_id: int) -> tuple[pd.DataFrame, list[str]]:
-        frame = pd.DataFrame(rows, columns=["id", "birth_date", "region"])
-        frame["birth"] = pd.to_datetime(frame["birth_date"], errors="coerce", format="%Y-%m-%d").dt.date
-        missing_birth = frame["birth"].isna()
-        bad_region = ~frame["region"].map(is_valid_region).astype(bool)
+        valid, missing_birth, bad_region = split_users(rows)
         violations: list[str] = []
-        for _, row in frame[missing_birth].iterrows():
+        for _, row in missing_birth.iterrows():
             self._metrics.inc("contract_violations_total", field="birth_date")
             log.warning("violación de contrato: usuario sin birth_date (CR-1)", extra={"user_id": row["id"], "sync_run_id": run_id})
             violations.append(f"birth_date:{row['id']}")
-        for _, row in frame[bad_region].iterrows():
+        for _, row in bad_region.iterrows():
             self._metrics.inc("contract_violations_total", field="region")
             log.warning("violación de contrato: usuario sin region ISO válida (CR-5)", extra={"user_id": row["id"], "sync_run_id": run_id})
             violations.append(f"region:{row['id']}")
-        valid = frame[~missing_birth & ~bad_region].copy()
-        valid["id"] = valid["id"].map(uuid.UUID)
         return valid, violations
 
     def _validate_items(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -230,6 +267,7 @@ class SyncPipeline:
         reason = f"violaciones de contrato en usuarios: {len(plan.violations)}" if plan.violations else None
         try:
             with self._factory.begin() as s:
+                lock_user_writes(s, wait=True)  # RD-128: `reco-sync-usuarios` también inserta usuarios
                 changed_age = self._write_users(s, plan.users)
                 retired, retired_modules = self._write_items(s, plan.items)
                 affected, new_signals = self._write_activity(s, plan.activity)
@@ -311,21 +349,11 @@ class SyncPipeline:
         for row in frame.itertuples(index=False):
             if row.id in suppressed:
                 continue  # lápida (FR-091b)
-            ordinal = derive_max_age_ordinal(row.birth, today, self._cfg)
             current = existing.get(row.id)
             if current is None:
-                s.execute(
-                    insert(User).values(
-                        id=row.id,
-                        birth_date=row.birth,
-                        max_age_ordinal=ordinal,
-                        age_config_version=self._cfg.config_version,
-                        age_derived_at=sa.func.now(),
-                        region=row.region,
-                        synced_at=sa.func.now(),
-                    )
-                )
+                s.execute(insert(User).values(**new_user_values(row.id, row.birth, row.region, today, self._cfg)))
                 continue
+            ordinal = derive_max_age_ordinal(row.birth, today, self._cfg)
             values: dict[str, Any] = {"synced_at": sa.func.now(), "region": row.region}
             if current.birth_date != row.birth or current.max_age_ordinal != ordinal:
                 values.update(birth_date=row.birth, max_age_ordinal=ordinal, age_config_version=self._cfg.config_version, age_derived_at=sa.func.now())
