@@ -515,8 +515,9 @@ class NewUserMaterializer:
             ]
             inserted = 0
             if rows:
-                stmt = insert(User).values(rows).on_conflict_do_nothing(index_elements=[User.id])
-                inserted = s.execute(stmt).rowcount
+                # RETURNING y no `rowcount`: un INSERT ORM de varias filas devuelve rowcount -1. Como en `_write_activity`.
+                stmt = insert(User).values(rows).on_conflict_do_nothing(index_elements=[User.id]).returning(User.id)
+                inserted = len(s.scalars(stmt).all())
         if inserted:
             self._metrics.inc("reco_new_users_materialized_total", inserted)
         self._metrics.set("reco_new_users_sync_last_success_timestamp", time.time())
