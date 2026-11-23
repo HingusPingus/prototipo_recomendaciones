@@ -83,3 +83,15 @@ def test_ttl_filters_must_be_shorter_than_fresh(
     monkeypatch.setenv("RECO_TTL_FILTERS_SECONDS", "86400")
     with pytest.raises(ConfigurationError):
         load_settings()
+
+
+def test_users_interval_defaults_to_10_seconds(valid_env: dict[str, str]) -> None:
+    """RD-128: con un default, reco-api y reco-worker arrancan con el Environment de hoy, sin la variable nueva."""
+    assert load_settings().sync_users_interval_seconds == 10.0
+
+
+def test_users_interval_must_be_positive(valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RECO_SYNC_USERS_INTERVAL_SECONDS", "0")
+    with pytest.raises(ConfigurationError) as exc:
+        load_settings()
+    assert "SYNC_USERS_INTERVAL_SECONDS" in str(exc.value).upper()

@@ -42,6 +42,7 @@ reco-api = "recomendaciones.api.main:run"
 reco-api-con-migraciones = "recomendaciones.api.main:run_with_migrations"  # Run Command de Dokploy (RD-124)
 reco-worker = "recomendaciones.worker.main:run"
 reco-transformer = "recomendaciones.transformer.main:run"
+reco-sync-usuarios = "recomendaciones.transformer.main:run_usuarios"  # Application propia en Dokploy (RD-128)
 reco-batch = "recomendaciones.batch.main:run"
 reco-demo = "recomendaciones.demo.main:run"  # solo demo: api-general simulado (guía en docs/demo.md)
 

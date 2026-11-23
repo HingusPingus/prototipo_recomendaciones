@@ -89,7 +89,7 @@ def test_three_entrypoints_and_batch_are_declared() -> None:
         assert callable(mod.run)
 
 
-@pytest.mark.parametrize("script", ["reco-api", "reco-worker", "reco-transformer", "reco-batch"])
+@pytest.mark.parametrize("script", ["reco-api", "reco-worker", "reco-transformer", "reco-sync-usuarios", "reco-batch"])
 def test_entrypoint_fails_explicitly_without_configuration(script: str) -> None:
     """Los entrypoints arrancan de forma independiente y fallan con error explícito si falta config."""
     import os
