@@ -2,8 +2,8 @@
 #
 # Arranca cuando el workflow `ci` termina sobre un push a `main`, y solo si terminó en verde: así ningún gate se
 # saltea para desplegar (Principio VI: un contract test roto bloquea el deploy). Construye la imagen del commit
-# que pasó el CI, la publica en ghcr.io y le pide a Dokploy que redespliegue las Applications `reco-api` y
-# `reco-worker`, que la descargan.
+# que pasó el CI, la publica en ghcr.io y le pide a Dokploy que redespliegue las Applications `reco-api`,
+# `reco-worker` y `reco-sync-usuarios`, que la descargan.
 #
 # GitHub solo dispara `workflow_run` si este archivo está en la rama por defecto (`main`). Las condiciones `if:` de
 # este archivo no debilitan ningún gate: los gates viven en `ci.yml`, y `tests/unit/test_deploy.py` fija estas.
@@ -67,10 +67,12 @@ jobs:
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
           DOKPLOY_API_APPLICATION_ID: ${{ secrets.DOKPLOY_API_APPLICATION_ID }}
           DOKPLOY_WORKER_APPLICATION_ID: ${{ secrets.DOKPLOY_WORKER_APPLICATION_ID }}
+          DOKPLOY_USERS_SYNC_APPLICATION_ID: ${{ secrets.DOKPLOY_USERS_SYNC_APPLICATION_ID }}
         run: |
           : "${DOKPLOY_URL:?falta el secret DOKPLOY_URL}" "${DOKPLOY_API_KEY:?falta el secret DOKPLOY_API_KEY}"
           : "${DOKPLOY_API_APPLICATION_ID:?falta el secret DOKPLOY_API_APPLICATION_ID}"
           : "${DOKPLOY_WORKER_APPLICATION_ID:?falta el secret DOKPLOY_WORKER_APPLICATION_ID}"
+          : "${DOKPLOY_USERS_SYNC_APPLICATION_ID:?falta el secret DOKPLOY_USERS_SYNC_APPLICATION_ID}"
           deploy() {
             curl --fail-with-body --silent --show-error --max-time 60 \
               -X POST "${DOKPLOY_URL%/}/api/application.deploy" \
@@ -78,6 +80,8 @@ jobs:
               -H "Content-Type: application/json" \
               -d "{\"applicationId\": \"$1\"}"
           }
-          # Primero la API, que aplica las migraciones al arrancar (reco-api-con-migraciones); después el worker.
+          # Primero la API, que aplica las migraciones al arrancar (reco-api-con-migraciones); después el worker y
+          # reco-sync-usuarios (RD-128).
           deploy "${DOKPLOY_API_APPLICATION_ID}"
           deploy "${DOKPLOY_WORKER_APPLICATION_ID}"
+          deploy "${DOKPLOY_USERS_SYNC_APPLICATION_ID}"

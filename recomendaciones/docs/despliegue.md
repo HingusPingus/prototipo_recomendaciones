@@ -3,7 +3,7 @@
 Cada merge a `main` que pasa el CI termina desplegado en el servidor, sin pasos manuales:
 
 ```
-merge a main ──► ci (los gates) ──► deploy: imagen en ghcr.io ──► Dokploy redespliega reco-api y después reco-worker
+merge a main ──► ci (los gates) ──► deploy: imagen en ghcr.io ──► Dokploy redespliega reco-api, después reco-worker y reco-sync-usuarios
                      │ si falla un gate
                      └──► no se construye ni se despliega nada
 ```
@@ -11,8 +11,8 @@ merge a main ──► ci (los gates) ──► deploy: imagen en ghcr.io ──
 - **`.github/workflows/ci.yml`**: los gates de siempre (ver [runbook → CI](runbook.md#ci)).
 - **`.github/workflows/deploy.yml`**: arranca cuando `ci` termina en verde sobre un push a `main`. Construye la
   imagen **del commit que pasó el CI**, la publica como `ghcr.io/hinguspingus/recomendaciones` con los tags `main`
-  y `sha-<commit>`, y le pide a Dokploy que redespliegue las Applications `reco-api` y `reco-worker`
-  (`POST /api/application.deploy`), en ese orden: la API aplica las migraciones al arrancar.
+  y `sha-<commit>`, y le pide a Dokploy que redespliegue las Applications `reco-api`, `reco-worker` y
+  `reco-sync-usuarios` (`POST /api/application.deploy`), en ese orden: la API aplica las migraciones al arrancar.
 
 `tests/unit/test_deploy.py` fija estas garantías: si alguien hace que el deploy saltee el CI, despliegue otra rama
 o redespliegue el worker antes que la API, el CI falla. La configuración del servidor (variables, credenciales,
@@ -33,10 +33,12 @@ título de cada servicio, con el sufijo que agrega Dokploy (por ejemplo `recomea
 | `reco-redis` | Database → Redis | La caché (INV-2: se reconstruye desde Postgres) |
 | `reco-api` | Application | La API de recomendaciones, en el puerto 8000. La llama `api-general` |
 | `reco-worker` | Application | Consume eventos, recalcula y corre los jobs periódicos (Schedules) |
+| `reco-sync-usuarios` | Application | Materializa las cuentas nuevas cada 10 s, sin esperar a la sincronización de 5 minutos (RD-128) |
 | RabbitMQ | Application de `notificaciones` | El broker compartido (RD-120). No es nuestro: se usa con un usuario y un vhost propios |
 | `api-general` | Application de `recome-api-general` | La fuente de usuarios, catálogo y actividad (guía en su repo) |
 
-`reco-api` y `reco-worker` usan la misma imagen y el mismo Environment; cambia el comando de arranque.
+`reco-api`, `reco-worker` y `reco-sync-usuarios` usan la misma imagen y el mismo Environment; cambia el comando de
+arranque.
 
 ## Configuración, una sola vez
 
@@ -52,7 +54,8 @@ cada una.
 
 ### 2. Las Applications
 
-*Create Service → Application*, una para `reco-api` y otra para `reco-worker`. En **General**, proveedor **Docker**:
+*Create Service → Application*, una para cada una: `reco-api`, `reco-worker` y `reco-sync-usuarios`. En **General**,
+proveedor **Docker**:
 
 | Campo | Valor |
 |---|---|
@@ -67,13 +70,14 @@ En **Advanced → Run Command**:
 |---|---|
 | `reco-api` | `reco-api-con-migraciones`: aplica las migraciones pendientes y arranca la API |
 | `reco-worker` | `reco-worker` |
+| `reco-sync-usuarios` | `reco-sync-usuarios`: proceso permanente; no publica puertos |
 
 Dokploy separa el Run Command por espacios sin respetar comillas: un `sh -c "… && …"` le llega partido y falla con
 `Unterminated quoted string`. Por eso la API tiene un comando propio de una sola palabra.
 
 ### 3. Variables de entorno
 
-En **Environment**, las mismas en las dos Applications:
+En **Environment**, las mismas en las tres Applications:
 
 ```
 RECO_ENVIRONMENT=produccion
@@ -110,7 +114,11 @@ RECO_WARMUP_RATE_PER_SECOND=50
 - **El RabbitMQ lo opera `notificaciones`** (RD-120): el usuario, la contraseña y el vhost los dan ellos, con permiso
   para declarar los exchanges `recomendacion.actualizar.v3` y `usuario.eliminado` y sus colas, que el worker declara
   al arrancar. Con el vhost por defecto (`/`), la URL termina en `:5672/`.
-- **En `api-general`**, `RECOMMENDATIONS_SERVICE_BASE_URL=http://<App Name de reco-api>:8000`.
+- **En `api-general`**, `RECOMMENDATIONS_SERVICE_BASE_URL=http://<App Name de reco-api>:8000` y
+  `RECOMMENDATIONS_SYNC_SNAPSHOT_TTL_SECONDS=600`: cada listado guarda un snapshot durante ese tiempo y
+  `reco-sync-usuarios` pide uno cada 10 s; con el default (86400) serían unos 8.640 vivos (RD-128).
+- `RECO_SYNC_USERS_INTERVAL_SECONDS` es opcional (default `10`): cada cuántos segundos `reco-sync-usuarios` busca
+  cuentas nuevas.
 
 ### 4. Los jobs periódicos
 
@@ -142,6 +150,7 @@ En GitHub, **Settings → Secrets and variables → Actions** del repositorio:
 | `DOKPLOY_API_KEY` | La API key de Dokploy |
 | `DOKPLOY_API_APPLICATION_ID` | El `applicationId` de `reco-api`: el último tramo de la URL del servicio en Dokploy (`…/services/application/<applicationId>`) |
 | `DOKPLOY_WORKER_APPLICATION_ID` | El de `reco-worker` |
+| `DOKPLOY_USERS_SYNC_APPLICATION_ID` | El de `reco-sync-usuarios` |
 
 Si falta alguno, el job `dokploy` falla diciendo cuál.
 
@@ -154,7 +163,8 @@ merging* con al menos una aprobación (ver [runbook → CI](runbook.md#ci)).
 ## Primer despliegue
 
 1. `api-general` desplegado y *running* (guía en su repo).
-2. Las bases *running*, después **Deploy** en `reco-api` (migra) y, cuando esté *running*, en `reco-worker`.
+2. Las bases *running*, después **Deploy** en `reco-api` (migra) y, cuando esté *running*, en `reco-worker` y en
+   `reco-sync-usuarios`.
 3. En `reco-worker`, ejecutar a mano (**Run**) «sincronización» y después «popularidad y respaldo».
 4. Verificar como se indica abajo.
 
@@ -167,6 +177,8 @@ No se publica ningún puerto: los servicios se ven por la red interna de Dokploy
   error queda en el log.
 - **Logs de `reco-worker`**: arranca sin errores y queda *running*. Es la prueba de que las migraciones corrieron: sin
   ellas, falla con `relation "engine_config_versions" does not exist`.
+- **Logs de `reco-sync-usuarios`**: `reco-sync-usuarios en marcha` al arrancar. Después escribe solo cuando
+  materializa cuentas nuevas (`usuarios nuevos materializados`) o cuando una racha de fallas empieza y termina.
 - **Schedules**: «sincronización» termina con `"status": "success"`. Las primeras corridas después de un deploy de
   `api-general` pueden reintentar («api-general no disponible») mientras él termina de arrancar.
 
@@ -180,6 +192,7 @@ No se publica ningún puerto: los servicios se ven por la red interna de Dokploy
 | Logs: `relation "…" does not exist` | No corrieron las migraciones: redesplegar `reco-api` y revisar que su Run Command sea `reco-api-con-migraciones` |
 | Logs: `extension "vector" is not available` | `reco-postgres` no usa la imagen `pgvector/pgvector:pg16` |
 | Schedule: `Container not found for application` | `reco-worker` no está *running*: ver sus logs |
+| Las cuentas nuevas vuelven a tardar hasta 5 minutos | `reco-sync-usuarios` no está *running*: ver sus logs. Nada más depende de él |
 | Sincronización: «api-general no disponible» en todos los intentos | `api-general` caído, `RECO_API_GENERAL_BASE_URL` mal (App Name, puerto `8080`, `/api/v1`) o las claves de servicio no coinciden |
 
 ## Riesgos abiertos

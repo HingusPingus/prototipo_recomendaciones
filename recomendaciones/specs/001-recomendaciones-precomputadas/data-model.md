@@ -1,7 +1,7 @@
 # Modelo de Datos: Servicio de Recomendaciones Híbridas Precomputadas
 
 **Feature**: 001-recomendaciones-precomputadas · **Fecha**: 2026-09-10 · **Última revisión**: 2026-09-29 (saneamiento de consistencia, RD-94…RD-97; decisiones del autor, RD-98…RD-110; remediación del análisis, RD-111; cierre del segundo análisis, RD-112; acuerdos con `api-general`, v3 y checkpoint de baja, RD-113…RD-117, 2026-10-05; observaciones de `api-general`, RD-118, 2026-10-05; sincronización de `api-general`, RD-119, y topología del broker, RD-120; contratos publicados y sync corregida en `api-general`, RD-121, 2026-10-06; baja masiva legítima, RD-122, 2026-10-19; riesgos aceptados del despliegue, RD-123, 2026-10-19; servidor en Applications con el `api-general` real, RD-124, 2026-10-26; recálculo sin desfase con los eventos
-apagados, RD-125, 2026-11-02; eventos encendidos en el servidor, RD-126, 2026-11-03; sincronización cada 5 minutos, RD-127, 2026-11-03) · **Estado**: refinamiento de [plan.md](./plan.md) §2
+apagados, RD-125, 2026-11-02; eventos encendidos en el servidor, RD-126, 2026-11-03; sincronización cada 5 minutos, RD-127, 2026-11-03; cuentas nuevas cada 10 segundos, RD-128, 2026-11-22) · **Estado**: refinamiento de [plan.md](./plan.md) §2
 
 **Alcance**: formaliza la capa de datos que `plan.md` asume. **No modifica el alcance funcional
 aprobado.** Toda entidad se remonta a un FR de [spec.md](./spec.md) o a un principio de la
@@ -4875,6 +4875,56 @@ mayor que cero, el problema no está en la ingesta sino en el formulario de alta
 revisar es la obligatoriedad, no la validación. El centinela descartado arriba es la primera
 alternativa a evaluar.
 
+
+### RD-128 — Las cuentas nuevas se materializan cada 10 segundos, en un proceso propio
+
+**Fecha**: 2026-11-22 · **Origen**: espera de las cuentas nuevas e incidente de la purga de retención del 2026-11-22 ·
+**Tipo**: arquitectura y operación
+
+**Contexto**: una cuenta nueva no existe en este servicio hasta que se materializa en `users`. Hasta entonces la
+declaración de gustos responde `unknown_user`, que `api-general` traduce a `409 profile_pending`, y el frontend la
+reintenta cada 15 s. Con la sincronización cada 5 minutos (RD-127) la espera llegaba a unos 5 minutos y medio. Además,
+la sincronización completa es todo o nada: el 2026-11-22 la purga de retención de `api-general` desactivó 339
+películas, la guarda de volumen (FR-074) abortó todas las corridas desde las 02:05 UTC y ninguna cuenta nueva se
+materializó hasta correr el procedimiento de RD-122. Dokploy no programa Schedules más seguido que cada minuto.
+
+**Decisión**: un proceso permanente del Data Transformer, `reco-sync-usuarios`, en su propia Application de Dokploy,
+con la misma imagen y el mismo Environment. Cada `RECO_SYNC_USERS_INTERVAL_SECONDS` (default 10) lista los usuarios
+de `api-general` y **solo inserta** los que todavía no existen, con la misma fila que insertaría la sincronización
+completa (`NewUserMaterializer`, en `transformer/pipeline.py`, el único módulo que escribe `users`: DI-13). Además:
+
+- No actualiza usuarios existentes ni cuenta violaciones de contrato: eso sigue siendo de la sincronización completa.
+- Respeta las lápidas de `user_suppressions` (FR-091b).
+- No escribe `sync_runs` ni `process_runs`: la frescura (`catalog_sync_last_success_timestamp`) y la guarda de
+  volumen siguen midiendo solo la sincronización completa.
+- Comparte con la sincronización completa un advisory lock de escritura de `users` (`USERS_WRITE_LOCK_KEY`). La
+  completa lo espera; este proceso lo intenta sin esperar y, si está tomado, saltea la vuelta. Sin el lock, los dos
+  podrían insertar la misma cuenta a la vez y la corrida completa fallaría entera.
+- No depende del catálogo: una purga o una guarda abortada ya no frenan a las cuentas nuevas.
+
+**Alternativas descartadas**:
+
+- *Sincronización completa cada minuto*: cinco veces la carga, y la cuenta nueva sigue frenada por cualquier
+  problema del catálogo.
+- *Un lazo dentro de `reco-worker`*: el worker escribe estado derivado; `users` es proyección y su escritor es el
+  Data Transformer (§1.1, DI-13).
+- *Sincronizar a pedido ante `unknown_user`*: exige enmendar la constitución (Redis solo coordina solicitudes de
+  recálculo) para ganar unos 10 segundos más.
+
+**Consecuencias**:
+
+- La espera de una cuenta nueva baja a unos 10–20 s: hasta 10 s para materializarse, más el reintento del frontend,
+  que baja a 5 s en `recome-Frontend` con este mismo cambio.
+- `api-general` recibe un listado de usuarios cada 10 s. Cada listado guarda un snapshot durante
+  `RECOMMENDATIONS_SYNC_SNAPSHOT_TTL_SECONDS`, 24 h por defecto: en `api-general` ese valor baja a 600 s. Las pasadas
+  de este servicio terminan en segundos.
+- El costo de cada vuelta crece con la cantidad de usuarios, porque el listado es completo. **Condición de
+  revisión**: si listar los usuarios tarda más de un par de segundos, pedir a `api-general` un listado por fecha de
+  alta.
+- Si `reco-sync-usuarios` no corre, nada más se rompe: las cuentas nuevas vuelven a esperar la sincronización
+  completa. Volver atrás es detener la Application.
+
+---
 
 ### RD-127 — La sincronización pasa a correr cada 5 minutos
 

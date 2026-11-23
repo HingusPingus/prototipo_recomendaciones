@@ -71,6 +71,7 @@ def test_dokploy_deploys_after_the_image_and_only_with_secrets() -> None:
         "DOKPLOY_API_KEY": "${{ secrets.DOKPLOY_API_KEY }}",
         "DOKPLOY_API_APPLICATION_ID": "${{ secrets.DOKPLOY_API_APPLICATION_ID }}",
         "DOKPLOY_WORKER_APPLICATION_ID": "${{ secrets.DOKPLOY_WORKER_APPLICATION_ID }}",
+        "DOKPLOY_USERS_SYNC_APPLICATION_ID": "${{ secrets.DOKPLOY_USERS_SYNC_APPLICATION_ID }}",
     }
 
 
@@ -78,6 +79,12 @@ def test_the_api_is_redeployed_before_the_worker() -> None:
     # La Application de la API aplica las migraciones al arrancar; el worker falla si las tablas no existen.
     command = "\n".join(s.get("run", "") for s in _steps(_workflow()["jobs"]["dokploy"]))
     assert command.index("DOKPLOY_API_APPLICATION_ID") < command.index("DOKPLOY_WORKER_APPLICATION_ID")
+
+
+def test_the_api_is_redeployed_before_the_users_sync() -> None:
+    # RD-128: reco-sync-usuarios escribe `users`; las migraciones las aplica la API al arrancar.
+    command = "\n".join(s.get("run", "") for s in _steps(_workflow()["jobs"]["dokploy"]))
+    assert command.index('deploy "${DOKPLOY_API_APPLICATION_ID}"') < command.index('deploy "${DOKPLOY_USERS_SYNC_APPLICATION_ID}"')
 
 
 def test_deploys_never_overlap_or_cancel_each_other() -> None:
