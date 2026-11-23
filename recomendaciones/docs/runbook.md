@@ -247,7 +247,7 @@ lag de varias horas en todos los eventos a la vez suele ser desfase de reloj de 
 > Convenciones: `$PG` es una sesión `psql` contra DB Recomendaciones; `$REDIS` es `redis-cli -u <RECO_REDIS_URL>`;
 > `<cfg>` es la `config_version` activa (`curl -s :8000/health | jq -r .config_version`). Los nombres de
 > deployments y CronJobs dependen del despliegue: acá se nombra el **proceso** (`reco-api`, `reco-worker`,
-> `reco-transformer`, `reco-batch <job>`).
+> `reco-transformer`, `reco-sync-usuarios`, `reco-batch <job>`).
 
 ### Reconstrucción tras pérdida total de Redis
 
@@ -415,6 +415,23 @@ En el servidor los programan las Schedules de Dokploy sobre la Application `reco
 **Reducir `RECO_SIGNAL_RETENTION_DAYS` exige aprobación registrada** (RD-54): la purga es irreversible. Cada
 corrida registra en el log el valor vigente (`reco_signal_retention_days`), de modo que una reducción no
 aprobada sea detectable después. Aumentarlo es configuración normal.
+
+### Cuentas nuevas que tardan en recibir recomendaciones
+
+Una cuenta nueva existe en este servicio cuando `reco-sync-usuarios` la materializa (cada
+`RECO_SYNC_USERS_INTERVAL_SECONDS`, 10 s por defecto) o, si ese proceso no corre, con la próxima sincronización
+completa (cada 5 minutos). Hasta entonces la declaración de gustos responde `unknown_user` y `api-general` lo
+traduce a `409 profile_pending` (RD-128).
+
+1. **¿Corre `reco-sync-usuarios`?** En Dokploy, la Application tiene que estar *running*. Su log escribe una
+   advertencia al empezar una racha de fallas y una línea al recuperarse; las vueltas sin novedades no escriben.
+2. **¿`api-general` lista a la cuenta?** Solo lista usuarios finales con perfil verificado (fecha de nacimiento y
+   región cargadas). Una cuenta sin perfil completo no llega por ningún camino.
+3. **¿Está suprimida?** Una cuenta con lápida en `user_suppressions` no se materializa (FR-091b).
+4. **¿Se materializó?** `SELECT id, synced_at FROM users WHERE id = '<uuid>';` en `$PG`. Si existe, el problema
+   ya no es la espera: seguir con la declaración y el recálculo.
+
+Detener `reco-sync-usuarios` es seguro: las cuentas nuevas vuelven a esperar la sincronización completa.
 
 ### CI
 
