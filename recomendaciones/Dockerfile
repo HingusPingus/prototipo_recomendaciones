@@ -3,6 +3,7 @@
 #   reco-api                          API de lectura (puerto 8000; métricas en 9100)
 #   reco-worker                       consumidor de eventos y recálculo (salud en 8081; métricas en 9100)
 #   reco-transformer                  una corrida de sincronización con api-general
+#   reco-sync-usuarios                usuarios nuevos cada 10 s, proceso permanente (RD-128; métricas en 9100)
 #   reco-batch <job>                  popularity | fallback | warmup | age-refresh | purge-signals | suppressions | audits
 #   alembic upgrade head              migraciones de DB Recomendaciones
 #   reco-demo api-general | semilla   solo demo: api-general simulado (docs/demo.md)

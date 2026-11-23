@@ -31,3 +31,25 @@ def run() -> None:
     from recomendaciones.transformer.runtime import run_once
 
     raise SystemExit(run_once(settings))
+
+
+def run_usuarios() -> None:
+    """Arranca `reco-sync-usuarios` (RD-128): materializa usuarios nuevos hasta recibir SIGTERM o SIGINT.
+
+    Falla con error explícito si falta configuración, igual que los demás entrypoints.
+    """
+    import signal
+    import threading
+
+    from recomendaciones.config.bootstrap import settings_or_exit
+
+    settings = settings_or_exit("sync-usuarios")
+    from recomendaciones.observability.logging import configure_logging
+
+    configure_logging("sync-usuarios", secrets=(settings.internal_api_key.get_secret_value(),))
+    from recomendaciones.transformer.usuarios_continuo import serve
+
+    stop = threading.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, lambda *_: stop.set())
+    serve(settings, stop=stop)
